@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Revision - MIDI VJ Tool</title>
+    <meta name="description" content="Beat-matched visual performance tool with MIDI control">
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #000000;
+            color: #ffffff;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background-color: #0a0a0a;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            z-index: 1000;
+        }
+
+        .status-bar > div:first-child {
+            font-weight: bold;
+            font-size: 14px;
+            letter-spacing: 1px;
+            color: #888888;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .status-bar button {
+            background-color: #1a1a1a;
+            color: #888888;
+            border: 1px solid #2a2a2a;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+
+        .status-bar button:hover {
+            background-color: #2a2a2a;
+            color: #ffffff;
+        }
+
+        .midi-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #444444;
+            margin-left: 10px;
+        }
+
+        .midi-indicator.connected {
+            background-color: #00ff00;
+            box-shadow: 0 0 8px #00ff00;
+        }
+
+        /* Main Canvas */
+        #main-canvas {
+            position: fixed;
+            top: 40px;
+            left: 0;
+            right: 0;
+            bottom: 80px;
+            width: 100%;
+            height: calc(100vh - 120px);
+            background-color: #000000;
+        }
+
+        /* Control Panel */
+        .control-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 80px;
+            background-color: #0a0a0a;
+            border-top: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 10px;
+            color: #666666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .control-group .value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .scene-selector {
+            display: flex;
+            gap: 10px;
+        }
+
+        .scene-button {
+            width: 60px;
+            height: 60px;
+            background-color: #1a1a1a;
+            border: 2px solid #2a2a2a;
+            border-radius: 4px;
+            color: #888888;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .scene-button:hover {
+            background-color: #2a2a2a;
+            border-color: #3a3a3a;
+        }
+
+        .scene-button.active {
+            background-color: #0066FF;
+            border-color: #0088FF;
+            color: #ffffff;
+        }
+
+        /* Settings Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background-color: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-content h2 {
+            margin-bottom: 20px;
+            color: #ffffff;
+        }
+
+        .setting-row {
+            margin-bottom: 20px;
+        }
+
+        .setting-row label {
+            display: block;
+            margin-bottom: 8px;
+            color: #888888;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .setting-row select,
+        .setting-row input[type="number"] {
+            width: 100%;
+            background-color: #0a0a0a;
+            color: #ffffff;
+            border: 1px solid #2a2a2a;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .modal-close {
+            background-color: #0066FF;
+            color: #ffffff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <div>REVISION</div>
+        <div style="display: flex; align-items: center;">
+            <button id="fullscreen-btn">FULLSCREEN</button>
+            <button id="settings-btn">SETTINGS</button>
+            <span class="midi-indicator" id="midi-indicator"></span>
+        </div>
+    </div>
+
+    <!-- Main Canvas for Visuals -->
+    <canvas id="main-canvas"></canvas>
+
+    <!-- Control Panel -->
+    <div class="control-panel">
+        <div class="control-group">
+            <label>BPM</label>
+            <div class="value" id="bpm-display">120</div>
+        </div>
+
+        <div class="control-group">
+            <label>Position</label>
+            <div class="value" id="position-display">0.0.0</div>
+        </div>
+
+        <div class="control-group">
+            <label>Scene</label>
+            <div class="scene-selector">
+                <button class="scene-button active" data-scene="0">SCENE 1</button>
+                <button class="scene-button" data-scene="1">SCENE 2</button>
+                <button class="scene-button" data-scene="2">SCENE 3</button>
+                <button class="scene-button" data-scene="3">SCENE 4</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settings-modal">
+        <div class="modal-content">
+            <h2>Settings</h2>
+
+            <div class="setting-row">
+                <label>MIDI Input</label>
+                <select id="midi-input-select">
+                    <option value="">No MIDI devices found</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <label>Renderer</label>
+                <select id="renderer-select">
+                    <option value="webgl">WebGL</option>
+                    <option value="canvas2d">Canvas 2D</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <label>OSC Server (optional)</label>
+                <input type="text" id="osc-server" placeholder="ws://localhost:8080" />
+            </div>
+
+            <button class="modal-close" onclick="closeSettings()">Close</button>
+        </div>
+    </div>
+
+    <!-- Core Scripts -->
+    <script src="utils/midi-manager.js"></script>
+    <script src="utils/settings-manager.js"></script>
+    <script src="utils/osc-client.js"></script>
+    <script src="visuals/renderer.js"></script>
+    <script src="scenes/scene-manager.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
