@@ -19,6 +19,10 @@ class RevisionApp {
         this.currentPosition = 0;
         this.beatPhase = 0;
         this.barPhase = 0;
+
+        // Beat interpolation for smooth visual updates
+        this.lastMIDIUpdateTime = performance.now(); // Start now
+        this.lastMIDIPosition = 0;
     }
 
     async initialize() {
@@ -58,6 +62,9 @@ class RevisionApp {
 
         // Setup UI event listeners
         this.setupUI();
+
+        // Start continuous beat interpolation (smooth updates between SPP messages)
+        this.interpolateBeat();
 
         console.log('[Revision] Initialized successfully');
     }
@@ -154,7 +161,11 @@ class RevisionApp {
     }
 
     updateBeatTracking() {
-        // Calculate beat and bar phase
+        // Store MIDI update time for interpolation
+        this.lastMIDIUpdateTime = performance.now();
+        this.lastMIDIPosition = this.currentPosition;
+
+        // Calculate beat and bar phase from MIDI position
         const sixteenthsPerBeat = 4;
         const beatsPerBar = 4;
 
@@ -167,6 +178,43 @@ class RevisionApp {
         // Update renderer and scene
         this.renderer.updateBeat(this.beatPhase, this.barPhase);
         this.sceneManager.update(this.beatPhase, this.barPhase);
+    }
+
+    // Continuous beat interpolation for smooth visuals between MIDI updates
+    interpolateBeat() {
+        if (this.lastMIDIUpdateTime === 0 || this.currentBPM === 0) {
+            // Wait for first MIDI update
+            requestAnimationFrame(() => this.interpolateBeat());
+            return;
+        }
+
+        const now = performance.now();
+        const timeSinceUpdate = now - this.lastMIDIUpdateTime;
+
+        // Calculate how many 16th notes have passed based on BPM
+        const sixteenthsPerMinute = this.currentBPM * 4; // 4 sixteenths per beat
+        const sixteenthsPerMs = sixteenthsPerMinute / 60000;
+        const estimatedSixteenths = timeSinceUpdate * sixteenthsPerMs;
+
+        // Interpolate position
+        const interpolatedPosition = this.lastMIDIPosition + estimatedSixteenths;
+
+        // Calculate phases
+        const sixteenthsPerBeat = 4;
+        const beatsPerBar = 4;
+
+        const beatPosition = (interpolatedPosition / sixteenthsPerBeat) % 1;
+        const barPosition = (interpolatedPosition / (sixteenthsPerBeat * beatsPerBar)) % 1;
+
+        this.beatPhase = beatPosition;
+        this.barPhase = barPosition;
+
+        // Update renderer and scene with interpolated values
+        this.renderer.updateBeat(this.beatPhase, this.barPhase);
+        this.sceneManager.update(this.beatPhase, this.barPhase);
+
+        // Continue interpolating
+        requestAnimationFrame(() => this.interpolateBeat());
     }
 
     setupUI() {
@@ -208,17 +256,19 @@ class RevisionApp {
             const mode = e.target.value;
             this.settings.set('renderer', mode);
 
+            console.log('[Revision] Switching renderer to:', mode);
+
             // Stop current animation
             this.renderer.stop();
 
-            // Reinitialize renderer
+            // Reinitialize renderer (recreates canvas)
             this.renderer.initialize(mode);
             this.renderer.resize();
 
             // Restart animation with new renderer
             this.renderer.start();
 
-            console.log('[Revision] Renderer switched to:', mode);
+            console.log('[Revision] ✓ Renderer switched to:', mode, '- gl:', !!this.renderer.gl, 'ctx:', !!this.renderer.ctx);
         });
 
         document.getElementById('osc-server').addEventListener('change', (e) => {

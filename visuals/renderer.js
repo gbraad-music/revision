@@ -11,6 +11,9 @@ class VisualRenderer {
         this.beatPhase = 0; // 0-1 within current beat
         this.barPhase = 0;  // 0-1 within current bar
         this.bpm = 120;
+        this.lastBeatPhase = 0; // For beat trigger detection
+        this.beatFlash = 0; // 1.0 on beat, decays to 0
+        this.barFlash = 0;  // 1.0 on bar, decays to 0
 
         // Visual parameters (controlled via MIDI/OSC)
         this.hue = 0;
@@ -38,6 +41,21 @@ class VisualRenderer {
 
     initialize(mode = 'webgl') {
         this.renderMode = mode;
+
+        // Clear existing contexts
+        this.gl = null;
+        this.ctx = null;
+
+        // Recreate canvas to clear context
+        const parent = this.canvas.parentElement;
+        const oldCanvas = this.canvas;
+        const newCanvas = document.createElement('canvas');
+        newCanvas.id = oldCanvas.id;
+        newCanvas.style.cssText = oldCanvas.style.cssText;
+        parent.replaceChild(newCanvas, oldCanvas);
+        this.canvas = newCanvas;
+
+        console.log('[Renderer] Canvas recreated for mode:', mode);
 
         if (mode === 'webgl') {
             return this.initializeWebGL();
@@ -72,7 +90,7 @@ class VisualRenderer {
     }
 
     initializeCanvas2D() {
-        this.mode = 'canvas2d';
+        this.renderMode = 'canvas2d';
         this.ctx = this.canvas.getContext('2d');
         console.log('[Renderer] Canvas 2D initialized');
         return true;
@@ -96,6 +114,8 @@ class VisualRenderer {
             uniform float u_time;
             uniform float u_beatPhase;
             uniform float u_barPhase;
+            uniform float u_beatFlash;  // 1.0 on beat, decays to 0
+            uniform float u_barFlash;   // 1.5 on bar, decays to 0
             uniform vec3 u_color;
             uniform float u_intensity;
             uniform float u_zoom;
@@ -112,30 +132,36 @@ class VisualRenderer {
                 float angle = atan(uv.y, uv.x);
                 float radius = length(uv);
 
-                // Spiral tunnel
-                float spiral = angle / 6.28318 + radius * 3.0 - u_time * 0.3 + u_rotation;
+                // Spiral tunnel - speed up on beat
+                float timeSpeed = u_time * (0.3 + u_beatFlash * 0.5);
+                float spiral = angle / 6.28318 + radius * 3.0 - timeSpeed + u_rotation;
                 float depth = fract(spiral);
 
-                // Pulsing rings
-                float rings = sin(radius * 20.0 / u_zoom - u_time * 2.0 + depth * 6.28318) * 0.5 + 0.5;
+                // Pulsing rings - expand on beat
+                float beatZoom = u_zoom * (1.0 + u_beatFlash * 0.5);
+                float rings = sin(radius * 20.0 / beatZoom - u_time * 2.0 + depth * 6.28318) * 0.5 + 0.5;
                 rings *= exp(-radius * 2.0);
 
-                // Color by depth
-                float hue = depth + u_time * 0.1;
+                // Color by depth - shift on bar
+                float hue = depth + u_time * 0.1 + u_barFlash * 0.2;
                 vec3 color = vec3(
                     sin(hue * 6.28318) * 0.5 + 0.5,
                     sin((hue + 0.33) * 6.28318) * 0.5 + 0.5,
                     sin((hue + 0.67) * 6.28318) * 0.5 + 0.5
                 );
 
-                return color * rings * u_intensity * (1.0 + u_beatPhase * 0.5);
+                // Dramatic beat flash (1.0 to 3.0 on beat)
+                float beatIntensity = u_intensity * (1.0 + u_beatFlash * 2.0 + u_barFlash * 1.5);
+                return color * rings * beatIntensity;
             }
 
             // Particle mode
             vec3 renderParticles(vec2 uv) {
                 vec3 color = vec3(0.0);
 
-                // Flowing particles
+                // Flowing particles - pulse size on beat
+                float particleSize = 8.0 + u_beatFlash * 4.0;
+
                 for(int i = 0; i < 8; i++) {
                     float fi = float(i);
                     vec2 particlePos = vec2(
@@ -144,7 +170,7 @@ class VisualRenderer {
                     );
 
                     float dist = length(uv - particlePos * u_zoom);
-                    float glow = exp(-dist * 8.0) * 0.3;
+                    float glow = exp(-dist * particleSize) * (0.3 + u_beatFlash * 0.5);
 
                     float hue = fi * 0.125 + u_time * 0.1;
                     vec3 particleColor = vec3(
@@ -156,11 +182,14 @@ class VisualRenderer {
                     color += particleColor * glow;
                 }
 
-                // Beat pulse background
-                float pulse = exp(-length(uv) * 2.0) * u_beatPhase * 0.3;
+                // Dramatic beat pulse background
+                float pulse = exp(-length(uv) * 2.0) * u_beatFlash * 1.5;
                 color += u_color * pulse;
 
-                return color * u_intensity;
+                // Bar explosion flash
+                color += vec3(1.0) * u_barFlash * 0.3 * exp(-length(uv) * 3.0);
+
+                return color * u_intensity * (1.0 + u_beatFlash * 0.5);
             }
 
             // Kaleidoscope mode
@@ -168,65 +197,80 @@ class VisualRenderer {
                 float angle = atan(uv.y, uv.x);
                 float radius = length(uv);
 
-                // Mirror segments
+                // Mirror segments - rotate on beat
                 float segments = 8.0;
+                float beatRotation = u_rotation + u_beatFlash * 0.3;
                 float segmentAngle = mod(angle, 6.28318 / segments);
                 segmentAngle = abs(segmentAngle - 3.14159 / segments);
 
-                // Rotate
-                vec2 kaleidoUV = vec2(cos(segmentAngle + u_rotation), sin(segmentAngle + u_rotation)) * radius;
+                // Rotate with beat jitter
+                vec2 kaleidoUV = vec2(cos(segmentAngle + beatRotation), sin(segmentAngle + beatRotation)) * radius;
 
-                // Morphing pattern
+                // Morphing pattern - speed up on beat
+                float timeSpeed = u_time * (1.0 + u_beatFlash * 0.5);
+                float beatZoom = u_zoom * (1.0 + u_beatFlash * 0.3);
                 float pattern = 0.0;
-                pattern += sin(kaleidoUV.x * 10.0 * u_zoom + u_time);
-                pattern += cos(kaleidoUV.y * 10.0 * u_zoom - u_time * 0.7);
-                pattern += sin(length(kaleidoUV) * 15.0 - u_time * 2.0);
+                pattern += sin(kaleidoUV.x * 10.0 * beatZoom + timeSpeed);
+                pattern += cos(kaleidoUV.y * 10.0 * beatZoom - timeSpeed * 0.7);
+                pattern += sin(length(kaleidoUV) * 15.0 - timeSpeed * 2.0);
                 pattern = pattern * 0.5 + 0.5;
 
-                // Color shift
-                float hue = pattern + u_barPhase + radius * 0.5;
+                // Color shift - jump on bar
+                float hue = pattern + u_barFlash * 0.5 + radius * 0.5;
                 vec3 color = vec3(
                     sin(hue * 6.28318) * 0.5 + 0.5,
                     sin((hue + 0.33) * 6.28318) * 0.5 + 0.5,
                     sin((hue + 0.67) * 6.28318) * 0.5 + 0.5
                 );
 
-                // Radial fade
-                color *= exp(-radius * 1.5) * (1.0 + u_beatPhase * 0.4);
+                // Dramatic beat pulse (shrink radius effect)
+                float pulseRadius = radius / (1.0 + u_beatFlash * 0.5);
+                color *= exp(-pulseRadius * 1.5);
 
-                return color * u_intensity * 1.5;
+                // Brightness boost on beat
+                return color * u_intensity * (1.5 + u_beatFlash * 2.0 + u_barFlash);
             }
 
             // Waveform mode
             vec3 renderWaveform(vec2 uv) {
                 vec3 color = vec3(0.0);
 
-                // Frequency bars
-                float barX = uv.x * 16.0;
-                float barIndex = floor(barX);
+                // Frequency bars - remap UV from (-1,1) to (0,1) first
+                float uvX = (uv.x + 1.0) * 0.5; // 0 to 1
+                float barX = uvX * 16.0; // 0 to 16
+                float barIndex = floor(barX); // 0-15
                 float barPos = fract(barX);
 
-                // Animated bar height
-                float freq = hash(vec2(barIndex, 0.0));
-                float height = freq * 0.5 + 0.3;
-                height += sin(u_time * 2.0 + barIndex * 0.5) * 0.2;
-                height += u_beatPhase * 0.3;
+                // Animated bar height - restore good baseline, ADD beat pulses
+                float freq = hash(vec2(barIndex + 0.123, 7.456)); // Offset for better hash distribution
+                float baseHeight = freq * 0.5 + 0.3; // Good baseline (0.3-0.8)
+                float wave = sin(u_time * 2.0 + barIndex * 0.5) * 0.2; // Flowing animation
+
+                // DRAMATIC beat pulse - ADDITIONAL boost on top of baseline
+                float beatPulse = u_beatFlash * (0.4 + freq * 0.3); // Varies per bar
+                float barPulse = u_barFlash * 0.4; // Extra boost on bar
+
+                float height = baseHeight + wave + beatPulse + barPulse;
 
                 // Mirror effect
                 float yDist = abs(uv.y) - height * u_zoom;
                 float bar = smoothstep(0.02, 0.0, yDist);
 
-                // Color by frequency
-                float hue = freq + u_time * 0.05;
+                // Color by frequency - shift on beat
+                float hue = freq + u_time * 0.05 + u_beatFlash * 0.3;
                 vec3 barColor = vec3(
                     sin(hue * 6.28318) * 0.5 + 0.5,
                     sin((hue + 0.33) * 6.28318) * 0.5 + 0.5,
                     sin((hue + 0.67) * 6.28318) * 0.5 + 0.5
                 );
 
-                // Glow
-                float glow = exp(-abs(yDist) * 5.0) * 0.5;
-                color = (barColor * bar + barColor * glow) * u_intensity;
+                // Glow - brighten on beat
+                float glowStrength = 5.0 + u_beatFlash * 3.0;
+                float glow = exp(-abs(yDist) * glowStrength) * (0.5 + u_beatFlash * 0.5);
+
+                // Dramatic intensity boost on beat
+                float beatIntensity = u_intensity * (1.0 + u_beatFlash * 1.5 + u_barFlash);
+                color = (barColor * bar + barColor * glow) * beatIntensity;
 
                 return color;
             }
@@ -293,6 +337,8 @@ class VisualRenderer {
             time: gl.getUniformLocation(this.program, 'u_time'),
             beatPhase: gl.getUniformLocation(this.program, 'u_beatPhase'),
             barPhase: gl.getUniformLocation(this.program, 'u_barPhase'),
+            beatFlash: gl.getUniformLocation(this.program, 'u_beatFlash'),
+            barFlash: gl.getUniformLocation(this.program, 'u_barFlash'),
             color: gl.getUniformLocation(this.program, 'u_color'),
             intensity: gl.getUniformLocation(this.program, 'u_intensity'),
             zoom: gl.getUniformLocation(this.program, 'u_zoom'),
@@ -329,6 +375,16 @@ class VisualRenderer {
         const deltaTime = time - this.lastFrameTime;
         this.lastFrameTime = time;
 
+        // Decay flash effects
+        if (this.beatFlash > 0) {
+            this.beatFlash -= deltaTime * 0.005;
+            if (this.beatFlash < 0) this.beatFlash = 0;
+        }
+        if (this.barFlash > 0) {
+            this.barFlash -= deltaTime * 0.004;
+            if (this.barFlash < 0) this.barFlash = 0;
+        }
+
         if (this.renderMode === 'webgl' && this.gl) {
             this.renderWebGL(time / 1000);
         } else if (this.ctx) {
@@ -351,6 +407,8 @@ class VisualRenderer {
         gl.uniform1f(this.uniforms.time, time);
         gl.uniform1f(this.uniforms.beatPhase, this.beatPhase);
         gl.uniform1f(this.uniforms.barPhase, this.barPhase);
+        gl.uniform1f(this.uniforms.beatFlash, this.beatFlash);
+        gl.uniform1f(this.uniforms.barFlash, this.barFlash);
         gl.uniform1i(this.uniforms.mode, modeInt);
 
         // Convert HSL to RGB
@@ -420,23 +478,34 @@ class VisualRenderer {
 
                 const x = centerX + Math.cos(angle) * (radius + wobble);
                 const y = centerY + Math.sin(angle) * (radius + wobble);
-                const size = 15 * (1 - depth) * (1 + this.beatPhase * 0.5);
 
-                // Color shifts through spectrum
-                const hue = (this.hue + depth * 180 + time * 20) % 360;
-                const alpha = (1 - depth) * this.intensity;
+                // DRAMATIC beat flash - size pulses 1x to 3x
+                const beatSize = 1.0 + this.beatFlash * 2.0 + this.barFlash * 1.5;
+                const size = 15 * (1 - depth) * beatSize;
+
+                // Color shifts through spectrum - jump on bar
+                const hue = (this.hue + depth * 180 + time * 20 + this.barFlash * 60) % 360;
+
+                // Intensity boost on beat
+                const beatIntensity = this.intensity * (1.0 + this.beatFlash * 2.0);
+                const alpha = (1 - depth) * beatIntensity;
 
                 ctx.beginPath();
                 ctx.arc(x, y, size, 0, Math.PI * 2);
-                ctx.fillStyle = `hsla(${hue}, ${this.saturation}%, ${this.brightness}%, ${alpha})`;
+
+                // Brightness boost on beat
+                const beatBrightness = this.brightness + this.beatFlash * 30 + this.barFlash * 20;
+                ctx.fillStyle = `hsla(${hue}, ${this.saturation}%, ${beatBrightness}%, ${alpha})`;
                 ctx.fill();
 
-                // Glow effect
-                const gradient = ctx.createRadialGradient(x, y, 0, x, y, size * 2);
-                gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, ${alpha * 0.5})`);
+                // DRAMATIC glow effect - bigger on beat
+                const glowSize = size * (2 + this.beatFlash * 2.0);
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowSize);
+                const glowBrightness = 70 + this.beatFlash * 30;
+                gradient.addColorStop(0, `hsla(${hue}, 100%, ${glowBrightness}%, ${alpha * 0.5})`);
                 gradient.addColorStop(1, 'transparent');
                 ctx.fillStyle = gradient;
-                ctx.fillRect(x - size * 2, y - size * 2, size * 4, size * 4);
+                ctx.fillRect(x - glowSize, y - glowSize, glowSize * 2, glowSize * 2);
             }
         }
 
@@ -691,6 +760,19 @@ class VisualRenderer {
     }
 
     updateBeat(beatPhase, barPhase) {
+        // Detect beat trigger (phase crossed 0)
+        if (beatPhase < this.lastBeatPhase) {
+            this.beatFlash = 1.0;
+            console.log('[Renderer] 🥁 BEAT!', 'Phase:', beatPhase.toFixed(3), 'BPM:', this.bpm, 'Flash:', this.beatFlash);
+
+            // Detect bar (every 4 beats)
+            if (barPhase < 0.25 && barPhase >= 0) {
+                this.barFlash = 1.5;
+                console.log('[Renderer] 🎵 BAR!', 'BarPhase:', barPhase.toFixed(3));
+            }
+        }
+
+        this.lastBeatPhase = beatPhase;
         this.beatPhase = beatPhase;
         this.barPhase = barPhase;
     }
@@ -747,6 +829,13 @@ class VisualRenderer {
     }
 
     spawnParticles(note, velocity) {
+        // Particle limit to prevent performance issues
+        const MAX_PARTICLES = 500;
+        if (this.particles.length > MAX_PARTICLES) {
+            console.warn('[Renderer] Max particles reached, skipping spawn');
+            return;
+        }
+
         const count = Math.floor((velocity / 127) * 20) + 5;
         const hue = (note * 3) % 360;
 

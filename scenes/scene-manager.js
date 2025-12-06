@@ -31,8 +31,21 @@ class SceneManager {
                 }
             },
             onMIDINote: (note, velocity) => {
-                // Note flash
-                this.renderer.flashNote(note, velocity);
+                // DRAMATIC color shift based on note pitch
+                const hue = (note * 3) % 360;
+                this.renderer.setParameter('hue', hue);
+
+                // Velocity controls zoom burst (low notes = bigger burst)
+                const notePitch = note / 127; // 0-1
+                const velocityAmount = velocity / 127; // 0-1
+                const zoomBurst = 0.5 + (1.0 - notePitch) * velocityAmount * 2.0;
+                this.renderer.setParameter('zoom', zoomBurst);
+
+                // Flash intensity boost
+                const intensityBurst = 2.0 + velocityAmount * 3.0;
+                this.renderer.setParameter('intensity', intensityBurst);
+
+                console.log(`[Scene] Tunnel Note: ${note}, Vel: ${velocity}, Hue: ${hue.toFixed(0)}, Zoom: ${zoomBurst.toFixed(2)}`);
             }
         });
 
@@ -57,8 +70,20 @@ class SceneManager {
                 }
             },
             onMIDINote: (note, velocity) => {
-                // Spawn particles on note
+                // Spawn particles - spawnParticles already creates multiple based on velocity
                 this.renderer.spawnParticles(note, velocity);
+
+                // Color shift based on note
+                const notePitch = note / 127;
+                const velocityAmount = velocity / 127;
+                const hue = (note * 3) % 360;
+                this.renderer.setParameter('hue', hue);
+
+                // Intensity flash - dramatic but not crazy
+                const intensityBurst = 1.5 + velocityAmount * 2.5;
+                this.renderer.setParameter('intensity', intensityBurst);
+
+                console.log(`[Scene] Particles Note: ${note}, Vel: ${velocity}, Hue: ${hue.toFixed(0)}`);
             }
         });
 
@@ -86,9 +111,31 @@ class SceneManager {
                 }
             },
             onMIDINote: (note, velocity) => {
-                // Color shift on note
+                // DRAMATIC effects based on pitch and velocity
+                const notePitch = note / 127; // 0-1
+                const velocityAmount = velocity / 127; // 0-1
+
+                // Color shift
                 const hue = (note * 3) % 360;
                 this.renderer.setParameter('hue', hue);
+
+                // Higher notes = more segments, faster rotation
+                const segments = Math.floor(3 + notePitch * 13); // 3-16 segments
+                this.renderer.setParameter('segments', segments);
+
+                // Velocity controls zoom and intensity
+                const zoomBurst = 0.3 + velocityAmount * 1.5; // 0.3-1.8
+                this.renderer.setParameter('zoom', zoomBurst);
+
+                // MASSIVE intensity burst
+                const intensityBurst = 2.5 + velocityAmount * 6.0; // 2.5-8.5
+                this.renderer.setParameter('intensity', intensityBurst);
+
+                // Rotation burst
+                const rotationSpeed = velocityAmount * Math.PI * 2;
+                this.renderer.setParameter('rotation', rotationSpeed);
+
+                console.log(`[Scene] Kaleidoscope Note: ${note}, Vel: ${velocity}, Segments: ${segments}, Intensity: ${intensityBurst.toFixed(1)}`);
             }
         });
 
@@ -113,8 +160,30 @@ class SceneManager {
                 }
             },
             onMIDINote: (note, velocity) => {
-                // Set bar height based on note
+                // DRAMATIC bar animations based on pitch and velocity
+                const notePitch = note / 127; // 0-1
+                const velocityAmount = velocity / 127; // 0-1
+
+                // Set bar height for this specific note
                 this.renderer.setBarHeight(note, velocity);
+
+                // Color shift based on note
+                const hue = (note * 3) % 360;
+                this.renderer.setParameter('hue', hue);
+
+                // Higher velocity = bigger kick effect
+                const kickAmount = velocityAmount * 2.0;
+                this.renderer.setParameter('kick', kickAmount);
+
+                // Higher notes = higher intensity
+                const intensityBurst = 1.5 + velocityAmount * 4.0 + notePitch * 2.0;
+                this.renderer.setParameter('intensity', intensityBurst);
+
+                // Zoom based on pitch (lower notes = bigger)
+                const zoomEffect = 0.8 + (1.0 - notePitch) * 0.8;
+                this.renderer.setParameter('zoom', zoomEffect);
+
+                console.log(`[Scene] Waveform Note: ${note}, Vel: ${velocity}, Kick: ${kickAmount.toFixed(2)}, Intensity: ${intensityBurst.toFixed(1)}`);
             }
         });
 
