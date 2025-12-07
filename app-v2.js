@@ -654,7 +654,7 @@ class RevisionAppV2 {
             videoAudioReactive: this.settings.get('videoAudioReactive') || 'false',
             videoBeatReactive: this.settings.get('videoBeatReactive') || 'false',
             presetName: this.currentPresetType === 'milkdrop' && this.milkdropPresetKeys
-                ? this.milkdropPresetKeys[this.currentMilkdropIndex]
+                ? this.milkdropPresetKeys[this.currentMilkdropIndex || 0] || '-'
                 : '-',
             frequency: this.lastFrequencyData,
             sppActive: sppActive
@@ -671,13 +671,8 @@ class RevisionAppV2 {
             audioSourceDisplay.textContent = state.audioSourceDisplay;
         }
 
-        // Send preset list if in milkdrop mode
-        if (this.milkdropPresetKeys) {
-            this.controlChannel.postMessage({
-                type: 'presetList',
-                data: this.milkdropPresetKeys
-            });
-        }
+        // DON'T send preset list on every broadcast (causes flicker)
+        // It's sent once when switching to milkdrop mode and when requestState is called
     }
 
     async enableAudioInput(deviceId = null) {

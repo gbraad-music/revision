@@ -190,13 +190,16 @@
         }
 
         .preset-item {
-            padding: 8px 12px;
+            padding: 12px 15px;
             background: #0a0a0a;
             border: 1px solid #2a2a2a;
             margin-bottom: 5px;
             cursor: pointer;
             border-radius: 4px;
             font-size: 12px;
+            user-select: none; /* Prevent text selection interfering with clicks */
+            -webkit-user-select: none;
+            transition: background 0.1s ease;
         }
 
         .preset-item:hover {
@@ -485,11 +488,6 @@
                 builtinSection.style.display = state.mode === 'builtin' ? 'block' : 'none';
                 milkdropSection.style.display = state.mode === 'milkdrop' ? 'block' : 'none';
                 videoSection.style.display = state.mode === 'video' ? 'block' : 'none';
-
-                // Request preset list when switching to milkdrop
-                if (state.mode === 'milkdrop' && milkdropSection.style.display === 'block') {
-                    sendCommand('requestState');
-                }
             }
 
             // Update active scene
@@ -556,22 +554,26 @@
         }
 
 
-        // Load preset list from config
+        // Load preset list from main app (not local config)
+        // This is now handled by 'requestState' which triggers 'presetList' broadcast
         async function loadPresets() {
-            try {
-                const response = await fetch('config/presets.json');
-                if (response.ok) {
-                    const config = await response.json();
-                    if (config.milkdrop && config.milkdrop.playlist) {
-                        displayPresets(config.milkdrop.playlist);
-                    }
-                }
-            } catch (error) {
-                console.log('[Control] No preset config');
-            }
+            console.log('[Control] Preset list will be loaded from main app via BroadcastChannel');
+            // No local loading - main app is source of truth
         }
 
+        let lastPresetList = null;
+
         function displayPresets(presets) {
+            if (!presets || presets.length === 0) {
+                return;
+            }
+
+            // Don't rebuild if same list (prevents flicker)
+            if (lastPresetList && JSON.stringify(lastPresetList) === JSON.stringify(presets)) {
+                return;
+            }
+            lastPresetList = presets;
+
             const list = document.getElementById('preset-list');
             list.innerHTML = '';
 
@@ -579,14 +581,25 @@
                 const item = document.createElement('div');
                 item.className = 'preset-item';
                 item.textContent = `${index}: ${preset}`;
-                item.onclick = () => {
-                    sendCommand('milkdropSelect', index);
-                    document.querySelectorAll('.preset-item').forEach(i => i.classList.remove('active'));
-                    item.classList.add('active');
-                };
+                item.dataset.index = index;
+                item.dataset.preset = preset;
                 list.appendChild(item);
             });
         }
+
+        // Event delegation for preset clicks
+        document.getElementById('preset-list').addEventListener('click', (e) => {
+            const item = e.target.closest('.preset-item');
+            if (item) {
+                const index = parseInt(item.dataset.index);
+                const preset = item.dataset.preset;
+                sendCommand('milkdropSelect', index);
+
+                // Update active state
+                document.querySelectorAll('.preset-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+            }
+        });
 
         // Audio device selection
         document.getElementById('audio-device-select').addEventListener('change', (e) => {
@@ -730,14 +743,17 @@
         console.log('[Control] Forcing Visual Reactive Input to microphone...');
         sendCommand('milkdropAudioSource', 'microphone');
 
-        // Don't request state - just wait for periodic broadcast (every 100ms)
-        // Requesting state might return old data before the command above is processed
-
         // Initialize
         loadPresets();
         loadAudioDevices();
         loadMIDIDevices();
         loadVideoDevices();
+
+        // Request full state after a short delay (allows commands to be processed first)
+        setTimeout(() => {
+            console.log('[Control] Requesting state from main app...');
+            sendCommand('requestState');
+        }, 200);
     </script>
 </body>
 </html>
