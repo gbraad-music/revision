@@ -168,12 +168,14 @@ class MIDIInputSource {
         switch (command) {
             case 0x90: // Note On
                 if (data2 > 0) {
+                    console.log(`[MIDIInput] 🎹 Note ON  - Ch.${channel + 1} Note:${data1} Vel:${data2}`);
                     this.emit('*', {
                         type: 'note',
                         data: { note: data1, velocity: data2, source: 'midi', channel }
                     });
                 } else {
                     // Note off (velocity 0)
+                    console.log(`[MIDIInput] 🎹 Note OFF - Ch.${channel + 1} Note:${data1}`);
                     this.emit('*', {
                         type: 'note',
                         data: { note: data1, velocity: 0, source: 'midi', channel }
@@ -182,6 +184,7 @@ class MIDIInputSource {
                 break;
 
             case 0x80: // Note Off
+                console.log(`[MIDIInput] 🎹 Note OFF - Ch.${channel + 1} Note:${data1}`);
                 this.emit('*', {
                     type: 'note',
                     data: { note: data1, velocity: 0, source: 'midi', channel }

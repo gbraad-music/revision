@@ -25,18 +25,21 @@ class MIDIAudioSynth {
         // Frequency analysis
         this.frequencyData = null;
         this.timeDomainData = null;
+
+        // Frequency monitoring interval
+        this.monitoringInterval = null;
     }
 
     initialize() {
         try {
-            // Create analyser for Milkdrop
+            // Create analyser for Milkdrop - FAST RESPONSE for MIDI transients
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = 2048;
-            this.analyser.smoothingTimeConstant = 0.8;
+            this.analyser.smoothingTimeConstant = 0.0; // NO SMOOTHING - instant response to MIDI!
 
             // Master gain
             this.masterGain = this.audioContext.createGain();
-            this.masterGain.gain.value = 0.3; // Overall volume
+            this.masterGain.gain.value = 1.0; // Normal level, richness comes from harmonics
             this.masterGain.connect(this.analyser);
 
             // Speaker output (can be toggled on/off)
@@ -61,8 +64,15 @@ class MIDIAudioSynth {
                 });
             }
 
+            // Initialize frequency data arrays
+            this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
+            this.timeDomainData = new Uint8Array(this.analyser.fftSize);
+
+            // Start frequency monitoring for visual feedback
+            this.startFrequencyMonitoring();
+
             this.isActive = true;
-            console.log('[MIDIAudioSynth] Initialized - AnalyserNode ready for Milkdrop');
+            console.log('[MIDIAudioSynth] Initialized - AnalyserNode ready for Milkdrop + frequency events');
             return true;
         } catch (error) {
             console.error('[MIDIAudioSynth] Failed to initialize:', error);
@@ -97,47 +107,112 @@ class MIDIAudioSynth {
             this.releaseVoice(voice);
         }
 
-        // Create oscillator for this note
-        const oscillator = this.audioContext.createOscillator();
+        // Create RICH sound with multiple oscillators for visual impact
         const gain = this.audioContext.createGain();
-
-        // MIDI note to frequency
         const frequency = 440 * Math.pow(2, (note - 69) / 12);
+
+        // Note name helper
+        const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const noteName = noteNames[note % 12];
+        const octave = Math.floor(note / 12) - 1; // MIDI octave (C4 = middle C = note 60)
+
+        // Main oscillator (sawtooth has rich harmonics)
+        const oscillator = this.audioContext.createOscillator();
         oscillator.frequency.value = frequency;
+        oscillator.type = 'sawtooth'; // Sawtooth - rich harmonics
+        const osc1Gain = this.audioContext.createGain();
+        osc1Gain.gain.value = 0.3;
+        oscillator.connect(osc1Gain);
+        osc1Gain.connect(gain);
 
-        // Waveform based on note range
-        if (note < 48) {
-            oscillator.type = 'sawtooth'; // Bass
-        } else if (note < 72) {
-            oscillator.type = 'square'; // Mid
-        } else {
-            oscillator.type = 'sine'; // High
-        }
+        // Add a detuned second oscillator for width (square wave for bass content)
+        const osc2 = this.audioContext.createOscillator();
+        osc2.frequency.value = frequency * 1.005; // Very slightly detuned
+        osc2.type = 'square'; // Square wave has strong fundamental for bass
+        const osc2Gain = this.audioContext.createGain();
+        osc2Gain.gain.value = 0.2;
+        osc2.connect(osc2Gain);
+        osc2Gain.connect(gain);
 
-        // Velocity to gain with envelope
-        const velocityGain = (velocity / 127) * 0.4;
+        // Add sub-bass for low-end punch (boosted for bass notes)
+        const subOsc = this.audioContext.createOscillator();
+        subOsc.frequency.value = frequency * 0.5; // One octave down
+        subOsc.type = 'sine';
+        const subGain = this.audioContext.createGain();
+        subGain.gain.value = 0.4; // Boosted sub-bass
+        subOsc.connect(subGain);
+        subGain.connect(gain);
+
+        // Velocity to gain
+        const velocityGain = (velocity / 127) * 0.6;
         gain.gain.value = 0;
 
-        // Connect
-        oscillator.connect(gain);
+        // Connect to master
         gain.connect(this.masterGain);
 
-        // Start and apply envelope
+        // Start ALL oscillators
         oscillator.start();
+        osc2.start();
+        subOsc.start();
+
         const now = this.audioContext.currentTime;
 
-        // ADSR Envelope
+        // ADSR Envelope with automatic release after 2 seconds
         gain.gain.setValueAtTime(0, now);
         gain.gain.linearRampToValueAtTime(velocityGain, now + 0.01); // Attack
         gain.gain.exponentialRampToValueAtTime(velocityGain * 0.7, now + 0.1); // Decay to sustain
+        gain.gain.exponentialRampToValueAtTime(velocityGain * 0.5, now + 2.0); // Hold sustain
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 2.3); // Auto release after 2.3 seconds
 
-        // Store voice
+        // Auto-stop oscillator after envelope completes
+        // Store note name for logging
+        const noteNameForLog = noteName + octave;
+        setTimeout(() => {
+            try {
+                // Stop these specific oscillator instances regardless of voice state
+                // (voice may have been stolen and reassigned to a new note)
+                oscillator.stop();
+                osc2.stop();
+                subOsc.stop();
+                oscillator.disconnect();
+                osc2.disconnect();
+                subOsc.disconnect();
+                osc1Gain.disconnect();
+                osc2Gain.disconnect();
+                subGain.disconnect();
+                gain.disconnect();
+
+                // Only clear voice if it still references these oscillators
+                if (voice.oscillator === oscillator) {
+                    voice.oscillator = null;
+                    voice.osc2 = null;
+                    voice.subOsc = null;
+                    voice.osc1Gain = null;
+                    voice.osc2Gain = null;
+                    voice.subGain = null;
+                    voice.gain = null;
+                    voice.note = null;
+                    voice.active = false;
+                }
+                console.log('[MIDIAudioSynth] Auto-stopped:', noteNameForLog);
+            } catch (e) {
+                // Oscillator may have already been stopped by note-off
+                console.log('[MIDIAudioSynth] Auto-stop error (already stopped):', e.message);
+            }
+        }, 2400);
+
+        // Store voice with all oscillators for cleanup
         voice.oscillator = oscillator;
+        voice.osc2 = osc2;
+        voice.subOsc = subOsc;
+        voice.osc1Gain = osc1Gain;
+        voice.osc2Gain = osc2Gain;
+        voice.subGain = subGain;
         voice.gain = gain;
         voice.note = note;
         voice.active = true;
 
-        console.log('[MIDIAudioSynth] Note ON:', note, 'Velocity:', velocity, 'Freq:', frequency.toFixed(1), 'Hz');
+        console.log('[MIDIAudioSynth] Note ON:', noteName + octave, '(MIDI', note + ') Vel:', velocity, 'Freq:', frequency.toFixed(1), 'Hz');
     }
 
     // Handle MIDI note off
@@ -146,32 +221,75 @@ class MIDIAudioSynth {
 
         const voice = this.voices.find(v => v.active && v.note === note);
         if (voice) {
+            console.log('[MIDIAudioSynth] 🔽 Note OFF received:', note);
             this.releaseVoice(voice);
-            console.log('[MIDIAudioSynth] Note OFF:', note);
+        } else {
+            console.log('[MIDIAudioSynth] ⚠️ Note OFF for inactive note:', note);
         }
     }
 
     releaseVoice(voice) {
-        if (!voice.oscillator) return;
+        if (!voice.oscillator) {
+            console.log('[MIDIAudioSynth] ⚠️ releaseVoice called but no oscillator');
+            return;
+        }
 
         const now = this.audioContext.currentTime;
 
-        // Release envelope
+        console.log('[MIDIAudioSynth] 📉 Releasing voice - note:', voice.note);
+
+        // Release envelope - cancel scheduled values and apply immediate release
         voice.gain.gain.cancelScheduledValues(now);
         voice.gain.gain.setValueAtTime(voice.gain.gain.value, now);
         voice.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); // Release
 
-        // Stop oscillator after release
+        // Stop ALL oscillators and disconnect all nodes after release
+        const osc = voice.oscillator;
+        const osc2 = voice.osc2;
+        const subOsc = voice.subOsc;
+        const osc1Gain = voice.osc1Gain;
+        const osc2Gain = voice.osc2Gain;
+        const subGain = voice.subGain;
+        const gainNode = voice.gain;
         setTimeout(() => {
-            if (voice.oscillator) {
-                voice.oscillator.stop();
-                voice.oscillator.disconnect();
-                voice.gain.disconnect();
-                voice.oscillator = null;
-                voice.gain = null;
-                voice.note = null;
-                voice.active = false;
+            try {
+                if (osc) {
+                    osc.stop();
+                    osc.disconnect();
+                }
+                if (osc2) {
+                    osc2.stop();
+                    osc2.disconnect();
+                }
+                if (subOsc) {
+                    subOsc.stop();
+                    subOsc.disconnect();
+                }
+                if (osc1Gain) {
+                    osc1Gain.disconnect();
+                }
+                if (osc2Gain) {
+                    osc2Gain.disconnect();
+                }
+                if (subGain) {
+                    subGain.disconnect();
+                }
+                if (gainNode) {
+                    gainNode.disconnect();
+                }
+            } catch (e) {
+                console.log('[MIDIAudioSynth] Error stopping oscillators:', e.message);
             }
+            voice.oscillator = null;
+            voice.osc2 = null;
+            voice.subOsc = null;
+            voice.osc1Gain = null;
+            voice.osc2Gain = null;
+            voice.subGain = null;
+            voice.gain = null;
+            voice.note = null;
+            voice.active = false;
+            console.log('[MIDIAudioSynth] ✓ Voice released');
         }, 350);
     }
 
@@ -186,8 +304,8 @@ class MIDIAudioSynth {
         this.beatOscillator.frequency.setValueAtTime(150, now);
         this.beatOscillator.frequency.exponentialRampToValueAtTime(40, now + 0.1);
 
-        // Amplitude envelope
-        const kickGain = intensity * 0.8;
+        // Amplitude envelope - BOOSTED for strong visuals
+        const kickGain = intensity * 2.0; // BOOSTED (was 0.8)
         this.beatGain.gain.cancelScheduledValues(now);
         this.beatGain.gain.setValueAtTime(kickGain, now);
         this.beatGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
@@ -212,6 +330,15 @@ class MIDIAudioSynth {
 
     // Get analyser for Milkdrop
     getAnalyser() {
+        console.log('[MIDIAudioSynth] getAnalyser() called - returning:', this.analyser ? 'VALID ANALYSER' : 'NULL');
+        if (this.analyser) {
+            // Test if analyser is receiving data
+            const testData = new Uint8Array(this.analyser.frequencyBinCount);
+            this.analyser.getByteFrequencyData(testData);
+            const max = Math.max(...testData);
+            const avg = testData.reduce((a, b) => a + b, 0) / testData.length;
+            console.log('[MIDIAudioSynth] Analyser data - Max:', max, 'Avg:', avg.toFixed(1));
+        }
         return this.analyser;
     }
 
@@ -231,6 +358,78 @@ class MIDIAudioSynth {
         }
     }
 
+    // Start frequency monitoring for visual feedback (like audio-input-source)
+    startFrequencyMonitoring() {
+        console.log('[MIDIAudioSynth] Starting frequency monitoring...');
+        const analyzeFrequency = () => {
+            if (!this.isActive) {
+                console.log('[MIDIAudioSynth] Frequency monitoring stopped - not active');
+                return;
+            }
+
+            this.analyser.getByteFrequencyData(this.frequencyData);
+
+            // Calculate bass, mid, high (same as audio-input-source)
+            // Expanded bass range to capture very low frequencies
+            const bass = this.calculateBand(0, 20); // 0-860 Hz (expanded for bass notes)
+            const mid = this.calculateBand(20, 60); // 860-2580 Hz
+            const high = this.calculateBand(60, 120); // 2580-5160 Hz
+
+            // Calculate overall RMS
+            let sum = 0;
+            for (let i = 0; i < this.frequencyData.length; i++) {
+                sum += this.frequencyData[i] * this.frequencyData[i];
+            }
+            const rms = Math.sqrt(sum / this.frequencyData.length) / 255;
+
+            // Log for debugging - show first 30 bins for bass analysis
+            const max = Math.max(...this.frequencyData);
+            const avg = this.frequencyData.reduce((a, b) => a + b, 0) / this.frequencyData.length;
+            const firstBins = Array.from(this.frequencyData.slice(0, 30)).map(v => v).join(',');
+            console.log(`[MIDIAudioSynth] Freq - RMS: ${rms.toFixed(3)} Max: ${max} Avg: ${avg.toFixed(1)} Bass: ${bass.toFixed(2)} Mid: ${mid.toFixed(2)} High: ${high.toFixed(2)}`);
+            console.log(`[MIDIAudioSynth] First 30 bins: ${firstBins}`);
+
+            // Emit frequency event
+            console.log('[MIDIAudioSynth] Emitting frequency event with bass:', bass.toFixed(2));
+            this.emit('*', {
+                type: 'frequency',
+                data: {
+                    bass,
+                    mid,
+                    high,
+                    rms,
+                    source: 'midi-synth'
+                }
+            });
+
+            // Continue monitoring
+            this.monitoringInterval = setTimeout(analyzeFrequency, 50); // 20Hz update rate
+        };
+
+        analyzeFrequency();
+    }
+
+    calculateBand(startBin, endBin) {
+        let sum = 0;
+        for (let i = startBin; i < endBin && i < this.frequencyData.length; i++) {
+            sum += this.frequencyData[i];
+        }
+        return (sum / ((endBin - startBin) * 255));
+    }
+
+    // Event emitter methods
+    on(event, callback) {
+        if (!this.listeners.has(event)) {
+            this.listeners.set(event, []);
+        }
+        this.listeners.get(event).push(callback);
+    }
+
+    emit(event, data) {
+        const callbacks = this.listeners.get(event) || [];
+        callbacks.forEach(callback => callback(data));
+    }
+
     // Stop all voices
     stopAll() {
         this.voices.forEach(voice => {
@@ -242,6 +441,11 @@ class MIDIAudioSynth {
     }
 
     destroy() {
+        // Stop frequency monitoring
+        if (this.monitoringInterval) {
+            clearTimeout(this.monitoringInterval);
+            this.monitoringInterval = null;
+        }
         this.stopAll();
 
         if (this.beatOscillator) {
