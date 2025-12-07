@@ -312,6 +312,7 @@
             <button onclick="sendCommand('switchMode', 'builtin')" id="mode-builtin">Built-in</button>
             <button onclick="sendCommand('switchMode', 'threejs')" id="mode-threejs">Three.js</button>
             <button onclick="sendCommand('switchMode', 'milkdrop')" id="mode-milkdrop">Milkdrop</button>
+            <button onclick="sendCommand('switchMode', 'video')" id="mode-video">Video</button>
         </div>
     </div>
 
@@ -336,6 +337,14 @@
         <div class="preset-list" id="preset-list">
             <!-- Populated dynamically -->
         </div>
+    </div>
+
+    <div class="section" id="video-section" style="display: none;">
+        <h2>Video Feed</h2>
+        <select id="video-device-select">
+            <option value="">No camera selected</option>
+        </select>
+        <div class="info">Select webcam or video input device for video feed</div>
     </div>
 
     <div class="section">
@@ -425,7 +434,7 @@
             if (state.visualAudioSource !== undefined) {
                 const dropdown = document.getElementById('milkdrop-audio-source');
                 dropdown.value = state.visualAudioSource;
-                console.log('[Control] Visual audio source updated to:', state.visualAudioSource);
+                // Removed spam log - broadcasts every 100ms
 
                 // Show/hide MIDI options based on source
                 const midiOptions = document.getElementById('midi-synth-options');
@@ -445,7 +454,7 @@
                 document.getElementById('current-mode').textContent = state.mode;
 
                 // Highlight active mode button
-                ['builtin', 'threejs', 'milkdrop'].forEach(mode => {
+                ['builtin', 'threejs', 'milkdrop', 'video'].forEach(mode => {
                     const btn = document.getElementById(`mode-${mode}`);
                     if (btn) {
                         btn.style.background = mode === state.mode ? '#0066FF' : '#2a2a2a';
@@ -456,9 +465,11 @@
                 // Show/hide mode-specific sections
                 const builtinSection = document.getElementById('builtin-section');
                 const milkdropSection = document.getElementById('milkdrop-section');
+                const videoSection = document.getElementById('video-section');
 
                 builtinSection.style.display = state.mode === 'builtin' ? 'block' : 'none';
                 milkdropSection.style.display = state.mode === 'milkdrop' ? 'block' : 'none';
+                videoSection.style.display = state.mode === 'video' ? 'block' : 'none';
             }
 
             // Update active scene
@@ -584,6 +595,11 @@
             sendCommand('oscServer', e.target.value);
         });
 
+        // Video device selection
+        document.getElementById('video-device-select').addEventListener('change', (e) => {
+            sendCommand('videoDeviceSelect', e.target.value);
+        });
+
         // Populate audio devices
         async function loadAudioDevices() {
             const select = document.getElementById('audio-device-select');
@@ -633,28 +649,47 @@
             }
         }
 
+        // Populate video devices
+        async function loadVideoDevices() {
+            const select = document.getElementById('video-device-select');
+            select.innerHTML = '<option value="">No camera selected</option>';
+
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoInputs = devices.filter(device => device.kind === 'videoinput');
+
+                videoInputs.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.textContent = device.label || `Camera ${index + 1}`;
+                    select.appendChild(option);
+                });
+
+                console.log('[Control] Found', videoInputs.length, 'video devices');
+            } catch (error) {
+                console.log('[Control] Failed to enumerate video devices:', error.message);
+            }
+        }
+
         // Force dropdown to default to "microphone" on load
         // Main app will NEVER auto-start MIDI synth, so this is always correct initially
         document.getElementById('milkdrop-audio-source').value = 'microphone';
         document.getElementById('midi-synth-options').style.display = 'none';
         console.log('[Control] Defaulted to Audio Input Device');
 
-        // CRITICAL: Ignore first state update from main app (it might have old saved setting)
-        // Force it to microphone by sending command immediately
-        setTimeout(() => {
-            console.log('[Control] Forcing Visual Reactive Input to microphone...');
-            sendCommand('milkdropAudioSource', 'microphone');
-        }, 50);
+        // CRITICAL: Force main app to microphone mode on control.html load
+        // This ensures MIDI synth is never auto-started
+        console.log('[Control] Forcing Visual Reactive Input to microphone...');
+        sendCommand('milkdropAudioSource', 'microphone');
 
-        // Request initial state from main tab
-        setTimeout(() => {
-            sendCommand('requestState');
-        }, 100);
+        // Don't request state - just wait for periodic broadcast (every 100ms)
+        // Requesting state might return old data before the command above is processed
 
         // Initialize
         loadPresets();
         loadAudioDevices();
         loadMIDIDevices();
+        loadVideoDevices();
     </script>
 </body>
 </html>

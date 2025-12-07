@@ -21,11 +21,13 @@ class RevisionAppV2 {
         this.sceneManager = null;
         this.threeJSRenderer = null;
         this.milkdropRenderer = null;
+        this.videoRenderer = null;
 
         // UI elements
         this.builtinCanvas = document.getElementById('builtin-canvas');
         this.threejsCanvas = document.getElementById('threejs-canvas');
         this.milkdropCanvas = document.getElementById('milkdrop-canvas');
+        this.videoCanvas = document.getElementById('video-canvas');
         this.midiIndicator = document.getElementById('midi-indicator');
         this.audioIndicator = document.getElementById('audio-indicator');
         this.bpmDisplay = document.getElementById('bpm-display');
@@ -167,6 +169,10 @@ class RevisionAppV2 {
             console.warn('[Revision] Make sure butterchurn scripts are included in index.html');
         }
 
+        // Initialize Video renderer
+        this.videoRenderer = new VideoRenderer(this.videoCanvas);
+        console.log('[Revision] ✓ Video renderer initialized');
+
         // Initialize input sources (MIDI, connect audio if enabled)
         await this.initializeInputs();
 
@@ -186,6 +192,7 @@ class RevisionAppV2 {
         this.builtinCanvas.style.display = 'none';
         this.threejsCanvas.style.display = 'none';
         this.milkdropCanvas.style.display = 'none';
+        this.videoCanvas.style.display = 'none';
 
         // Load last preset type and scene
         const lastPresetType = this.settings.get('presetType') || 'builtin';
@@ -351,6 +358,15 @@ class RevisionAppV2 {
                         this.settings.set('audioInputDeviceId', data);
                         this.enableAudioInput(data);
                     }
+                    break;
+                case 'videoDeviceSelect':
+                    console.log('[BroadcastChannel] Video Device Select:', data);
+                    this.settings.set('videoDeviceId', data);
+                    if (this.videoRenderer && this.currentPresetType === 'video') {
+                        await this.videoRenderer.switchCamera(data);
+                        console.log('[Video] Switched camera to:', data);
+                    }
+                    this.broadcastState();
                     break;
                 case 'midiSynthEnable':
                     console.log('[BroadcastChannel] MIDI Synth Enable:', data);
@@ -803,6 +819,8 @@ class RevisionAppV2 {
                 this.presetManager.handleFrequency(data);
             } else if (this.currentPresetType === 'threejs' && this.threeJSRenderer) {
                 this.threeJSRenderer.handleFrequency(data);
+            } else if (this.currentPresetType === 'video' && this.videoRenderer) {
+                this.videoRenderer.handleFrequency(data);
             }
             // Milkdrop gets audio directly via connectAudioSource
         });
@@ -1095,11 +1113,13 @@ class RevisionAppV2 {
         this.renderer.stop();
         if (this.threeJSRenderer) this.threeJSRenderer.stop();
         if (this.milkdropRenderer) this.milkdropRenderer.stop();
+        if (this.videoRenderer) this.videoRenderer.stop();
 
         // Hide all canvases
         this.builtinCanvas.style.display = 'none';
         this.threejsCanvas.style.display = 'none';
         this.milkdropCanvas.style.display = 'none';
+        this.videoCanvas.style.display = 'none';
 
         // Switch to appropriate preset
         switch (type) {
@@ -1190,10 +1210,33 @@ class RevisionAppV2 {
                 }
                 this.enableSceneButtons(false, 'Milkdrop - MIDI CC1 controls preset');
                 break;
+            case 'video':
+                this.videoCanvas.style.display = 'block';
+                if (this.videoRenderer) {
+                    // Initialize camera if not already done
+                    if (!this.videoRenderer.isActive) {
+                        const savedCameraId = this.settings.get('videoDeviceId');
+                        await this.videoRenderer.initialize(savedCameraId);
+                    }
+
+                    // Resize to fit canvas container
+                    const isFullscreen = !!document.fullscreenElement;
+                    const w = window.innerWidth;
+                    const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
+                    this.videoRenderer.resize(w, h);
+
+                    // Start rendering
+                    this.videoRenderer.start();
+                    console.log('[Video] Renderer started - webcam feed active');
+                } else {
+                    console.error('[Revision] Video renderer not initialized');
+                }
+                this.enableSceneButtons(false, 'Video mode - audio-reactive webcam');
+                break;
         }
 
         // Update mode display
-        const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop' };
+        const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video' };
         if (this.modeDisplay) {
             this.modeDisplay.textContent = modeNames[type] || type;
         }
@@ -1318,6 +1361,12 @@ class RevisionAppV2 {
                 if (this.milkdropRenderer) {
                     this.milkdropRenderer.resize(w, h);
                     console.log('[Milkdrop] Resized to:', w, 'x', h);
+                }
+                break;
+            case 'video':
+                if (this.videoRenderer) {
+                    this.videoRenderer.resize(w, h);
+                    console.log('[Video] Resized to:', w, 'x', h);
                 }
                 break;
         }
