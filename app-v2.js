@@ -31,7 +31,6 @@ class RevisionAppV2 {
         this.bpmDisplay = document.getElementById('bpm-display');
         this.positionDisplay = document.getElementById('position-display');
         this.modeDisplay = document.getElementById('mode-display');
-        this.settingsModal = document.getElementById('settings-modal');
 
         // BroadcastChannel for control.html communication
         this.controlChannel = new BroadcastChannel('revision-control');
@@ -206,11 +205,6 @@ class RevisionAppV2 {
         // Start beat interpolation
         this.interpolateBeat();
 
-        // Show mobile info if on mobile
-        if (this.mobileCompat.isMobile) {
-            this.showMobileInfo();
-        }
-
         console.log('[Revision V2] Initialized successfully');
         console.log('[Revision V2] Available presets:', this.presetManager.getAllPresets().length);
     }
@@ -360,11 +354,17 @@ class RevisionAppV2 {
 
                     // Reconnect audio to active renderer immediately
                     this.reconnectAudioToRenderer();
+
+                    // Update display immediately
+                    this.broadcastState();
                     break;
                 case 'midiSynthChannel':
                     console.log('[BroadcastChannel] MIDI Synth Channel:', data);
                     this.settings.set('midiSynthChannel', data);
                     console.log('[Revision] MIDI synth now listening to:', data === 'all' ? 'All Channels' : `Channel ${parseInt(data) + 1}`);
+
+                    // Update display immediately
+                    this.broadcastState();
                     break;
                 case 'midiSynthAudible':
                     console.log('[BroadcastChannel] MIDI Synth Audible:', data);
@@ -372,6 +372,47 @@ class RevisionAppV2 {
                     if (this.midiAudioSynth) {
                         this.midiAudioSynth.setAudible(data === 'true');
                     }
+
+                    // Update display immediately
+                    this.broadcastState();
+                    break;
+                case 'midiInputSelect':
+                    console.log('[BroadcastChannel] MIDI Input Select:', data);
+                    if (data && this.midiSource) {
+                        this.midiSource.connectInput(data);
+                        this.settings.set('midiInputId', data);
+                        this.midiIndicator.classList.add('connected');
+                        this.broadcastState();
+                    }
+                    break;
+                case 'sysexEnable':
+                    console.log('[BroadcastChannel] SysEx Enable:', data);
+                    this.settings.set('enableSysEx', data);
+                    console.log('[Revision] SysEx setting changed to:', data, '- Reload required');
+                    this.broadcastState();
+                    break;
+                case 'rendererSelect':
+                    console.log('[BroadcastChannel] Renderer Select:', data);
+                    this.settings.set('renderer', data);
+                    this.renderer.stop();
+                    this.renderer.initialize(data);
+                    this.renderer.resize();
+                    this.renderer.start();
+                    console.log('[Revision] Renderer switched to:', data);
+                    this.broadcastState();
+                    break;
+                case 'oscServer':
+                    console.log('[BroadcastChannel] OSC Server:', data);
+                    this.settings.set('oscServer', data);
+                    if (data) {
+                        this.oscClient.disconnect();
+                        this.oscClient.connect(data);
+                        console.log('[Revision] OSC connected to:', data);
+                    } else {
+                        this.oscClient.disconnect();
+                        console.log('[Revision] OSC disconnected');
+                    }
+                    this.broadcastState();
                     break;
                 case 'requestState':
                     this.broadcastState();
@@ -415,6 +456,22 @@ class RevisionAppV2 {
         }
     }
 
+    getFormattedAudioSource() {
+        const visualSource = this.settings.get('visualAudioSource') || 'microphone';
+
+        if (visualSource === 'midi') {
+            const channel = this.settings.get('midiSynthChannel') || 'all';
+            if (channel === 'all') {
+                return 'MIDI All';
+            } else {
+                const channelNum = parseInt(channel) + 1;
+                return `MIDI Ch.${channelNum}`;
+            }
+        } else {
+            return 'Audio Input';
+        }
+    }
+
     broadcastState() {
         const bar = Math.floor(this.currentPosition / 16);
         const beat = Math.floor((this.currentPosition % 16) / 4);
@@ -429,6 +486,11 @@ class RevisionAppV2 {
             visualAudioSource: this.settings.get('visualAudioSource') || 'microphone',
             midiSynthChannel: this.settings.get('midiSynthChannel') || 'all',
             midiSynthAudible: this.settings.get('midiSynthAudible') === 'true' ? 'true' : 'false',
+            audioSourceDisplay: this.getFormattedAudioSource(),
+            midiInputId: this.settings.get('midiInputId') || '',
+            enableSysEx: this.settings.get('enableSysEx') || 'true',
+            renderer: this.settings.get('renderer') || 'webgl',
+            oscServer: this.settings.get('oscServer') || '',
             presetName: this.currentPresetType === 'milkdrop' && this.milkdropPresetKeys
                 ? this.milkdropPresetKeys[this.currentMilkdropIndex]
                 : '-'
@@ -438,6 +500,12 @@ class RevisionAppV2 {
             type: 'stateUpdate',
             data: state
         });
+
+        // Update local display
+        const audioSourceDisplay = document.getElementById('audio-source-display');
+        if (audioSourceDisplay) {
+            audioSourceDisplay.textContent = state.audioSourceDisplay;
+        }
 
         // Send preset list if in milkdrop mode
         if (this.milkdropPresetKeys) {
@@ -761,11 +829,6 @@ class RevisionAppV2 {
             this.toggleFullscreen();
         });
 
-        // Settings
-        document.getElementById('settings-btn').addEventListener('click', () => {
-            this.openSettings();
-        });
-
         // Fullscreen change
         document.addEventListener('fullscreenchange', () => {
             if (document.fullscreenElement) {
@@ -783,61 +846,6 @@ class RevisionAppV2 {
             this.resizeTimeout = setTimeout(() => {
                 this.handleResize();
             }, 100);
-        });
-
-        // Settings - MIDI input
-        document.getElementById('midi-input-select').addEventListener('change', (e) => {
-            const inputId = e.target.value;
-            if (inputId && this.midiSource) {
-                this.midiSource.connectInput(inputId);
-                this.settings.set('midiInputId', inputId);
-                this.midiIndicator.classList.add('connected');
-            }
-        });
-
-        // Settings - Audio input
-        document.getElementById('audio-input-select').addEventListener('change', async (e) => {
-            const deviceId = e.target.value;
-
-            if (deviceId === 'none') {
-                this.disableAudioInput();
-                this.settings.set('audioInputDeviceId', '');
-            } else {
-                // Store selected device ID
-                this.settings.set('audioInputDeviceId', deviceId);
-                await this.enableAudioInput(deviceId);
-            }
-        });
-
-        // Settings - Preset type
-        document.getElementById('preset-type-select').addEventListener('change', (e) => {
-            this.switchPresetType(e.target.value);
-        });
-
-        // Settings - SysEx
-        document.getElementById('sysex-enable').addEventListener('change', (e) => {
-            this.settings.set('enableSysEx', e.target.value);
-            console.log('[Revision] SysEx setting changed. Restart required.');
-        });
-
-        // Settings - Renderer
-        document.getElementById('renderer-select').addEventListener('change', (e) => {
-            const mode = e.target.value;
-            this.settings.set('renderer', mode);
-            this.renderer.stop();
-            this.renderer.initialize(mode);
-            this.renderer.resize();
-            this.renderer.start();
-        });
-
-        // Settings - OSC
-        document.getElementById('osc-server').addEventListener('change', (e) => {
-            const server = e.target.value;
-            this.settings.set('oscServer', server);
-            if (server) {
-                this.oscClient.disconnect();
-                this.oscClient.connect(server);
-            }
         });
 
         // Mobile touch events
@@ -1141,109 +1149,6 @@ class RevisionAppV2 {
                 button.classList.remove('active');
             }
         });
-    }
-
-    async openSettings() {
-        this.settingsModal.classList.add('active');
-        this.populateMIDIDevices();
-        await this.populateAudioDevices();
-
-        // Load current settings
-        document.getElementById('renderer-select').value = this.settings.get('renderer') || 'webgl';
-        document.getElementById('osc-server').value = this.settings.get('oscServer') || '';
-        document.getElementById('preset-type-select').value = this.settings.get('presetType') || 'builtin';
-        document.getElementById('sysex-enable').value = this.settings.get('enableSysEx') || 'true';
-
-        // Set audio input value
-        const currentAudio = this.settings.get('audioInputDeviceId');
-        if (currentAudio) {
-            document.getElementById('audio-input-select').value = currentAudio;
-        } else {
-            document.getElementById('audio-input-select').value = 'none';
-        }
-
-        // Update mobile info
-        if (this.mobileCompat.isMobile) {
-            this.updateMobileInfo();
-        }
-    }
-
-    populateMIDIDevices() {
-        if (!this.midiSource) return;
-
-        const select = document.getElementById('midi-input-select');
-        const inputs = this.midiSource.getInputs();
-
-        select.innerHTML = '';
-
-        if (inputs.length === 0) {
-            const option = document.createElement('option');
-            option.value = '';
-            option.textContent = 'No MIDI devices found';
-            select.appendChild(option);
-            return;
-        }
-
-        inputs.forEach(input => {
-            const option = document.createElement('option');
-            option.value = input.id;
-            option.textContent = input.name;
-            select.appendChild(option);
-        });
-
-        const currentId = this.settings.get('midiInputId');
-        if (currentId) {
-            select.value = currentId;
-        }
-    }
-
-    async populateAudioDevices() {
-        const select = document.getElementById('audio-input-select');
-        select.innerHTML = '<option value="none">No Audio Input</option>';
-
-        try {
-            // Enumerate audio input devices
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const audioInputs = devices.filter(device => device.kind === 'audioinput');
-
-            if (audioInputs.length === 0) {
-                console.warn('[Revision] No audio input devices found');
-                return;
-            }
-
-            audioInputs.forEach((device, index) => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.textContent = device.label || `Microphone ${index + 1}`;
-                select.appendChild(option);
-            });
-
-            console.log('[Revision] Found', audioInputs.length, 'audio input devices');
-        } catch (error) {
-            console.error('[Revision] Failed to enumerate audio devices:', error);
-        }
-    }
-
-    showMobileInfo() {
-        const mobileInfo = document.getElementById('mobile-info');
-        if (mobileInfo) {
-            mobileInfo.style.display = 'block';
-        }
-    }
-
-    updateMobileInfo() {
-        const info = this.mobileCompat.getInfo();
-        const platformDiv = document.getElementById('mobile-platform');
-        const fpsDiv = document.getElementById('mobile-fps');
-
-        if (platformDiv) {
-            platformDiv.textContent = `Platform: ${info.isAndroid ? 'Android' : info.isMobile ? 'Mobile' : 'Desktop'} | Quality: ${info.optimalSettings.quality}`;
-        }
-
-        if (fpsDiv) {
-            const fps = this.mobileCompat.measureFPS();
-            fpsDiv.textContent = `FPS: ${fps} | Pixel Ratio: ${info.maxPixelRatio}`;
-        }
     }
 
     toggleFullscreen() {

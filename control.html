@@ -130,6 +130,22 @@
         <div class="info">Connected to main tab via BroadcastChannel</div>
         <div class="info" style="margin-top: 5px;">Mode: <span id="current-mode" style="color: #0066FF;">-</span></div>
         <div class="info" style="margin-top: 5px;">BPM: <span id="current-bpm" style="color: #0066FF;">-</span> | Position: <span id="current-position" style="color: #0066FF;">-</span></div>
+        <div class="info" style="margin-top: 5px;">Audio Source: <span id="current-audio-source" style="color: #0066FF;">-</span></div>
+    </div>
+
+    <div class="section">
+        <h2>MIDI Device</h2>
+        <select id="midi-input-select">
+            <option value="">No MIDI devices found</option>
+        </select>
+        <div class="info">MIDI input device for clock, SPP, and notes</div>
+
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Enable SysEx</label>
+        <select id="sysex-enable">
+            <option value="true">Yes (requires permission)</option>
+            <option value="false">No</option>
+        </select>
+        <div class="info" style="margin-top: 5px;">Allow MIDI SysEx messages (requires page reload)</div>
     </div>
 
     <div class="section">
@@ -141,7 +157,7 @@
     </div>
 
     <div class="section">
-        <h2>Visual Audio Source</h2>
+        <h2>MIDI Input</h2>
         <select id="milkdrop-audio-source">
             <option value="midi">MIDI Synthesizer</option>
             <option value="microphone">Audio Input Device</option>
@@ -221,11 +237,18 @@
     </div>
 
     <div class="section">
-        <h2>MIDI SysEx Control (Optional)</h2>
-        <select id="midi-select">
-            <option value="">No MIDI devices</option>
+        <h2>Renderer</h2>
+        <select id="renderer-select">
+            <option value="webgl">WebGL</option>
+            <option value="canvas2d">Canvas 2D</option>
         </select>
-        <div class="info">For external MIDI control only</div>
+        <div class="info">Graphics renderer (requires page reload)</div>
+    </div>
+
+    <div class="section">
+        <h2>OSC Server (Optional)</h2>
+        <input type="text" id="osc-server" placeholder="ws://localhost:8080" style="width: 100%; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px;" />
+        <div class="info">WebSocket OSC server for external control</div>
     </div>
 
     <script>
@@ -327,70 +350,36 @@
             if (state.presetName) {
                 document.getElementById('current-preset').textContent = state.presetName;
             }
-        }
 
-        // Initialize MIDI (optional, for external control)
-        async function initMIDI() {
-            try {
-                midiAccess = await navigator.requestMIDIAccess({ sysex: true });
-                console.log('[Control] MIDI Access granted');
+            // Update audio source display
+            if (state.audioSourceDisplay) {
+                document.getElementById('current-audio-source').textContent = state.audioSourceDisplay;
+            }
 
-                populateMIDIDevices();
+            // Update MIDI input device
+            if (state.midiInputId !== undefined) {
+                const midiSelect = document.getElementById('midi-input-select');
+                if (midiSelect && midiSelect.querySelector(`option[value="${state.midiInputId}"]`)) {
+                    midiSelect.value = state.midiInputId;
+                }
+            }
 
-                midiAccess.onstatechange = () => {
-                    populateMIDIDevices();
-                };
-            } catch (error) {
-                console.log('[Control] MIDI not available:', error.message);
+            // Update SysEx setting
+            if (state.enableSysEx !== undefined) {
+                document.getElementById('sysex-enable').value = state.enableSysEx;
+            }
+
+            // Update renderer
+            if (state.renderer !== undefined) {
+                document.getElementById('renderer-select').value = state.renderer;
+            }
+
+            // Update OSC server
+            if (state.oscServer !== undefined) {
+                document.getElementById('osc-server').value = state.oscServer;
             }
         }
 
-        function populateMIDIDevices() {
-            const select = document.getElementById('midi-select');
-            select.innerHTML = '';
-
-            const outputs = Array.from(midiAccess.outputs.values());
-
-            if (outputs.length === 0) {
-                select.innerHTML = '<option value="">No MIDI devices</option>';
-                return;
-            }
-
-            outputs.forEach(output => {
-                const option = document.createElement('option');
-                option.value = output.id;
-                option.textContent = output.name;
-                select.appendChild(option);
-            });
-
-            if (outputs.length > 0) {
-                select.value = outputs[0].id;
-                connectMIDI(outputs[0].id);
-            }
-        }
-
-        function connectMIDI(deviceId) {
-            midiOutput = midiAccess.outputs.get(deviceId);
-            if (midiOutput) {
-                console.log('[Control] MIDI connected to:', midiOutput.name);
-            }
-        }
-
-        document.getElementById('midi-select').addEventListener('change', (e) => {
-            if (e.target.value) {
-                connectMIDI(e.target.value);
-            }
-        });
-
-        function sendSysEx(payload) {
-            if (!midiOutput) return;
-            const message = [0xF0, 0x7D, ...payload, 0xF7];
-            try {
-                midiOutput.send(message);
-            } catch (error) {
-                console.error('[Control] MIDI send failed:', error);
-            }
-        }
 
         // Load preset list from config
         async function loadPresets() {
@@ -449,6 +438,26 @@
             sendCommand('midiSynthAudible', e.target.checked ? 'true' : 'false');
         });
 
+        // MIDI input device selection
+        document.getElementById('midi-input-select').addEventListener('change', (e) => {
+            sendCommand('midiInputSelect', e.target.value);
+        });
+
+        // SysEx enable
+        document.getElementById('sysex-enable').addEventListener('change', (e) => {
+            sendCommand('sysexEnable', e.target.value);
+        });
+
+        // Renderer selection
+        document.getElementById('renderer-select').addEventListener('change', (e) => {
+            sendCommand('rendererSelect', e.target.value);
+        });
+
+        // OSC server
+        document.getElementById('osc-server').addEventListener('change', (e) => {
+            sendCommand('oscServer', e.target.value);
+        });
+
         // Populate audio devices
         async function loadAudioDevices() {
             const select = document.getElementById('audio-device-select');
@@ -471,15 +480,42 @@
             }
         }
 
+        // Populate MIDI devices
+        async function loadMIDIDevices() {
+            try {
+                const access = await navigator.requestMIDIAccess();
+                const select = document.getElementById('midi-input-select');
+                select.innerHTML = '';
+
+                const inputs = Array.from(access.inputs.values());
+
+                if (inputs.length === 0) {
+                    select.innerHTML = '<option value="">No MIDI devices found</option>';
+                    return;
+                }
+
+                inputs.forEach(input => {
+                    const option = document.createElement('option');
+                    option.value = input.id;
+                    option.textContent = input.name;
+                    select.appendChild(option);
+                });
+
+                console.log('[Control] Found', inputs.length, 'MIDI devices');
+            } catch (error) {
+                console.log('[Control] Failed to enumerate MIDI devices:', error.message);
+            }
+        }
+
         // Request initial state from main tab
         setTimeout(() => {
             sendCommand('requestState');
         }, 100);
 
         // Initialize
-        initMIDI();
         loadPresets();
         loadAudioDevices();
+        loadMIDIDevices();
     </script>
 </body>
 </html>

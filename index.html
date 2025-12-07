@@ -160,73 +160,6 @@
             color: #ffffff;
         }
 
-        /* Settings Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0, 0, 0, 0.9);
-            z-index: 2000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background-color: #1a1a1a;
-            border: 1px solid #2a2a2a;
-            border-radius: 8px;
-            padding: 30px;
-            max-width: 600px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-
-        .modal-content h2 {
-            margin-bottom: 20px;
-            color: #ffffff;
-        }
-
-        .setting-row {
-            margin-bottom: 20px;
-        }
-
-        .setting-row label {
-            display: block;
-            margin-bottom: 8px;
-            color: #888888;
-            font-size: 12px;
-            text-transform: uppercase;
-        }
-
-        .setting-row select,
-        .setting-row input[type="number"] {
-            width: 100%;
-            background-color: #0a0a0a;
-            color: #ffffff;
-            border: 1px solid #2a2a2a;
-            padding: 10px;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        .modal-close {
-            background-color: #0066FF;
-            color: #ffffff;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-top: 20px;
-        }
-
         /* Fullscreen mode */
         body:fullscreen .status-bar,
         body:fullscreen .control-panel {
@@ -269,7 +202,6 @@
         <div style="display: flex; align-items: center; gap: 5px;">
             <button id="control-btn">CONTROL</button>
             <button id="fullscreen-btn">FULLSCREEN</button>
-            <button id="settings-btn">SETTINGS</button>
             <span class="midi-indicator" id="midi-indicator" title="MIDI"></span>
             <span class="midi-indicator" id="audio-indicator" title="Audio" style="background-color: #444444;"></span>
         </div>
@@ -298,68 +230,13 @@
             <label>Mode</label>
             <div class="value" id="mode-display">Built-in</div>
         </div>
-    </div>
 
-    <!-- Settings Modal -->
-    <div class="modal" id="settings-modal">
-        <div class="modal-content">
-            <h2>Settings</h2>
-
-            <div class="setting-row">
-                <label>MIDI Input</label>
-                <select id="midi-input-select">
-                    <option value="">No MIDI devices found</option>
-                </select>
-            </div>
-
-            <div class="setting-row">
-                <label>Renderer</label>
-                <select id="renderer-select">
-                    <option value="webgl">WebGL</option>
-                    <option value="canvas2d">Canvas 2D</option>
-                </select>
-            </div>
-
-            <div class="setting-row">
-                <label>Audio Input</label>
-                <select id="audio-input-select">
-                    <option value="none">No Audio Input</option>
-                </select>
-            </div>
-
-            <div class="setting-row">
-                <label>Preset Type</label>
-                <select id="preset-type-select">
-                    <option value="builtin">Built-in Shaders</option>
-                    <option value="threejs">Three.js (3D)</option>
-                    <option value="milkdrop">Milkdrop</option>
-                </select>
-            </div>
-
-            <div class="setting-row">
-                <label>Enable SysEx</label>
-                <select id="sysex-enable">
-                    <option value="true">Yes (requires permission)</option>
-                    <option value="false">No</option>
-                </select>
-            </div>
-
-            <div class="setting-row">
-                <label>OSC Server (optional)</label>
-                <input type="text" id="osc-server" placeholder="ws://localhost:8080" />
-            </div>
-
-            <div class="setting-row" id="mobile-info" style="display: none;">
-                <label>Mobile Info</label>
-                <div style="font-size: 11px; color: #666; margin-top: 5px;">
-                    <div id="mobile-platform"></div>
-                    <div id="mobile-fps"></div>
-                </div>
-            </div>
-
-            <button class="modal-close" onclick="closeSettings()">Close</button>
+        <div class="control-group">
+            <label>Audio Source</label>
+            <div class="value" id="audio-source-display">-</div>
         </div>
     </div>
+
 
     <!-- External Libraries (Optional - for enhanced features) -->
     <!-- Three.js for 3D scenes (ES Module version) -->
