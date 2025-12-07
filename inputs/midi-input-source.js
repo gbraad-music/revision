@@ -109,6 +109,34 @@ class MIDIInputSource {
             }
         }
 
+        // IMPORTANT: Handle System Real-Time messages (0xF8-0xFF) FIRST
+        // These can appear at ANY time, even in the middle of SysEx, and must be processed immediately
+        if (status >= 0xF8) {
+            if (status === 0xF8) {
+                this.handleClock();
+                return;
+            }
+            if (status === 0xFA) {
+                this.handleStart();
+                return;
+            }
+            if (status === 0xFB) {
+                this.handleContinue();
+                return;
+            }
+            if (status === 0xFC) {
+                this.handleStop();
+                return;
+            }
+        }
+
+        // Handle System Common messages (0xF0-0xF7) that are NOT SysEx
+        if (status === 0xF2) {
+            // Song Position Pointer - process immediately, NOT part of SysEx
+            this.handleSongPosition(data1, data2);
+            return;
+        }
+
         // System Exclusive (SysEx) messages
         if (status === 0xF0) {
             // Start of SysEx
@@ -128,41 +156,11 @@ class MIDIInputSource {
             return;
         }
 
-        // Accumulate SysEx data
+        // Accumulate SysEx data (only if we're in the middle of a SysEx message)
         if (this.receivingSysex) {
             this.sysexBuffer.push(status);
             if (data1 !== undefined) this.sysexBuffer.push(data1);
             if (data2 !== undefined) this.sysexBuffer.push(data2);
-            return;
-        }
-
-        // MIDI Clock Messages (System Real-Time)
-        if (status === 0xF8) {
-            this.handleClock();
-            return;
-        }
-
-        if (status === 0xFA) {
-            // Start
-            this.handleStart();
-            return;
-        }
-
-        if (status === 0xFB) {
-            // Continue
-            this.handleContinue();
-            return;
-        }
-
-        if (status === 0xFC) {
-            // Stop
-            this.handleStop();
-            return;
-        }
-
-        if (status === 0xF2) {
-            // Song Position Pointer
-            this.handleSongPosition(data1, data2);
             return;
         }
 

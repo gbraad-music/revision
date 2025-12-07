@@ -81,10 +81,7 @@ class MilkdropRenderer {
             console.log('[Milkdrop] Visualizer created:', !!this.visualizer);
 
             this.isInitialized = true;
-            console.log('[Milkdrop] Initialized successfully');
-
-            // Load a default preset
-            this.loadDefaultPreset();
+            console.log('[Milkdrop] Initialized successfully - no preset loaded yet');
 
             return true;
         } catch (error) {

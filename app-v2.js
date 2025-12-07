@@ -13,6 +13,7 @@ class RevisionAppV2 {
         // Input sources
         this.midiSource = null;
         this.audioSource = null;
+        this.midiAudioSynth = null; // MIDI-to-audio synthesizer for Milkdrop
         this.oscClient = new OSCClient();
 
         // Renderers
@@ -103,6 +104,17 @@ class RevisionAppV2 {
         this.audioSource = new AudioInputSource();
         await this.audioSource.initialize(this.mobileCompat.getOptimalSettings());
         console.log('[Revision] Audio source created, AudioContext ready');
+
+        // Initialize MIDI-to-audio synthesizer (only if explicitly selected)
+        // Default: use regular audio input (microphone)
+        const visualAudioSource = this.settings.get('visualAudioSource') || 'microphone'; // Default microphone
+        if (visualAudioSource === 'midi') {
+            this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
+            this.midiAudioSynth.initialize();
+            console.log('[Revision] MIDI audio synthesizer initialized');
+        } else {
+            console.log('[Revision] Using audio input (microphone) for visualsAudio synth disabled');
+        }
 
         // Initialize Three.js renderer (if available)
         if (typeof THREE !== 'undefined') {
@@ -275,6 +287,8 @@ class RevisionAppV2 {
         this.controlChannel.onmessage = (event) => {
             const { command, data } = event.data;
 
+            console.log('[BroadcastChannel] Received command:', command, 'data:', data);
+
             switch (command) {
                 case 'switchMode':
                     this.switchPresetType(data);
@@ -283,16 +297,21 @@ class RevisionAppV2 {
                     this.switchScene(data);
                     break;
                 case 'milkdropNext':
+                    console.log('[BroadcastChannel] milkdropNext - currentPresetType:', this.currentPresetType);
                     if (this.currentPresetType === 'milkdrop') {
-                        const nextIndex = (this.currentMilkdropIndex + 1) % this.milkdropPresetKeys.length;
-                        this.loadMilkdropPreset(nextIndex);
+                        console.log('[Control] Milkdrop Next pressed - currentIndex:', this.currentMilkdropIndex);
+                        // loadMilkdropPreset handles initialization
+                        const currentIndex = this.currentMilkdropIndex || 0;
+                        this.loadMilkdropPreset(currentIndex + 1);
+                    } else {
+                        console.warn('[Control] Milkdrop Next pressed but mode is:', this.currentPresetType);
                     }
                     break;
                 case 'milkdropPrev':
                     if (this.currentPresetType === 'milkdrop') {
-                        let prevIndex = this.currentMilkdropIndex - 1;
-                        if (prevIndex < 0) prevIndex = this.milkdropPresetKeys.length - 1;
-                        this.loadMilkdropPreset(prevIndex);
+                        console.log('[Control] Milkdrop Prev pressed');
+                        const currentIndex = this.currentMilkdropIndex || 0;
+                        this.loadMilkdropPreset(currentIndex - 1);
                     }
                     break;
                 case 'milkdropSelect':
@@ -309,11 +328,91 @@ class RevisionAppV2 {
                         this.enableAudioInput(data);
                     }
                     break;
+                case 'midiSynthEnable':
+                    console.log('[BroadcastChannel] MIDI Synth Enable:', data);
+                    this.settings.set('midiSynthEnable', data);
+                    if (data === 'true' && !this.midiAudioSynth) {
+                        // Enable synth
+                        this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
+                        this.midiAudioSynth.initialize();
+                        console.log('[Revision] MIDI audio synthesizer ENABLED');
+                    } else if (data === 'false' && this.midiAudioSynth) {
+                        // Disable synth
+                        this.midiAudioSynth.destroy();
+                        this.midiAudioSynth = null;
+                        console.log('[Revision] MIDI audio synthesizer DISABLED');
+                    }
+                    break;
+                case 'milkdropAudioSource':
+                    console.log('[BroadcastChannel] Visual Audio Source:', data);
+                    this.settings.set('visualAudioSource', data);
+
+                    // Enable/disable MIDI synth based on source
+                    if (data === 'midi' && !this.midiAudioSynth) {
+                        this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
+                        this.midiAudioSynth.initialize();
+                        console.log('[Revision] MIDI synthesizer ENABLED');
+                    } else if (data === 'microphone' && this.midiAudioSynth) {
+                        this.midiAudioSynth.destroy();
+                        this.midiAudioSynth = null;
+                        console.log('[Revision] MIDI synthesizer DISABLED - using microphone');
+                    }
+
+                    // Reconnect audio to active renderer immediately
+                    this.reconnectAudioToRenderer();
+                    break;
+                case 'midiSynthChannel':
+                    console.log('[BroadcastChannel] MIDI Synth Channel:', data);
+                    this.settings.set('midiSynthChannel', data);
+                    console.log('[Revision] MIDI synth now listening to:', data === 'all' ? 'All Channels' : `Channel ${parseInt(data) + 1}`);
+                    break;
+                case 'midiSynthAudible':
+                    console.log('[BroadcastChannel] MIDI Synth Audible:', data);
+                    this.settings.set('midiSynthAudible', data);
+                    if (this.midiAudioSynth) {
+                        this.midiAudioSynth.setAudible(data === 'true');
+                    }
+                    break;
                 case 'requestState':
                     this.broadcastState();
                     break;
             }
         };
+    }
+
+    reconnectAudioToRenderer() {
+        console.log('[Revision] Reconnecting audio to active renderer:', this.currentPresetType);
+
+        // Only reconnect for Milkdrop (others use frequency events)
+        if (this.currentPresetType === 'milkdrop' && this.milkdropRenderer && this.milkdropRenderer.isInitialized) {
+            let audioConnected = false;
+
+            // Try MIDI synth first
+            if (this.midiAudioSynth && this.midiAudioSynth.getAnalyser()) {
+                try {
+                    this.milkdropRenderer.connectAudioSource(this.midiAudioSynth.getAnalyser());
+                    console.log('[Milkdrop] ✓ Switched to MIDI synthesizer');
+                    audioConnected = true;
+                } catch (error) {
+                    console.error('[Milkdrop] Failed to connect MIDI synth:', error.message);
+                }
+            }
+
+            // Fallback to microphone
+            if (!audioConnected && this.audioSource && this.audioSource.analyser && this.audioSource.isActive) {
+                try {
+                    this.milkdropRenderer.connectAudioSource(this.audioSource.analyser);
+                    console.log('[Milkdrop] ✓ Switched to microphone');
+                    audioConnected = true;
+                } catch (error) {
+                    console.error('[Milkdrop] Failed to connect microphone:', error.message);
+                }
+            }
+
+            if (!audioConnected) {
+                console.warn('[Milkdrop] ⚠️ No audio source connected!');
+            }
+        }
     }
 
     broadcastState() {
@@ -327,6 +426,9 @@ class RevisionAppV2 {
             bpm: this.currentBPM,
             position: `${bar}.${beat}.${sixteenth}`,
             audioDeviceId: this.settings.get('audioInputDeviceId') || 'none',
+            visualAudioSource: this.settings.get('visualAudioSource') || 'microphone',
+            midiSynthChannel: this.settings.get('midiSynthChannel') || 'all',
+            midiSynthAudible: this.settings.get('midiSynthAudible') === 'true' ? 'true' : 'false',
             presetName: this.currentPresetType === 'milkdrop' && this.milkdropPresetKeys
                 ? this.milkdropPresetKeys[this.currentMilkdropIndex]
                 : '-'
@@ -393,6 +495,11 @@ class RevisionAppV2 {
         this.inputManager.on('beat', (data) => {
             this.beatPhase = data.phase;
 
+            // Feed beats to MIDI synthesizer (generates kick drum)
+            if (this.midiAudioSynth && data.source === 'midi') {
+                this.midiAudioSynth.handleBeat(data.intensity || 1.0);
+            }
+
             // Update position tracking for MIDI interpolation
             if (data.source === 'midi' && this.midiSource) {
                 this.lastMIDIUpdateTime = performance.now();
@@ -419,6 +526,20 @@ class RevisionAppV2 {
 
         // Note events
         this.inputManager.on('note', (data) => {
+            // Feed MIDI notes to synthesizer (if enabled and on correct channel)
+            if (this.midiAudioSynth && data.source === 'midi') {
+                const synthChannel = this.settings.get('midiSynthChannel') || 'all';
+                const matchesChannel = (synthChannel === 'all') || (parseInt(synthChannel) === data.channel);
+
+                if (matchesChannel) {
+                    if (data.velocity > 0) {
+                        this.midiAudioSynth.handleNoteOn(data.note, data.velocity);
+                    } else {
+                        this.midiAudioSynth.handleNoteOff(data.note);
+                    }
+                }
+            }
+
             // Handle scene switching (notes 60-63 = scenes 0-3)
             if (data.note >= 60 && data.note <= 63 && data.source === 'midi' && this.currentPresetType === 'builtin') {
                 const sceneIndex = data.note - 60;
@@ -590,20 +711,23 @@ class RevisionAppV2 {
 
         // Update position display continuously
         if (this.positionDisplay) {
-            const bar = Math.floor(this.currentPosition / 16);
-            const beat = Math.floor((this.currentPosition % 16) / 4);
-            const sixteenth = Math.floor(this.currentPosition % 4);
-
-            // Show if position is from SPP or just Clock interpolation
             const timeSinceLastSPP = this.midiSource ? (now - (this.midiSource.lastSPPTime || 0)) : Infinity;
-            const positionSource = timeSinceLastSPP < 5000 ? '' : ' (Clock only - NO SPP!)';
 
-            this.positionDisplay.textContent = `${bar}.${beat}.${sixteenth}${positionSource}`;
+            // Only update position if SPP has been received recently (within 5 seconds)
+            if (timeSinceLastSPP < 5000) {
+                const bar = Math.floor(this.currentPosition / 16);
+                const beat = Math.floor((this.currentPosition % 16) / 4);
+                const sixteenth = Math.floor(this.currentPosition % 4);
+                this.positionDisplay.textContent = `${bar}.${beat}.${sixteenth}`;
+            } else {
+                // No SPP - show warning
+                this.positionDisplay.textContent = '-.-.-- (NO SPP!)';
+            }
 
             // Warn in console if no SPP for 10 seconds
             if (!this.lastSPPWarningTime || now - this.lastSPPWarningTime > 10000) {
                 if (timeSinceLastSPP > 10000 && timeSinceLastSPP < Infinity) {
-                    console.warn('[Revision] ⚠️ No SPP received for', Math.floor(timeSinceLastSPP / 1000), 'seconds - position may drift!');
+                    console.warn('[Revision] ⚠️ No SPP received for', Math.floor(timeSinceLastSPP / 1000), 'seconds - position frozen!');
                     this.lastSPPWarningTime = now;
                 }
             }
@@ -755,8 +879,9 @@ class RevisionAppV2 {
             this.currentMilkdropIndex = 0;
         }
 
-        // Clamp index
-        index = Math.max(0, Math.min(index, this.milkdropPresetKeys.length - 1));
+        // Wrap index (support both positive and negative wrapping)
+        const totalPresets = this.milkdropPresetKeys.length;
+        index = ((index % totalPresets) + totalPresets) % totalPresets;
         this.currentMilkdropIndex = index;
 
         const key = this.milkdropPresetKeys[this.currentMilkdropIndex];
@@ -885,29 +1010,39 @@ class RevisionAppV2 {
 
                     this.milkdropRenderer.resize(w, h);
 
-                    // Connect audio source if already enabled
-                    if (this.audioSource && this.audioSource.analyser) {
+                    // Connect audio source to Milkdrop
+                    // Priority: MIDI synth (if enabled) > Microphone (if enabled)
+                    let audioConnected = false;
+
+                    if (this.midiAudioSynth && this.midiAudioSynth.getAnalyser()) {
+                        try {
+                            this.milkdropRenderer.connectAudioSource(this.midiAudioSynth.getAnalyser());
+                            console.log('[Milkdrop] ✓ MIDI synthesizer connected - Milkdrop will visualize MIDI!');
+                            audioConnected = true;
+                        } catch (error) {
+                            console.error('[Milkdrop] Failed to connect MIDI synth:', error.message);
+                        }
+                    }
+
+                    // Fallback to microphone if MIDI synth not available
+                    if (!audioConnected && this.audioSource && this.audioSource.analyser && this.audioSource.isActive) {
                         try {
                             this.milkdropRenderer.connectAudioSource(this.audioSource.analyser);
-                            console.log('[Milkdrop] Audio connected');
+                            console.log('[Milkdrop] ✓ Microphone connected - Milkdrop will visualize audio input');
+                            audioConnected = true;
                         } catch (error) {
-                            console.warn('[Milkdrop] Audio connection failed:', error.message);
+                            console.error('[Milkdrop] Failed to connect microphone:', error.message);
                         }
+                    }
+
+                    if (!audioConnected) {
+                        console.warn('[Milkdrop] ⚠️ No audio source connected! Enable MIDI synth or microphone for visualization');
                     }
 
                     // Start rendering IMMEDIATELY
                     this.milkdropRenderer.start();
-                    console.log('[Milkdrop] Renderer started - loading preset in background');
-
-                    // Load preset in next frame to avoid blocking UI
-                    requestAnimationFrame(() => {
-                        if (this.milkdropPresetKeys && this.milkdropPresetKeys.length > 0) {
-                            const startTime = performance.now();
-                            this.loadMilkdropPreset(0);
-                            const loadTime = performance.now() - startTime;
-                            console.log('[Milkdrop] Preset loaded in', loadTime.toFixed(0), 'ms');
-                        }
-                    });
+                    console.log('[Milkdrop] Renderer started');
+                    console.log('[Milkdrop] Ready - use control.html to select preset');
                 } else {
                     console.error('[Revision] Milkdrop renderer not initialized properly');
                     // Fallback to builtin

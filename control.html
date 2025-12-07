@@ -141,6 +141,54 @@
     </div>
 
     <div class="section">
+        <h2>Visual Audio Source</h2>
+        <select id="milkdrop-audio-source">
+            <option value="midi">MIDI Synthesizer</option>
+            <option value="microphone">Audio Input Device</option>
+        </select>
+
+        <div id="midi-synth-options" style="margin-top: 10px;">
+            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">MIDI Input Device</label>
+            <select id="midi-synth-input">
+                <option value="main">Use Main MIDI Input</option>
+                <option value="separate">Use Separate MIDI Input...</option>
+            </select>
+
+            <select id="midi-synth-device" style="margin-top: 10px; display: none;">
+                <option value="">No MIDI devices</option>
+            </select>
+
+            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 10px; margin-bottom: 5px;">MIDI Channel Filter</label>
+            <select id="midi-synth-channel">
+                <option value="all">All MIDI Channels</option>
+                <option value="0">MIDI Channel 1</option>
+                <option value="1">MIDI Channel 2</option>
+                <option value="2">MIDI Channel 3</option>
+                <option value="3">MIDI Channel 4</option>
+                <option value="4">MIDI Channel 5</option>
+                <option value="5">MIDI Channel 6</option>
+                <option value="6">MIDI Channel 7</option>
+                <option value="7">MIDI Channel 8</option>
+                <option value="8">MIDI Channel 9</option>
+                <option value="9">MIDI Channel 10 (Drums)</option>
+                <option value="10">MIDI Channel 11</option>
+                <option value="11">MIDI Channel 12</option>
+                <option value="12">MIDI Channel 13</option>
+                <option value="13">MIDI Channel 14</option>
+                <option value="14">MIDI Channel 15</option>
+                <option value="15">MIDI Channel 16</option>
+            </select>
+
+            <label style="display: block; margin-top: 10px; font-size: 12px;">
+                <input type="checkbox" id="midi-synth-audible" style="width: auto; margin-right: 5px;">
+                Make MIDI synth audible (hear the notes)
+            </label>
+        </div>
+
+        <div class="info">Audio source for ALL visual renderers (Three.js, Milkdrop, Waveform)</div>
+    </div>
+
+    <div class="section">
         <h2>Preset Mode</h2>
         <div class="button-grid">
             <button onclick="sendCommand('switchMode', 'builtin')" id="mode-builtin">Built-in</button>
@@ -225,6 +273,22 @@
             if (state.audioDeviceId !== undefined) {
                 const audioSelect = document.getElementById('audio-device-select');
                 audioSelect.value = state.audioDeviceId;
+            }
+
+            // Update visual audio source
+            if (state.visualAudioSource !== undefined) {
+                document.getElementById('milkdrop-audio-source').value = state.visualAudioSource;
+                // Show/hide MIDI options based on source
+                const midiOptions = document.getElementById('midi-synth-options');
+                midiOptions.style.display = state.visualAudioSource === 'midi' ? 'block' : 'none';
+            }
+
+            // Update MIDI synth settings
+            if (state.midiSynthChannel !== undefined) {
+                document.getElementById('midi-synth-channel').value = state.midiSynthChannel;
+            }
+            if (state.midiSynthAudible !== undefined) {
+                document.getElementById('midi-synth-audible').checked = state.midiSynthAudible === 'true';
             }
 
             // Update current mode
@@ -363,6 +427,26 @@
         // Audio device selection
         document.getElementById('audio-device-select').addEventListener('change', (e) => {
             sendCommand('audioDeviceSelect', e.target.value);
+        });
+
+        // Milkdrop audio source selection
+        document.getElementById('milkdrop-audio-source').addEventListener('change', (e) => {
+            const source = e.target.value;
+            sendCommand('milkdropAudioSource', source);
+
+            // Show/hide MIDI synth options
+            const midiOptions = document.getElementById('midi-synth-options');
+            midiOptions.style.display = source === 'midi' ? 'block' : 'none';
+        });
+
+        // MIDI synth channel
+        document.getElementById('midi-synth-channel').addEventListener('change', (e) => {
+            sendCommand('midiSynthChannel', e.target.value);
+        });
+
+        // MIDI synth audible toggle
+        document.getElementById('midi-synth-audible').addEventListener('change', (e) => {
+            sendCommand('midiSynthAudible', e.target.checked ? 'true' : 'false');
         });
 
         // Populate audio devices
