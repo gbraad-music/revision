@@ -31,6 +31,7 @@ class MIDIAudioSynth {
     }
 
     initialize() {
+        console.log('[MIDIAudioSynth] 🎛️ Initializing MIDI Audio Synth...');
         try {
             // Create analyser for Milkdrop - FAST RESPONSE for MIDI transients
             this.analyser = this.audioContext.createAnalyser();
@@ -68,10 +69,12 @@ class MIDIAudioSynth {
             this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
             this.timeDomainData = new Uint8Array(this.analyser.fftSize);
 
+            // CRITICAL: Set isActive BEFORE starting monitoring
+            this.isActive = true;
+
             // Start frequency monitoring for visual feedback
             this.startFrequencyMonitoring();
 
-            this.isActive = true;
             console.log('[MIDIAudioSynth] Initialized - AnalyserNode ready for Milkdrop + frequency events');
             return true;
         } catch (error) {
@@ -92,7 +95,13 @@ class MIDIAudioSynth {
         this.beatOscillator.connect(this.beatGain);
         this.beatGain.connect(this.masterGain);
 
-        this.beatOscillator.start();
+        // Start oscillator (may fail if AudioContext is suspended - will work after resume)
+        try {
+            this.beatOscillator.start();
+            console.log('[MIDIAudioSynth] Beat oscillator started');
+        } catch (e) {
+            console.warn('[MIDIAudioSynth] Beat oscillator failed to start (AudioContext suspended):', e.message);
+        }
     }
 
     // Handle MIDI note on
@@ -212,7 +221,7 @@ class MIDIAudioSynth {
         voice.note = note;
         voice.active = true;
 
-        // console.log('[MIDIAudioSynth] Note ON:', noteName + octave, '(MIDI', note + ') Vel:', velocity, 'Freq:', frequency.toFixed(1), 'Hz');
+        console.log('[MIDIAudioSynth] 🎵 Note ON:', noteName + octave, '(MIDI', note + ') Vel:', velocity, 'Freq:', frequency.toFixed(1), 'Hz');
     }
 
     // Handle MIDI note off
@@ -362,11 +371,17 @@ class MIDIAudioSynth {
     // Start frequency monitoring for visual feedback (like audio-input-source)
     startFrequencyMonitoring() {
         console.log('[MIDIAudioSynth] ✓ Starting frequency monitoring...');
+        let logCounter = 0;
         const analyzeFrequency = () => {
             if (!this.isActive) {
-                console.log('[MIDIAudioSynth] Frequency monitoring stopped - not active');
+                console.log('[MIDIAudioSynth] ⚠️ Frequency monitoring stopped - not active');
                 return;
             }
+
+            // Debug log every 2 seconds to confirm it's running (commented out to reduce spam)
+            // if (logCounter++ % 40 === 0) {
+            //     console.log('[MIDIAudioSynth] ✓ Frequency monitoring active, isActive:', this.isActive);
+            // }
 
             this.analyser.getByteFrequencyData(this.frequencyData);
 
@@ -383,7 +398,7 @@ class MIDIAudioSynth {
             }
             const rms = Math.sqrt(sum / this.frequencyData.length) / 255;
 
-            // Emit frequency event (data flowing correctly - use EQ visualizer in control.html)
+            // Emit frequency event
             this.emit('*', {
                 type: 'frequency',
                 data: {
@@ -418,6 +433,15 @@ class MIDIAudioSynth {
             this.listeners.set(event, []);
         }
         this.listeners.get(event).push(callback);
+    }
+
+    off(event, callback) {
+        if (!this.listeners.has(event)) return;
+        const callbacks = this.listeners.get(event);
+        const index = callbacks.indexOf(callback);
+        if (index > -1) {
+            callbacks.splice(index, 1);
+        }
     }
 
     emit(event, data) {

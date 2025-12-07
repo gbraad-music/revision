@@ -46,6 +46,7 @@ class RevisionAppV2 {
         this.barPhase = 0;
         this.currentPresetType = 'builtin';
         this.currentScene = 0;
+        this.currentVisualAudioSource = 'microphone'; // ACTUAL running state (not saved setting)
 
         // Beat interpolation
         this.lastMIDIUpdateTime = performance.now();
@@ -107,16 +108,10 @@ class RevisionAppV2 {
         await this.audioSource.initialize(this.mobileCompat.getOptimalSettings());
         console.log('[Revision] Audio source created, AudioContext ready');
 
-        // Initialize MIDI-to-audio synthesizer (only if explicitly selected)
-        // Default: use regular audio input (microphone)
-        const visualAudioSource = this.settings.get('visualAudioSource') || 'microphone'; // Default microphone
-        if (visualAudioSource === 'midi') {
-            this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
-            this.midiAudioSynth.initialize();
-            console.log('[Revision] MIDI audio synthesizer initialized');
-        } else {
-            console.log('[Revision] Using audio input (microphone) for visualsAudio synth disabled');
-        }
+        // NEVER auto-start MIDI synth on page load (AudioContext will be suspended)
+        // User must explicitly select it in control.html (which provides user gesture)
+        // The saved setting is shown in control.html but ignored at startup
+        console.log('[Revision] MIDI synth NOT auto-loaded - user must select it in control.html');
 
         // Initialize Three.js renderer (if available)
         if (typeof THREE !== 'undefined') {
@@ -174,6 +169,9 @@ class RevisionAppV2 {
 
         // Initialize input sources (MIDI, connect audio if enabled)
         await this.initializeInputs();
+
+        // MIDI synth is NEVER created at startup - user must select it in control.html
+        // This avoids AudioContext suspension issues
 
         // Set up input event handlers
         this.setupInputHandlers();
@@ -310,7 +308,7 @@ class RevisionAppV2 {
 
     setupControlChannel() {
         // Listen for commands from control.html
-        this.controlChannel.onmessage = (event) => {
+        this.controlChannel.onmessage = async (event) => {
             const { command, data } = event.data;
 
             console.log('[BroadcastChannel] Received command:', command, 'data:', data);
@@ -374,9 +372,22 @@ class RevisionAppV2 {
                     console.log('[BroadcastChannel] SWITCHING Audio Source to:', data);
                     console.log('[BroadcastChannel] Current synth state:', this.midiAudioSynth ? 'EXISTS' : 'NULL');
                     this.settings.set('visualAudioSource', data);
+                    this.currentVisualAudioSource = data; // Update ACTUAL state
+
+                    // Clear old frequency data and immediately update EQ
+                    this.lastFrequencyData = { bass: 0, mid: 0, high: 0 };
+                    console.log('[Revision] 🧹 Cleared old frequency data');
+                    this.broadcastState(); // Immediately send zeros to EQ
 
                     // Enable/disable MIDI synth based on source
                     if (data === 'midi') {
+                        // CRITICAL: Resume AudioContext if suspended (requires user gesture)
+                        if (this.audioSource.audioContext.state === 'suspended') {
+                            console.log('[Revision] ⚠️ AudioContext suspended, resuming...');
+                            await this.audioSource.audioContext.resume();
+                            console.log('[Revision] ✓ AudioContext resumed:', this.audioSource.audioContext.state);
+                        }
+
                         if (!this.midiAudioSynth) {
                             console.log('[Revision] Creating new MIDI synthesizer...');
                             this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
@@ -387,10 +398,11 @@ class RevisionAppV2 {
                         }
 
                         // CRITICAL: Unregister audio source, register MIDI synth
-                        console.log('[Revision] Unregistering audio source from InputManager');
+                        console.log('[Revision] 🔴 Unregistering audio source from InputManager');
                         this.inputManager.unregisterSource('audio');
-                        console.log('[Revision] Registering MIDI synth with InputManager');
+                        console.log('[Revision] 🟢 Registering MIDI synth with InputManager');
                         this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
+                        console.log('[Revision] ✅ Active sources:', this.inputManager.getAllSources());
                     } else if (data === 'microphone') {
                         if (this.midiAudioSynth) {
                             console.log('[Revision] Destroying MIDI synthesizer...');
@@ -398,15 +410,22 @@ class RevisionAppV2 {
                             this.inputManager.unregisterSource('midi-synth');
                             this.midiAudioSynth.destroy();
                             this.midiAudioSynth = null;
-                            console.log('[Revision] ✓ MIDI synthesizer DESTROYED - using microphone');
+                            console.log('[Revision] ✓ MIDI synthesizer DESTROYED - switching to audio input device');
                         } else {
-                            console.log('[Revision] ✓ Already using microphone');
+                            console.log('[Revision] ✓ Already using audio input device');
                         }
 
-                        // Re-register audio source
-                        if (this.audioSource && this.audioSource.isActive) {
-                            console.log('[Revision] Re-registering audio source with InputManager');
+                        // Re-register audio source (reconnect if needed)
+                        if (this.audioSource) {
+                            // If audio source was disconnected, reconnect it
+                            if (!this.audioSource.isActive) {
+                                console.log('[Revision] ⚠️ Audio source was disconnected, reconnecting...');
+                                const audioDeviceId = this.settings.get('audioInputDeviceId');
+                                await this.audioSource.connectMicrophone(audioDeviceId);
+                            }
+                            console.log('[Revision] 🟢 Registering audio source with InputManager');
                             this.inputManager.registerSource('audio', this.audioSource);
+                            console.log('[Revision] ✅ Active sources:', this.inputManager.getAllSources());
                         }
                     }
 
@@ -559,7 +578,7 @@ class RevisionAppV2 {
             bpm: this.currentBPM,
             position: `${bar}.${beat}.${sixteenth}`,
             audioDeviceId: this.settings.get('audioInputDeviceId') || 'none',
-            visualAudioSource: this.settings.get('visualAudioSource') || 'microphone',
+            visualAudioSource: this.currentVisualAudioSource, // ACTUAL state, not saved setting
             midiSynthChannel: this.settings.get('midiSynthChannel') || 'all',
             midiSynthAudible: this.settings.get('midiSynthAudible') === 'true' ? 'true' : 'false',
             audioSourceDisplay: this.getFormattedAudioSource(),
@@ -604,7 +623,16 @@ class RevisionAppV2 {
 
         const success = await this.audioSource.connectMicrophone(deviceId);
         if (success) {
-            this.inputManager.registerSource('audio', this.audioSource);
+            // Only register audio source if visual reactive input is set to 'microphone' (audio input device)
+            // Note: 'microphone' setting includes ALL audio input devices (microphones, virtual cables, NDI, etc.)
+            const visualAudioSource = this.settings.get('visualAudioSource') || 'microphone';
+            if (visualAudioSource === 'microphone') {
+                console.log('[Revision] 🟢 Registering audio input device with InputManager');
+                this.inputManager.registerSource('audio', this.audioSource);
+                console.log('[Revision] ✅ Active sources:', this.inputManager.getAllSources());
+            } else {
+                console.log('[Revision] ⚠️ Audio input device connected but NOT registered (visual source is', visualAudioSource + ')');
+            }
             this.audioIndicator.classList.add('connected');
             this.audioIndicator.style.backgroundColor = '#0066FF';
             this.audioIndicator.style.boxShadow = '0 0 8px #0066FF';
@@ -759,7 +787,7 @@ class RevisionAppV2 {
             }
         });
 
-        // Frequency events (from audio)
+        // Frequency events (from audio OR midi-synth)
         this.inputManager.on('frequency', (data) => {
             // Store last frequency data for EQ display in control.html
             if (data.bands) {

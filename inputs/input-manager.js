@@ -4,6 +4,7 @@
 class InputManager {
     constructor() {
         this.sources = new Map();
+        this.sourceCallbacks = new Map(); // Store callbacks so we can remove them
         this.listeners = new Map();
 
         // Normalized event types
@@ -24,33 +25,48 @@ class InputManager {
     }
 
     registerSource(name, source) {
+        console.log('[InputManager] Registered source:', name);
+
+        // Remove old callback if re-registering
+        if (this.sourceCallbacks.has(name)) {
+            const oldCallback = this.sourceCallbacks.get(name);
+            const oldSource = this.sources.get(name);
+            if (oldSource && oldSource.off) {
+                oldSource.off('*', oldCallback);
+            }
+        }
+
         this.sources.set(name, source);
 
-        // Forward all events from source
-        source.on('*', (event) => {
-            // Debug: Log frequency events (commented to reduce spam - use EQ visualizer in control.html)
-            // if (event.type === 'frequency') {
-            //     if (!this.lastFreqLogTime || performance.now() - this.lastFreqLogTime > 1000) {
-            //         const bands = event.data.bands || {};
-            //         console.log('[InputManager] Forwarding frequency from', name,
-            //             '- Bass:', (bands.bass || 0).toFixed(2),
-            //             'Mid:', (bands.mid || 0).toFixed(2),
-            //             'High:', (bands.high || 0).toFixed(2));
-            //         this.lastFreqLogTime = performance.now();
-            //     }
-            // }
+        // Create callback to forward all events from source
+        const callback = (event) => {
             this.emit(event.type, event.data);
-        });
+        };
 
-        console.log('[InputManager] Registered source:', name);
+        // Store callback so we can remove it later
+        this.sourceCallbacks.set(name, callback);
+
+        // Attach listener
+        source.on('*', callback);
     }
 
     unregisterSource(name) {
         const source = this.sources.get(name);
-        if (source && source.disconnect) {
+        const callback = this.sourceCallbacks.get(name);
+
+        // CRITICAL: Remove event listener to stop receiving events from this source
+        if (source && callback && source.off) {
+            source.off('*', callback);
+        }
+
+        // Don't disconnect audio source - keep it running in background for quick switching
+        // Only disconnect MIDI sources (midi-synth should be destroyed manually)
+        if (source && source.disconnect && name !== 'audio') {
             source.disconnect();
         }
+
         this.sources.delete(name);
+        this.sourceCallbacks.delete(name);
         console.log('[InputManager] Unregistered source:', name);
     }
 

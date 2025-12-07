@@ -269,10 +269,10 @@
     </div>
 
     <div class="section">
-        <h2>MIDI Input</h2>
+        <h2>Visual Reactive Input</h2>
         <select id="milkdrop-audio-source">
+            <option value="microphone" selected>Audio Input Device</option>
             <option value="midi">MIDI Synthesizer</option>
-            <option value="microphone">Audio Input Device</option>
         </select>
 
         <div id="midi-synth-options" style="margin-top: 10px;">
@@ -421,9 +421,12 @@
                 }, 300);
             }
 
-            // Update visual audio source
+            // Update visual audio source - ALWAYS from main app state, NEVER from saved settings
             if (state.visualAudioSource !== undefined) {
-                document.getElementById('milkdrop-audio-source').value = state.visualAudioSource;
+                const dropdown = document.getElementById('milkdrop-audio-source');
+                dropdown.value = state.visualAudioSource;
+                console.log('[Control] Visual audio source updated to:', state.visualAudioSource);
+
                 // Show/hide MIDI options based on source
                 const midiOptions = document.getElementById('midi-synth-options');
                 midiOptions.style.display = state.visualAudioSource === 'midi' ? 'block' : 'none';
@@ -629,6 +632,19 @@
                 console.log('[Control] Failed to enumerate MIDI devices:', error.message);
             }
         }
+
+        // Force dropdown to default to "microphone" on load
+        // Main app will NEVER auto-start MIDI synth, so this is always correct initially
+        document.getElementById('milkdrop-audio-source').value = 'microphone';
+        document.getElementById('midi-synth-options').style.display = 'none';
+        console.log('[Control] Defaulted to Audio Input Device');
+
+        // CRITICAL: Ignore first state update from main app (it might have old saved setting)
+        // Force it to microphone by sending command immediately
+        setTimeout(() => {
+            console.log('[Control] Forcing Visual Reactive Input to microphone...');
+            sendCommand('milkdropAudioSource', 'microphone');
+        }, 50);
 
         // Request initial state from main tab
         setTimeout(() => {
