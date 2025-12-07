@@ -226,21 +226,61 @@
             cursor: pointer;
             margin-top: 20px;
         }
+
+        /* Fullscreen mode */
+        body:fullscreen .status-bar,
+        body:fullscreen .control-panel {
+            display: none !important;
+        }
+
+        body:fullscreen #canvas-container {
+            top: 0 !important;
+            bottom: 0 !important;
+            height: 100vh !important;
+        }
+
+        body:-webkit-full-screen .status-bar,
+        body:-webkit-full-screen .control-panel {
+            display: none !important;
+        }
+
+        body:-webkit-full-screen #canvas-container {
+            top: 0 !important;
+            bottom: 0 !important;
+            height: 100vh !important;
+        }
+
+        body:-moz-full-screen .status-bar,
+        body:-moz-full-screen .control-panel {
+            display: none !important;
+        }
+
+        body:-moz-full-screen #canvas-container {
+            top: 0 !important;
+            bottom: 0 !important;
+            height: 100vh !important;
+        }
     </style>
 </head>
 <body>
     <!-- Status Bar -->
     <div class="status-bar">
         <div>REVISION</div>
-        <div style="display: flex; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 5px;">
+            <button id="control-btn">CONTROL</button>
             <button id="fullscreen-btn">FULLSCREEN</button>
             <button id="settings-btn">SETTINGS</button>
-            <span class="midi-indicator" id="midi-indicator"></span>
+            <span class="midi-indicator" id="midi-indicator" title="MIDI"></span>
+            <span class="midi-indicator" id="audio-indicator" title="Audio" style="background-color: #444444;"></span>
         </div>
     </div>
 
-    <!-- Main Canvas for Visuals -->
-    <canvas id="main-canvas"></canvas>
+    <!-- Canvas for each renderer mode -->
+    <div id="canvas-container" style="position: fixed; top: 40px; left: 0; right: 0; bottom: 80px; width: 100%; height: calc(100vh - 120px);">
+        <canvas id="builtin-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
+        <canvas id="threejs-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></canvas>
+        <canvas id="milkdrop-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></canvas>
+    </div>
 
     <!-- Control Panel -->
     <div class="control-panel">
@@ -263,6 +303,7 @@
                 <button class="scene-button" data-scene="3">SCENE 4</button>
             </div>
         </div>
+
     </div>
 
     <!-- Settings Modal -->
@@ -286,20 +327,89 @@
             </div>
 
             <div class="setting-row">
+                <label>Audio Input</label>
+                <select id="audio-input-select">
+                    <option value="none">No Audio Input</option>
+                    <option value="microphone">Microphone</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <label>Preset Type</label>
+                <select id="preset-type-select">
+                    <option value="builtin">Built-in Shaders</option>
+                    <option value="threejs">Three.js (3D)</option>
+                    <option value="milkdrop">Milkdrop</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <label>Enable SysEx</label>
+                <select id="sysex-enable">
+                    <option value="true">Yes (requires permission)</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
                 <label>OSC Server (optional)</label>
                 <input type="text" id="osc-server" placeholder="ws://localhost:8080" />
+            </div>
+
+            <div class="setting-row" id="mobile-info" style="display: none;">
+                <label>Mobile Info</label>
+                <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                    <div id="mobile-platform"></div>
+                    <div id="mobile-fps"></div>
+                </div>
             </div>
 
             <button class="modal-close" onclick="closeSettings()">Close</button>
         </div>
     </div>
 
+    <!-- External Libraries (Optional - for enhanced features) -->
+    <!-- Three.js for 3D scenes (ES Module version) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js"
+        }
+    }
+    </script>
+    <script type="module">
+        // Make Three.js available globally for compatibility
+        import * as THREE from 'three';
+        window.THREE = THREE;
+    </script>
+
+    <!-- Butterchurn for Milkdrop presets -->
+    <script src="https://unpkg.com/butterchurn@latest/lib/butterchurn.min.js"></script>
+    <script src="https://unpkg.com/butterchurn-presets@latest/lib/butterchurnPresets.min.js"></script>
+
     <!-- Core Scripts -->
-    <script src="utils/midi-manager.js"></script>
+    <script src="utils/library-loader.js"></script>
+    <script src="utils/mobile-compat.js"></script>
     <script src="utils/settings-manager.js"></script>
     <script src="utils/osc-client.js"></script>
+
+    <!-- Input Sources -->
+    <script src="inputs/input-manager.js"></script>
+    <script src="inputs/midi-input-source.js"></script>
+    <script src="inputs/audio-input-source.js"></script>
+
+    <!-- Renderers and Presets -->
     <script src="visuals/renderer.js"></script>
     <script src="scenes/scene-manager.js"></script>
-    <script src="app.js"></script>
+    <script src="presets/preset-manager.js"></script>
+    <script src="presets/milkdrop-renderer.js"></script>
+    <script src="presets/threejs-renderer.js"></script>
+
+    <!-- Legacy MIDI Manager (for backwards compatibility) -->
+    <script src="utils/midi-manager.js"></script>
+
+    <!-- Main Application -->
+    <!-- Use app-v2.js for new architecture, or app.js for legacy -->
+    <script src="app-v2.js"></script>
 </body>
 </html>

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Revision Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #888;
+        }
+
+        .section {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            font-size: 14px;
+            color: #0066FF;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        button {
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #3a3a3a;
+            padding: 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #3a3a3a;
+            border-color: #4a4a4a;
+        }
+
+        button:active {
+            background: #0066FF;
+        }
+
+        .status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #444;
+            margin-right: 8px;
+        }
+
+        .status.connected {
+            background: #00ff00;
+            box-shadow: 0 0 8px #00ff00;
+        }
+
+        .info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        select {
+            width: 100%;
+            background: #0a0a0a;
+            color: #fff;
+            border: 1px solid #2a2a2a;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .preset-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .preset-item {
+            padding: 8px 12px;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            margin-bottom: 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .preset-item:hover {
+            background: #2a2a2a;
+        }
+
+        .preset-item.active {
+            background: #0066FF;
+            border-color: #0088FF;
+        }
+    </style>
+</head>
+<body>
+    <h1>REVISION CONTROL</h1>
+
+    <div class="section">
+        <h2><span class="status" id="midi-status"></span>MIDI Connection</h2>
+        <select id="midi-select">
+            <option value="">No MIDI devices</option>
+        </select>
+        <div class="info">Enable SysEx in main Revision settings</div>
+    </div>
+
+    <div class="section">
+        <h2>Preset Mode</h2>
+        <div class="button-grid">
+            <button onclick="sendSysEx([0x01, 0x00])">Built-in</button>
+            <button onclick="sendSysEx([0x01, 0x01])">Three.js</button>
+            <button onclick="sendSysEx([0x01, 0x02])">Milkdrop</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Built-in Scenes</h2>
+        <div class="button-grid">
+            <button onclick="sendSysEx([0x03, 0x00])">Scene 1<br><small>Tunnel</small></button>
+            <button onclick="sendSysEx([0x03, 0x01])">Scene 2<br><small>Particles</small></button>
+            <button onclick="sendSysEx([0x03, 0x02])">Scene 3<br><small>Kaleidoscope</small></button>
+            <button onclick="sendSysEx([0x03, 0x03])">Scene 4<br><small>Waveform</small></button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Milkdrop Presets</h2>
+        <div class="button-grid">
+            <button onclick="sendSysEx([0x11])">◀ Previous</button>
+            <button onclick="sendSysEx([0x10])">Next ▶</button>
+        </div>
+        <div class="info">Current: <span id="current-preset">-</span></div>
+
+        <div class="preset-list" id="preset-list">
+            <!-- Populated dynamically -->
+        </div>
+    </div>
+
+    <script>
+        let midiAccess = null;
+        let midiOutput = null;
+
+        // Initialize MIDI
+        async function initMIDI() {
+            try {
+                midiAccess = await navigator.requestMIDIAccess({ sysex: true });
+                console.log('[Control] MIDI Access granted');
+
+                populateMIDIDevices();
+
+                midiAccess.onstatechange = () => {
+                    populateMIDIDevices();
+                };
+            } catch (error) {
+                console.error('[Control] MIDI Access failed:', error);
+            }
+        }
+
+        function populateMIDIDevices() {
+            const select = document.getElementById('midi-select');
+            select.innerHTML = '';
+
+            const outputs = Array.from(midiAccess.outputs.values());
+
+            if (outputs.length === 0) {
+                select.innerHTML = '<option value="">No MIDI devices</option>';
+                return;
+            }
+
+            outputs.forEach(output => {
+                const option = document.createElement('option');
+                option.value = output.id;
+                option.textContent = output.name;
+                select.appendChild(option);
+            });
+
+            // Auto-select first device
+            if (outputs.length > 0) {
+                select.value = outputs[0].id;
+                connectMIDI(outputs[0].id);
+            }
+        }
+
+        function connectMIDI(deviceId) {
+            midiOutput = midiAccess.outputs.get(deviceId);
+            if (midiOutput) {
+                document.getElementById('midi-status').classList.add('connected');
+                console.log('[Control] Connected to:', midiOutput.name);
+            }
+        }
+
+        document.getElementById('midi-select').addEventListener('change', (e) => {
+            if (e.target.value) {
+                connectMIDI(e.target.value);
+            }
+        });
+
+        function sendSysEx(payload) {
+            if (!midiOutput) {
+                console.error('[Control] No MIDI output selected');
+                return;
+            }
+
+            // SysEx format: F0 7D <payload> F7
+            const message = [0xF0, 0x7D, ...payload, 0xF7];
+
+            try {
+                midiOutput.send(message);
+                console.log('[Control] Sent SysEx:', message.map(b => b.toString(16)).join(' '));
+            } catch (error) {
+                console.error('[Control] Failed to send SysEx:', error);
+            }
+        }
+
+        function loadMilkdropPreset(index) {
+            const msb = (index >> 7) & 0x7F;
+            const lsb = index & 0x7F;
+            sendSysEx([0x02, msb, lsb]);
+        }
+
+        // Load preset list from config
+        async function loadPresets() {
+            try {
+                const response = await fetch('config/presets.json');
+                if (response.ok) {
+                    const config = await response.json();
+                    if (config.milkdrop && config.milkdrop.playlist) {
+                        displayPresets(config.milkdrop.playlist);
+                    }
+                }
+            } catch (error) {
+                console.error('[Control] Failed to load presets:', error);
+            }
+        }
+
+        function displayPresets(presets) {
+            const list = document.getElementById('preset-list');
+            list.innerHTML = '';
+
+            presets.forEach((preset, index) => {
+                const item = document.createElement('div');
+                item.className = 'preset-item';
+                item.textContent = `${index}: ${preset}`;
+                item.onclick = () => {
+                    loadMilkdropPreset(index);
+                    document.querySelectorAll('.preset-item').forEach(i => i.classList.remove('active'));
+                    item.classList.add('active');
+                    document.getElementById('current-preset').textContent = preset;
+                };
+                list.appendChild(item);
+            });
+        }
+
+        // Initialize
+        initMIDI();
+        loadPresets();
+    </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "milkdrop": {
+    "playlist": [
+      "Geiss - Blur Scope",
+      "Rovastar - Altars Of Madness",
+      "martin - disco tunnel",
+      "Flexi - mindblob [mash up]",
+      "Unchained & Rovastar - Wormhole Pillars (Acid Remix)",
+      "Fishbrain + Flexi - witchcraft 2.0",
+      "Eo.S. - Merry Tunnel",
+      "Geiss - Artifact 01"
+    ],
+    "randomize": false,
+    "autoSwitch": false,
+    "autoSwitchInterval": 30000
+  },
+  "threejs": {
+    "scenes": [
+      "default"
+    ]
+  }
+}
