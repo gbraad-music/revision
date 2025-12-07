@@ -1,0 +1,22 @@
+{
+  "name": "revision",
+  "version": "1.0.0",
+  "description": "Audio-reactive visual synthesizer with MIDI control and Milkdrop support",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging"
+  },
+  "keywords": [
+    "vj",
+    "midi",
+    "audio-reactive",
+    "visualization",
+    "milkdrop"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0"
+  }
+}

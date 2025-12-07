@@ -561,18 +561,10 @@
             // No local loading - main app is source of truth
         }
 
-        let lastPresetList = null;
-
         function displayPresets(presets) {
             if (!presets || presets.length === 0) {
                 return;
             }
-
-            // Don't rebuild if same list (prevents flicker)
-            if (lastPresetList && JSON.stringify(lastPresetList) === JSON.stringify(presets)) {
-                return;
-            }
-            lastPresetList = presets;
 
             const list = document.getElementById('preset-list');
             list.innerHTML = '';
