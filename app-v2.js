@@ -51,6 +51,9 @@ class RevisionAppV2 {
         this.lastMIDIUpdateTime = performance.now();
         this.lastMIDIPosition = 0;
 
+        // Frequency data for EQ display
+        this.lastFrequencyData = { bass: 0, mid: 0, high: 0 };
+
         // Resize debounce
         this.resizeTimeout = null;
 
@@ -545,6 +548,11 @@ class RevisionAppV2 {
         const beat = Math.floor((this.currentPosition % 16) / 4);
         const sixteenth = Math.floor(this.currentPosition % 4);
 
+        // Check if SPP was received recently (within 100ms) from MIDI source
+        const sppActive = this.midiSource && this.midiSource.lastSPPTime
+            ? (performance.now() - this.midiSource.lastSPPTime) < 100
+            : false;
+
         const state = {
             mode: this.currentPresetType,
             scene: this.currentScene,
@@ -561,7 +569,9 @@ class RevisionAppV2 {
             oscServer: this.settings.get('oscServer') || '',
             presetName: this.currentPresetType === 'milkdrop' && this.milkdropPresetKeys
                 ? this.milkdropPresetKeys[this.currentMilkdropIndex]
-                : '-'
+                : '-',
+            frequency: this.lastFrequencyData,
+            sppActive: sppActive
         };
 
         this.controlChannel.postMessage({
@@ -638,9 +648,11 @@ class RevisionAppV2 {
 
             // Update position tracking for MIDI interpolation
             if (data.source === 'midi' && this.midiSource) {
+                const newPosition = this.midiSource.getSongPosition();
+
                 this.lastMIDIUpdateTime = performance.now();
-                this.lastMIDIPosition = this.midiSource.getSongPosition();
-                this.currentPosition = this.lastMIDIPosition;
+                this.lastMIDIPosition = newPosition;
+                this.currentPosition = newPosition;
 
                 // Update position display
                 if (this.positionDisplay) {
@@ -667,22 +679,24 @@ class RevisionAppV2 {
                 const synthChannel = this.settings.get('midiSynthChannel') || 'all';
                 const matchesChannel = (synthChannel === 'all') || (parseInt(synthChannel) === data.channel);
 
-                console.log(`[Revision] 🎵 MIDI Note - Ch.${data.channel + 1} Note:${data.note} Vel:${data.velocity} | Synth filter: ${synthChannel === 'all' ? 'All' : 'Ch.' + (parseInt(synthChannel) + 1)} | Match: ${matchesChannel}`);
+                // console.log(`[Revision] 🎵 MIDI Note - Ch.${data.channel + 1} Note:${data.note} Vel:${data.velocity} | Synth filter: ${synthChannel === 'all' ? 'All' : 'Ch.' + (parseInt(synthChannel) + 1)} | Match: ${matchesChannel}`);
 
                 if (matchesChannel) {
                     if (data.velocity > 0) {
-                        console.log(`[Revision] ✓ Sending to synth - Note ON`);
+                        // console.log(`[Revision] ✓ Sending to synth - Note ON`);
                         this.midiAudioSynth.handleNoteOn(data.note, data.velocity);
                     } else {
-                        console.log(`[Revision] ✓ Sending to synth - Note OFF`);
+                        // console.log(`[Revision] ✓ Sending to synth - Note OFF`);
                         this.midiAudioSynth.handleNoteOff(data.note);
                     }
-                } else {
-                    console.log(`[Revision] ✗ FILTERED OUT - Channel mismatch`);
                 }
-            } else if (data.source === 'midi') {
-                console.log(`[Revision] ⚠️ MIDI Synth NOT ACTIVE - visualAudioSource: ${this.settings.get('visualAudioSource')}`);
+                // else {
+                //     console.log(`[Revision] ✗ FILTERED OUT - Channel mismatch`);
+                // }
             }
+            // else if (data.source === 'midi') {
+            //     console.log(`[Revision] ⚠️ MIDI Synth NOT ACTIVE - visualAudioSource: ${this.settings.get('visualAudioSource')}`);
+            // }
 
             // Handle scene switching (notes 60-63 = scenes 0-3)
             if (data.note >= 60 && data.note <= 63 && data.source === 'midi' && this.currentPresetType === 'builtin') {
@@ -718,7 +732,7 @@ class RevisionAppV2 {
 
         // Transport events
         this.inputManager.on('transport', (data) => {
-            console.log('[Revision] Transport:', data.state, 'BPM:', data.bpm);
+            // console.log('[Revision] Transport:', data.state, 'BPM:', data.bpm);
             if (data.bpm) {
                 this.currentBPM = data.bpm;
                 this.bpmDisplay.textContent = data.bpm;
@@ -747,6 +761,15 @@ class RevisionAppV2 {
 
         // Frequency events (from audio)
         this.inputManager.on('frequency', (data) => {
+            // Store last frequency data for EQ display in control.html
+            if (data.bands) {
+                this.lastFrequencyData = {
+                    bass: data.bands.bass || 0,
+                    mid: data.bands.mid || 0,
+                    high: data.bands.high || 0
+                };
+            }
+
             // Only pass to active renderer
             if (this.currentPresetType === 'builtin') {
                 this.presetManager.handleFrequency(data);

@@ -28,17 +28,17 @@ class InputManager {
 
         // Forward all events from source
         source.on('*', (event) => {
-            // Debug: Log frequency events once per second
-            if (event.type === 'frequency') {
-                if (!this.lastFreqLogTime || performance.now() - this.lastFreqLogTime > 1000) {
-                    const bands = event.data.bands || {};
-                    console.log('[InputManager] Forwarding frequency from', name,
-                        '- Bass:', (bands.bass || 0).toFixed(2),
-                        'Mid:', (bands.mid || 0).toFixed(2),
-                        'High:', (bands.high || 0).toFixed(2));
-                    this.lastFreqLogTime = performance.now();
-                }
-            }
+            // Debug: Log frequency events (commented to reduce spam - use EQ visualizer in control.html)
+            // if (event.type === 'frequency') {
+            //     if (!this.lastFreqLogTime || performance.now() - this.lastFreqLogTime > 1000) {
+            //         const bands = event.data.bands || {};
+            //         console.log('[InputManager] Forwarding frequency from', name,
+            //             '- Bass:', (bands.bass || 0).toFixed(2),
+            //             'Mid:', (bands.mid || 0).toFixed(2),
+            //             'High:', (bands.high || 0).toFixed(2));
+            //         this.lastFreqLogTime = performance.now();
+            //     }
+            // }
             this.emit(event.type, event.data);
         });
 

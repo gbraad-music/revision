@@ -103,8 +103,8 @@ class MIDIInputSource {
                     0xFB: 'Continue',
                     0xFC: 'Stop'
                 };
-                console.log('[MIDIInput] Received:', messageTypes[status] || `0x${status.toString(16)}`,
-                    status === 0xF2 ? `Position: ${(data2 << 7) | data1}` : '');
+                // console.log('[MIDIInput] Received:', messageTypes[status] || `0x${status.toString(16)}`,
+                //     status === 0xF2 ? `Position: ${(data2 << 7) | data1}` : '');
                 this.lastMidiDebugTime = performance.now();
             }
         }
@@ -168,14 +168,14 @@ class MIDIInputSource {
         switch (command) {
             case 0x90: // Note On
                 if (data2 > 0) {
-                    console.log(`[MIDIInput] 🎹 Note ON  - Ch.${channel + 1} Note:${data1} Vel:${data2}`);
+                    // console.log(`[MIDIInput] 🎹 Note ON  - Ch.${channel + 1} Note:${data1} Vel:${data2}`);
                     this.emit('*', {
                         type: 'note',
                         data: { note: data1, velocity: data2, source: 'midi', channel }
                     });
                 } else {
                     // Note off (velocity 0)
-                    console.log(`[MIDIInput] 🎹 Note OFF - Ch.${channel + 1} Note:${data1}`);
+                    // console.log(`[MIDIInput] 🎹 Note OFF - Ch.${channel + 1} Note:${data1}`);
                     this.emit('*', {
                         type: 'note',
                         data: { note: data1, velocity: 0, source: 'midi', channel }
@@ -184,7 +184,7 @@ class MIDIInputSource {
                 break;
 
             case 0x80: // Note Off
-                console.log(`[MIDIInput] 🎹 Note OFF - Ch.${channel + 1} Note:${data1}`);
+                // console.log(`[MIDIInput] 🎹 Note OFF - Ch.${channel + 1} Note:${data1}`);
                 this.emit('*', {
                     type: 'note',
                     data: { note: data1, velocity: 0, source: 'midi', channel }
@@ -315,7 +315,7 @@ class MIDIInputSource {
     }
 
     handleStart() {
-        console.log('[MIDIInput] Start');
+        // console.log('[MIDIInput] Start');
         this.isPlaying = true;
         this.songPosition = 0;
         this.clockCounter = 0;
@@ -327,7 +327,7 @@ class MIDIInputSource {
     }
 
     handleContinue() {
-        console.log('[MIDIInput] Continue');
+        // console.log('[MIDIInput] Continue');
         this.isPlaying = true;
 
         this.emit('*', {
@@ -337,7 +337,7 @@ class MIDIInputSource {
     }
 
     handleStop() {
-        console.log('[MIDIInput] Stop');
+        // console.log('[MIDIInput] Stop');
         this.isPlaying = false;
 
         this.emit('*', {
@@ -350,7 +350,7 @@ class MIDIInputSource {
         const newPosition = (msb << 7) | lsb;
         const now = performance.now();
 
-        console.log('[MIDIInput] ►►► SPP RECEIVED ◄◄◄ Position:', newPosition, 'LSB:', lsb, 'MSB:', msb);
+        // console.log('[MIDIInput] ►►► SPP RECEIVED ◄◄◄ Position:', newPosition, 'LSB:', lsb, 'MSB:', msb);
 
         // Calculate BPM from SPP changes
         if (this.lastSPPTime > 0) {

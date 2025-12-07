@@ -34,7 +34,7 @@ class MIDIAudioSynth {
         try {
             // Create analyser for Milkdrop - FAST RESPONSE for MIDI transients
             this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 2048;
+            this.analyser.fftSize = 8192; // Larger FFT for better bass resolution (5.9 Hz/bin @ 48kHz)
             this.analyser.smoothingTimeConstant = 0.0; // NO SMOOTHING - instant response to MIDI!
 
             // Master gain
@@ -212,7 +212,7 @@ class MIDIAudioSynth {
         voice.note = note;
         voice.active = true;
 
-        console.log('[MIDIAudioSynth] Note ON:', noteName + octave, '(MIDI', note + ') Vel:', velocity, 'Freq:', frequency.toFixed(1), 'Hz');
+        // console.log('[MIDIAudioSynth] Note ON:', noteName + octave, '(MIDI', note + ') Vel:', velocity, 'Freq:', frequency.toFixed(1), 'Hz');
     }
 
     // Handle MIDI note off
@@ -221,22 +221,23 @@ class MIDIAudioSynth {
 
         const voice = this.voices.find(v => v.active && v.note === note);
         if (voice) {
-            console.log('[MIDIAudioSynth] 🔽 Note OFF received:', note);
+            // console.log('[MIDIAudioSynth] 🔽 Note OFF received:', note);
             this.releaseVoice(voice);
-        } else {
-            console.log('[MIDIAudioSynth] ⚠️ Note OFF for inactive note:', note);
         }
+        // else {
+        //     console.log('[MIDIAudioSynth] ⚠️ Note OFF for inactive note:', note);
+        // }
     }
 
     releaseVoice(voice) {
         if (!voice.oscillator) {
-            console.log('[MIDIAudioSynth] ⚠️ releaseVoice called but no oscillator');
+            // console.log('[MIDIAudioSynth] ⚠️ releaseVoice called but no oscillator');
             return;
         }
 
         const now = this.audioContext.currentTime;
 
-        console.log('[MIDIAudioSynth] 📉 Releasing voice - note:', voice.note);
+        // console.log('[MIDIAudioSynth] 📉 Releasing voice - note:', voice.note);
 
         // Release envelope - cancel scheduled values and apply immediate release
         voice.gain.gain.cancelScheduledValues(now);
@@ -360,7 +361,7 @@ class MIDIAudioSynth {
 
     // Start frequency monitoring for visual feedback (like audio-input-source)
     startFrequencyMonitoring() {
-        console.log('[MIDIAudioSynth] Starting frequency monitoring...');
+        console.log('[MIDIAudioSynth] ✓ Starting frequency monitoring...');
         const analyzeFrequency = () => {
             if (!this.isActive) {
                 console.log('[MIDIAudioSynth] Frequency monitoring stopped - not active');
@@ -369,11 +370,11 @@ class MIDIAudioSynth {
 
             this.analyser.getByteFrequencyData(this.frequencyData);
 
-            // Calculate bass, mid, high (same as audio-input-source)
-            // Expanded bass range to capture very low frequencies
-            const bass = this.calculateBand(0, 20); // 0-860 Hz (expanded for bass notes)
-            const mid = this.calculateBand(20, 60); // 860-2580 Hz
-            const high = this.calculateBand(60, 120); // 2580-5160 Hz
+            // Calculate bass, mid, high with 8192 FFT (5.86 Hz/bin @ 48kHz)
+            // Optimized for very low MIDI bass frequencies
+            const bass = this.calculateBand(0, 85); // 0-500 Hz (captures sub-bass to bass)
+            const mid = this.calculateBand(85, 680); // 500-4000 Hz (fundamental to harmonics)
+            const high = this.calculateBand(680, 2048); // 4000-12000 Hz (high harmonics)
 
             // Calculate overall RMS
             let sum = 0;
@@ -382,21 +383,15 @@ class MIDIAudioSynth {
             }
             const rms = Math.sqrt(sum / this.frequencyData.length) / 255;
 
-            // Log for debugging - show first 30 bins for bass analysis
-            const max = Math.max(...this.frequencyData);
-            const avg = this.frequencyData.reduce((a, b) => a + b, 0) / this.frequencyData.length;
-            const firstBins = Array.from(this.frequencyData.slice(0, 30)).map(v => v).join(',');
-            console.log(`[MIDIAudioSynth] Freq - RMS: ${rms.toFixed(3)} Max: ${max} Avg: ${avg.toFixed(1)} Bass: ${bass.toFixed(2)} Mid: ${mid.toFixed(2)} High: ${high.toFixed(2)}`);
-            console.log(`[MIDIAudioSynth] First 30 bins: ${firstBins}`);
-
-            // Emit frequency event
-            console.log('[MIDIAudioSynth] Emitting frequency event with bass:', bass.toFixed(2));
+            // Emit frequency event (data flowing correctly - use EQ visualizer in control.html)
             this.emit('*', {
                 type: 'frequency',
                 data: {
-                    bass,
-                    mid,
-                    high,
+                    bands: {
+                        bass,
+                        mid,
+                        high
+                    },
                     rms,
                     source: 'midi-synth'
                 }

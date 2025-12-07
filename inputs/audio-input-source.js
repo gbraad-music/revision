@@ -149,35 +149,35 @@ class AudioInputSource {
 
             // Verify audio is flowing
             setTimeout(() => {
-                const testMax = Math.max(...this.frequencyData);
-                const testAvg = this.frequencyData.reduce((a, b) => a + b, 0) / this.frequencyData.length;
+                // const testMax = Math.max(...this.frequencyData);
+                // const testAvg = this.frequencyData.reduce((a, b) => a + b, 0) / this.frequencyData.length;
 
-                console.log('[AudioInput] ═══════════════════════════════════════');
-                console.log('[AudioInput] AUDIO DIAGNOSTIC RESULTS:');
-                console.log('[AudioInput] Max frequency value:', testMax);
-                console.log('[AudioInput] Avg frequency value:', testAvg.toFixed(1));
-                console.log('[AudioInput] AudioContext state:', this.audioContext.state);
-                console.log('[AudioInput] Stream active:', this.microphone.mediaStream.active);
-                console.log('[AudioInput] Track count:', this.microphone.mediaStream.getTracks().length);
+                // console.log('[AudioInput] ═══════════════════════════════════════');
+                // console.log('[AudioInput] AUDIO DIAGNOSTIC RESULTS:');
+                // console.log('[AudioInput] Max frequency value:', testMax);
+                // console.log('[AudioInput] Avg frequency value:', testAvg.toFixed(1));
+                // console.log('[AudioInput] AudioContext state:', this.audioContext.state);
+                // console.log('[AudioInput] Stream active:', this.microphone.mediaStream.active);
+                // console.log('[AudioInput] Track count:', this.microphone.mediaStream.getTracks().length);
 
-                if (testMax === 0) {
-                    console.error('[AudioInput] ⚠️⚠️⚠️ NO AUDIO SIGNAL DETECTED! ⚠️⚠️⚠️');
-                    console.error('[AudioInput] POSSIBLE CAUSES:');
-                    console.error('[AudioInput]   1. Wrong device selected');
-                    console.error('[AudioInput]   2. Device has no audio playing');
-                    console.error('[AudioInput]   3. Device/system muted');
-                    console.error('[AudioInput]   4. Browser permissions issue');
-                    console.error('[AudioInput]   5. AudioContext suspended');
+                // if (testMax === 0) {
+                //     console.error('[AudioInput] ⚠️⚠️⚠️ NO AUDIO SIGNAL DETECTED! ⚠️⚠️⚠️');
+                //     console.error('[AudioInput] POSSIBLE CAUSES:');
+                //     console.error('[AudioInput]   1. Wrong device selected');
+                //     console.error('[AudioInput]   2. Device has no audio playing');
+                //     console.error('[AudioInput]   3. Device/system muted');
+                //     console.error('[AudioInput]   4. Browser permissions issue');
+                //     console.error('[AudioInput]   5. AudioContext suspended');
 
-                    // Check tracks
-                    const tracks = this.microphone.mediaStream.getAudioTracks();
-                    tracks.forEach((track, i) => {
-                        console.error(`[AudioInput]   Track ${i}: enabled=${track.enabled} muted=${track.muted} readyState=${track.readyState}`);
-                    });
-                } else {
-                    console.log('[AudioInput] ✓✓✓ AUDIO SIGNAL DETECTED! Max level:', testMax);
-                }
-                console.log('[AudioInput] ═══════════════════════════════════════');
+                //     // Check tracks
+                //     const tracks = this.microphone.mediaStream.getAudioTracks();
+                //     tracks.forEach((track, i) => {
+                //         console.error(`[AudioInput]   Track ${i}: enabled=${track.enabled} muted=${track.muted} readyState=${track.readyState}`);
+                //     });
+                // } else {
+                //     console.log('[AudioInput] ✓✓✓ AUDIO SIGNAL DETECTED! Max level:', testMax);
+                // }
+                // console.log('[AudioInput] ═══════════════════════════════════════');
             }, 1500);
 
             this.emit('connected', { source: 'microphone', deviceId });
@@ -242,19 +242,19 @@ class AudioInputSource {
         // Calculate frequency bands
         const bandLevels = this.calculateBandLevels();
 
-        // Debug: Log audio levels every second
-        if (!this.lastDebugTime || performance.now() - this.lastDebugTime > 1000) {
-            const maxFreq = Math.max(...this.frequencyData);
-            const avgFreq = this.frequencyData.reduce((a, b) => a + b, 0) / this.frequencyData.length;
-            console.log('[AudioInput] RMS:', rms.toFixed(3), 'Max:', maxFreq, 'Avg:', avgFreq.toFixed(1),
-                'Bass:', bandLevels.bass.toFixed(2), 'Mid:', bandLevels.mid.toFixed(2), 'High:', bandLevels.high.toFixed(2));
-            this.lastDebugTime = performance.now();
-        }
+        // Debug: Log audio levels (commented to reduce spam - use EQ visualizer in control.html)
+        // if (!this.lastDebugTime || performance.now() - this.lastDebugTime > 1000) {
+        //     const maxFreq = Math.max(...this.frequencyData);
+        //     const avgFreq = this.frequencyData.reduce((a, b) => a + b, 0) / this.frequencyData.length;
+        //     console.log('[AudioInput] RMS:', rms.toFixed(3), 'Max:', maxFreq, 'Avg:', avgFreq.toFixed(1),
+        //         'Bass:', bandLevels.bass.toFixed(2), 'Mid:', bandLevels.mid.toFixed(2), 'High:', bandLevels.high.toFixed(2));
+        //     this.lastDebugTime = performance.now();
+        // }
 
         // Detect beats
         const beat = this.detectBeat(rms);
         if (beat) {
-            console.log('[AudioInput] BEAT detected - intensity:', beat.intensity.toFixed(2));
+            // console.log('[AudioInput] BEAT detected - intensity:', beat.intensity.toFixed(2));
             this.emit('*', {
                 type: 'beat',
                 data: {
