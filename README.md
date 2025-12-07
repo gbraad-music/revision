@@ -1,2 +1,4 @@
-# revision
-VJ software that integrates with Regrooved apps
+revision
+========
+
+VJ software that toasts with Regrooved apps
