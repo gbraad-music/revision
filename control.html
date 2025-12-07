@@ -126,37 +126,35 @@
     <h1>REVISION CONTROL</h1>
 
     <div class="section">
-        <h2><span class="status" id="midi-status"></span>MIDI Connection</h2>
-        <select id="midi-select">
-            <option value="">No MIDI devices</option>
-        </select>
-        <div class="info">Enable SysEx in main Revision settings</div>
+        <h2><span class="status" id="connection-status"></span>Connection</h2>
+        <div class="info">Connected to main tab via BroadcastChannel</div>
+        <div class="info" style="margin-top: 5px;">Current Mode: <span id="current-mode" style="color: #0066FF;">-</span></div>
     </div>
 
     <div class="section">
         <h2>Preset Mode</h2>
         <div class="button-grid">
-            <button onclick="sendSysEx([0x01, 0x00])">Built-in</button>
-            <button onclick="sendSysEx([0x01, 0x01])">Three.js</button>
-            <button onclick="sendSysEx([0x01, 0x02])">Milkdrop</button>
+            <button onclick="sendCommand('switchMode', 'builtin')" id="mode-builtin">Built-in</button>
+            <button onclick="sendCommand('switchMode', 'threejs')" id="mode-threejs">Three.js</button>
+            <button onclick="sendCommand('switchMode', 'milkdrop')" id="mode-milkdrop">Milkdrop</button>
         </div>
     </div>
 
     <div class="section">
         <h2>Built-in Scenes</h2>
         <div class="button-grid">
-            <button onclick="sendSysEx([0x03, 0x00])">Scene 1<br><small>Tunnel</small></button>
-            <button onclick="sendSysEx([0x03, 0x01])">Scene 2<br><small>Particles</small></button>
-            <button onclick="sendSysEx([0x03, 0x02])">Scene 3<br><small>Kaleidoscope</small></button>
-            <button onclick="sendSysEx([0x03, 0x03])">Scene 4<br><small>Waveform</small></button>
+            <button onclick="sendCommand('switchScene', 0)" id="scene-0">Scene 1<br><small>Tunnel</small></button>
+            <button onclick="sendCommand('switchScene', 1)" id="scene-1">Scene 2<br><small>Particles</small></button>
+            <button onclick="sendCommand('switchScene', 2)" id="scene-2">Scene 3<br><small>Kaleidoscope</small></button>
+            <button onclick="sendCommand('switchScene', 3)" id="scene-3">Scene 4<br><small>Waveform</small></button>
         </div>
     </div>
 
     <div class="section">
         <h2>Milkdrop Presets</h2>
         <div class="button-grid">
-            <button onclick="sendSysEx([0x11])">◀ Previous</button>
-            <button onclick="sendSysEx([0x10])">Next ▶</button>
+            <button onclick="sendCommand('milkdropPrev')">◀ Previous</button>
+            <button onclick="sendCommand('milkdropNext')">Next ▶</button>
         </div>
         <div class="info">Current: <span id="current-preset">-</span></div>
 
@@ -165,11 +163,79 @@
         </div>
     </div>
 
+    <div class="section">
+        <h2>MIDI SysEx Control (Optional)</h2>
+        <select id="midi-select">
+            <option value="">No MIDI devices</option>
+        </select>
+        <div class="info">For external MIDI control only</div>
+    </div>
+
     <script>
+        // BroadcastChannel for tab-to-tab communication
+        const controlChannel = new BroadcastChannel('revision-control');
+
+        // MIDI for optional external control
         let midiAccess = null;
         let midiOutput = null;
 
-        // Initialize MIDI
+        // Send command to main tab via BroadcastChannel
+        function sendCommand(command, data) {
+            const message = { command, data };
+            controlChannel.postMessage(message);
+            console.log('[Control] Sent:', message);
+        }
+
+        // Receive state updates from main tab
+        controlChannel.onmessage = (event) => {
+            const { type, data } = event.data;
+
+            switch (type) {
+                case 'stateUpdate':
+                    updateState(data);
+                    break;
+                case 'presetList':
+                    displayPresets(data);
+                    break;
+            }
+        };
+
+        function updateState(state) {
+            // Update connection status
+            document.getElementById('connection-status').classList.add('connected');
+
+            // Update current mode
+            if (state.mode) {
+                document.getElementById('current-mode').textContent = state.mode;
+
+                // Highlight active mode button
+                ['builtin', 'threejs', 'milkdrop'].forEach(mode => {
+                    const btn = document.getElementById(`mode-${mode}`);
+                    if (btn) {
+                        btn.style.background = mode === state.mode ? '#0066FF' : '#2a2a2a';
+                        btn.style.borderColor = mode === state.mode ? '#0088FF' : '#3a3a3a';
+                    }
+                });
+            }
+
+            // Update active scene
+            if (state.scene !== undefined) {
+                for (let i = 0; i < 4; i++) {
+                    const btn = document.getElementById(`scene-${i}`);
+                    if (btn) {
+                        btn.style.background = i === state.scene ? '#0066FF' : '#2a2a2a';
+                        btn.style.borderColor = i === state.scene ? '#0088FF' : '#3a3a3a';
+                    }
+                }
+            }
+
+            // Update current preset name
+            if (state.presetName) {
+                document.getElementById('current-preset').textContent = state.presetName;
+            }
+        }
+
+        // Initialize MIDI (optional, for external control)
         async function initMIDI() {
             try {
                 midiAccess = await navigator.requestMIDIAccess({ sysex: true });
@@ -181,7 +247,7 @@
                     populateMIDIDevices();
                 };
             } catch (error) {
-                console.error('[Control] MIDI Access failed:', error);
+                console.log('[Control] MIDI not available:', error.message);
             }
         }
 
@@ -203,7 +269,6 @@
                 select.appendChild(option);
             });
 
-            // Auto-select first device
             if (outputs.length > 0) {
                 select.value = outputs[0].id;
                 connectMIDI(outputs[0].id);
@@ -213,8 +278,7 @@
         function connectMIDI(deviceId) {
             midiOutput = midiAccess.outputs.get(deviceId);
             if (midiOutput) {
-                document.getElementById('midi-status').classList.add('connected');
-                console.log('[Control] Connected to:', midiOutput.name);
+                console.log('[Control] MIDI connected to:', midiOutput.name);
             }
         }
 
@@ -225,26 +289,13 @@
         });
 
         function sendSysEx(payload) {
-            if (!midiOutput) {
-                console.error('[Control] No MIDI output selected');
-                return;
-            }
-
-            // SysEx format: F0 7D <payload> F7
+            if (!midiOutput) return;
             const message = [0xF0, 0x7D, ...payload, 0xF7];
-
             try {
                 midiOutput.send(message);
-                console.log('[Control] Sent SysEx:', message.map(b => b.toString(16)).join(' '));
             } catch (error) {
-                console.error('[Control] Failed to send SysEx:', error);
+                console.error('[Control] MIDI send failed:', error);
             }
-        }
-
-        function loadMilkdropPreset(index) {
-            const msb = (index >> 7) & 0x7F;
-            const lsb = index & 0x7F;
-            sendSysEx([0x02, msb, lsb]);
         }
 
         // Load preset list from config
@@ -258,7 +309,7 @@
                     }
                 }
             } catch (error) {
-                console.error('[Control] Failed to load presets:', error);
+                console.log('[Control] No preset config');
             }
         }
 
@@ -271,14 +322,18 @@
                 item.className = 'preset-item';
                 item.textContent = `${index}: ${preset}`;
                 item.onclick = () => {
-                    loadMilkdropPreset(index);
+                    sendCommand('milkdropSelect', index);
                     document.querySelectorAll('.preset-item').forEach(i => i.classList.remove('active'));
                     item.classList.add('active');
-                    document.getElementById('current-preset').textContent = preset;
                 };
                 list.appendChild(item);
             });
         }
+
+        // Request initial state from main tab
+        setTimeout(() => {
+            sendCommand('requestState');
+        }, 100);
 
         // Initialize
         initMIDI();

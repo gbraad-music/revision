@@ -29,7 +29,11 @@ class RevisionAppV2 {
         this.audioIndicator = document.getElementById('audio-indicator');
         this.bpmDisplay = document.getElementById('bpm-display');
         this.positionDisplay = document.getElementById('position-display');
+        this.modeDisplay = document.getElementById('mode-display');
         this.settingsModal = document.getElementById('settings-modal');
+
+        // BroadcastChannel for control.html communication
+        this.controlChannel = new BroadcastChannel('revision-control');
 
         // State
         this.currentBPM = 120;
@@ -37,6 +41,7 @@ class RevisionAppV2 {
         this.beatPhase = 0;
         this.barPhase = 0;
         this.currentPresetType = 'builtin';
+        this.currentScene = 0;
 
         // Beat interpolation
         this.lastMIDIUpdateTime = performance.now();
@@ -158,6 +163,9 @@ class RevisionAppV2 {
         // Setup UI
         this.setupUI();
 
+        // Setup BroadcastChannel for control.html
+        this.setupControlChannel();
+
         // Hide all canvases initially
         this.builtinCanvas.style.display = 'none';
         this.threejsCanvas.style.display = 'none';
@@ -166,6 +174,7 @@ class RevisionAppV2 {
         // Load last preset type and scene
         const lastPresetType = this.settings.get('presetType') || 'builtin';
         const lastScene = this.settings.get('lastScene') || 0;
+        this.currentScene = lastScene;
 
         console.log('[Revision] Loading last preset type:', lastPresetType);
 
@@ -255,6 +264,66 @@ class RevisionAppV2 {
                 this.switchPresetType(args[0]);
             }
         });
+    }
+
+    setupControlChannel() {
+        // Listen for commands from control.html
+        this.controlChannel.onmessage = (event) => {
+            const { command, data } = event.data;
+
+            switch (command) {
+                case 'switchMode':
+                    this.switchPresetType(data);
+                    break;
+                case 'switchScene':
+                    this.switchScene(data);
+                    break;
+                case 'milkdropNext':
+                    if (this.currentPresetType === 'milkdrop') {
+                        const nextIndex = (this.currentMilkdropIndex + 1) % this.milkdropPresetKeys.length;
+                        this.loadMilkdropPreset(nextIndex);
+                    }
+                    break;
+                case 'milkdropPrev':
+                    if (this.currentPresetType === 'milkdrop') {
+                        let prevIndex = this.currentMilkdropIndex - 1;
+                        if (prevIndex < 0) prevIndex = this.milkdropPresetKeys.length - 1;
+                        this.loadMilkdropPreset(prevIndex);
+                    }
+                    break;
+                case 'milkdropSelect':
+                    if (this.currentPresetType === 'milkdrop') {
+                        this.loadMilkdropPreset(data);
+                    }
+                    break;
+                case 'requestState':
+                    this.broadcastState();
+                    break;
+            }
+        };
+    }
+
+    broadcastState() {
+        const state = {
+            mode: this.currentPresetType,
+            scene: this.currentScene,
+            presetName: this.currentPresetType === 'milkdrop' && this.milkdropPresetKeys
+                ? this.milkdropPresetKeys[this.currentMilkdropIndex]
+                : '-'
+        };
+
+        this.controlChannel.postMessage({
+            type: 'stateUpdate',
+            data: state
+        });
+
+        // Send preset list if in milkdrop mode
+        if (this.milkdropPresetKeys) {
+            this.controlChannel.postMessage({
+                type: 'presetList',
+                data: this.milkdropPresetKeys
+            });
+        }
     }
 
     async enableAudioInput() {
@@ -371,6 +440,15 @@ class RevisionAppV2 {
             if (data.source === 'midi' && this.midiSource) {
                 this.lastMIDIUpdateTime = performance.now();
                 this.lastMIDIPosition = this.midiSource.getSongPosition();
+                this.currentPosition = this.lastMIDIPosition;
+
+                // Update position display immediately
+                if (this.positionDisplay) {
+                    const bar = Math.floor(this.currentPosition / 16);
+                    const beat = Math.floor((this.currentPosition % 16) / 4);
+                    const sixteenth = this.currentPosition % 4;
+                    this.positionDisplay.textContent = `${bar}.${beat}.${sixteenth}`;
+                }
 
                 if (data.state === 'play') {
                     console.log('[Revision] MIDI Start - Position reset to 0');
@@ -512,13 +590,6 @@ class RevisionAppV2 {
             this.openSettings();
         });
 
-        // Scene buttons
-        document.querySelectorAll('.scene-button').forEach((button, index) => {
-            button.addEventListener('click', () => {
-                this.switchScene(index);
-            });
-        });
-
         // Fullscreen change
         document.addEventListener('fullscreenchange', () => {
             if (document.fullscreenElement) {
@@ -612,6 +683,9 @@ class RevisionAppV2 {
         const presets = butterchurnPresets.getPresets();
         this.milkdropRenderer.loadPreset(presets[key]);
         console.log('[Milkdrop] Loaded preset', this.currentMilkdropIndex + 1, '/', this.milkdropPresetKeys.length, ':', key);
+
+        // Broadcast state update
+        this.broadcastState();
     }
 
     async loadPresetConfig() {
@@ -753,6 +827,15 @@ class RevisionAppV2 {
                 break;
         }
 
+        // Update mode display
+        const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop' };
+        if (this.modeDisplay) {
+            this.modeDisplay.textContent = modeNames[type] || type;
+        }
+
+        // Broadcast state update
+        this.broadcastState();
+
         console.log('[Revision] Switched to preset type:', type);
     }
 
@@ -813,8 +896,12 @@ class RevisionAppV2 {
         }
 
         if (this.sceneManager.switchScene(sceneIndex)) {
+            this.currentScene = sceneIndex;
             this.updateSceneButtons(sceneIndex);
             this.settings.set('lastScene', sceneIndex);
+
+            // Broadcast state update
+            this.broadcastState();
         }
     }
 
