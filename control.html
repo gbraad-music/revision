@@ -128,6 +128,7 @@
             background: #0a0a0a;
         }
 
+        /* Bar fills with gradients that stay fixed to container height */
         .eq-bar-fill {
             width: 100%;
             border-radius: 3px;
@@ -135,23 +136,26 @@
             bottom: 0;
             height: 0%;
             transition: height 0.05s ease-out;
+            background-size: 100% 100px;
+            background-position: bottom;
+            background-repeat: no-repeat;
         }
 
         /* Bass - red/orange/yellow gradient */
         .eq-bar:nth-child(1) .eq-bar-fill {
-            background: linear-gradient(to top, #660000, #FF2200, #FF6600, #FFAA00);
+            background-image: linear-gradient(to top, #660000, #FF2200, #FF6600, #FFAA00);
             box-shadow: 0 0 15px rgba(255, 102, 0, 0.8);
         }
 
         /* Mid - green/lime/yellow gradient */
         .eq-bar:nth-child(2) .eq-bar-fill {
-            background: linear-gradient(to top, #003300, #00CC00, #66FF00, #CCFF00);
+            background-image: linear-gradient(to top, #003300, #00CC00, #66FF00, #CCFF00);
             box-shadow: 0 0 15px rgba(102, 255, 0, 0.8);
         }
 
         /* High - blue/cyan gradient */
         .eq-bar:nth-child(3) .eq-bar-fill {
-            background: linear-gradient(to top, #002266, #0066FF, #00AAFF, #00FFFF);
+            background-image: linear-gradient(to top, #002266, #0066FF, #00AAFF, #00FFFF);
             box-shadow: 0 0 15px rgba(0, 170, 255, 0.8);
         }
 
