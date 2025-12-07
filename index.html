@@ -160,7 +160,19 @@
             color: #ffffff;
         }
 
-        /* Fullscreen mode */
+        /* URL parameter fullscreen mode (for OBS browser sources) */
+        body.url-fullscreen .status-bar,
+        body.url-fullscreen .control-panel {
+            display: none !important;
+        }
+
+        body.url-fullscreen #canvas-container {
+            top: 0 !important;
+            bottom: 0 !important;
+            height: 100vh !important;
+        }
+
+        /* Fullscreen API mode */
         body:fullscreen .status-bar,
         body:fullscreen .control-panel {
             display: none !important;

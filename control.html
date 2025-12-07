@@ -345,6 +345,21 @@
             <option value="">No camera selected</option>
         </select>
         <div class="info">Select webcam or video input device for video feed</div>
+
+        <label style="display: block; margin-top: 15px; font-size: 12px;">
+            <input type="checkbox" id="video-audio-reactive" style="width: auto; margin-right: 5px;">
+            Audio-reactive color effects (hue, saturation, brightness)
+        </label>
+
+        <label style="display: block; margin-top: 10px; font-size: 12px;">
+            <input type="checkbox" id="video-beat-reactive" style="width: auto; margin-right: 5px;">
+            Beat-reactive zoom pulse (4-on-the-floor)
+        </label>
+
+        <div style="margin-top: 15px;">
+            <button onclick="sendCommand('videoRelease')" style="width: 100%; padding: 10px;">Release Camera</button>
+            <div class="info" style="margin-top: 5px;">Stop camera stream (fixes "camera in use" errors)</div>
+        </div>
     </div>
 
     <div class="section">
@@ -470,6 +485,11 @@
                 builtinSection.style.display = state.mode === 'builtin' ? 'block' : 'none';
                 milkdropSection.style.display = state.mode === 'milkdrop' ? 'block' : 'none';
                 videoSection.style.display = state.mode === 'video' ? 'block' : 'none';
+
+                // Request preset list when switching to milkdrop
+                if (state.mode === 'milkdrop' && milkdropSection.style.display === 'block') {
+                    sendCommand('requestState');
+                }
             }
 
             // Update active scene
@@ -514,6 +534,24 @@
             // Update OSC server
             if (state.oscServer !== undefined) {
                 document.getElementById('osc-server').value = state.oscServer;
+            }
+
+            // Update video device selection
+            if (state.videoDeviceId !== undefined) {
+                const videoSelect = document.getElementById('video-device-select');
+                if (videoSelect && videoSelect.querySelector(`option[value="${state.videoDeviceId}"]`)) {
+                    videoSelect.value = state.videoDeviceId;
+                }
+            }
+
+            // Update video audio reactive toggle
+            if (state.videoAudioReactive !== undefined) {
+                document.getElementById('video-audio-reactive').checked = state.videoAudioReactive === 'true';
+            }
+
+            // Update video beat reactive toggle
+            if (state.videoBeatReactive !== undefined) {
+                document.getElementById('video-beat-reactive').checked = state.videoBeatReactive === 'true';
             }
         }
 
@@ -598,6 +636,16 @@
         // Video device selection
         document.getElementById('video-device-select').addEventListener('change', (e) => {
             sendCommand('videoDeviceSelect', e.target.value);
+        });
+
+        // Video audio reactive toggle
+        document.getElementById('video-audio-reactive').addEventListener('change', (e) => {
+            sendCommand('videoAudioReactive', e.target.checked ? 'true' : 'false');
+        });
+
+        // Video beat reactive toggle
+        document.getElementById('video-beat-reactive').addEventListener('change', (e) => {
+            sendCommand('videoBeatReactive', e.target.checked ? 'true' : 'false');
         });
 
         // Populate audio devices

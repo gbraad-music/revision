@@ -67,6 +67,13 @@ class RevisionAppV2 {
     async initialize() {
         console.log('[Revision V2] Initializing...');
 
+        // Check for URL parameters (e.g., ?fullscreen for OBS)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('fullscreen')) {
+            document.body.classList.add('url-fullscreen');
+            console.log('[Revision] URL fullscreen mode enabled (for OBS/browser sources)');
+        }
+
         // Load preset configuration
         await this.loadPresetConfig();
 
@@ -346,8 +353,11 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'milkdropSelect':
+                    console.log('[BroadcastChannel] milkdropSelect - index:', data, 'currentMode:', this.currentPresetType);
                     if (this.currentPresetType === 'milkdrop') {
                         this.loadMilkdropPreset(data);
+                    } else {
+                        console.warn('[Control] Milkdrop preset selected but mode is:', this.currentPresetType);
                     }
                     break;
                 case 'audioDeviceSelect':
@@ -363,8 +373,39 @@ class RevisionAppV2 {
                     console.log('[BroadcastChannel] Video Device Select:', data);
                     this.settings.set('videoDeviceId', data);
                     if (this.videoRenderer && this.currentPresetType === 'video') {
-                        await this.videoRenderer.switchCamera(data);
-                        console.log('[Video] Switched camera to:', data);
+                        const success = await this.videoRenderer.switchCamera(data);
+                        if (success) {
+                            console.log('[Video] ✓ Switched camera to:', data);
+                            // Start render loop if not already running
+                            this.videoRenderer.start();
+                            console.log('[Video] Render loop started');
+                        } else {
+                            console.error('[Video] ✗ Failed to switch camera');
+                        }
+                    }
+                    this.broadcastState();
+                    break;
+                case 'videoAudioReactive':
+                    console.log('[BroadcastChannel] Video Audio Reactive:', data);
+                    this.settings.set('videoAudioReactive', data);
+                    if (this.videoRenderer) {
+                        this.videoRenderer.setAudioReactive(data === 'true');
+                    }
+                    this.broadcastState();
+                    break;
+                case 'videoBeatReactive':
+                    console.log('[BroadcastChannel] Video Beat Reactive:', data);
+                    this.settings.set('videoBeatReactive', data);
+                    if (this.videoRenderer) {
+                        this.videoRenderer.setBeatReactive(data === 'true');
+                    }
+                    this.broadcastState();
+                    break;
+                case 'videoRelease':
+                    console.log('[BroadcastChannel] Video Release Camera');
+                    if (this.videoRenderer) {
+                        this.videoRenderer.release();
+                        console.log('[Video] Camera released - ready for reinitialization');
                     }
                     this.broadcastState();
                     break;
@@ -512,6 +553,13 @@ class RevisionAppV2 {
                     break;
                 case 'requestState':
                     this.broadcastState();
+                    // Also send preset list if available
+                    if (this.milkdropPresetKeys) {
+                        this.controlChannel.postMessage({
+                            type: 'presetList',
+                            data: this.milkdropPresetKeys
+                        });
+                    }
                     break;
             }
         };
@@ -602,6 +650,9 @@ class RevisionAppV2 {
             enableSysEx: this.settings.get('enableSysEx') || 'true',
             renderer: this.settings.get('renderer') || 'webgl',
             oscServer: this.settings.get('oscServer') || '',
+            videoDeviceId: this.settings.get('videoDeviceId') || '',
+            videoAudioReactive: this.settings.get('videoAudioReactive') || 'false',
+            videoBeatReactive: this.settings.get('videoBeatReactive') || 'false',
             presetName: this.currentPresetType === 'milkdrop' && this.milkdropPresetKeys
                 ? this.milkdropPresetKeys[this.currentMilkdropIndex]
                 : '-',
@@ -713,6 +764,8 @@ class RevisionAppV2 {
                 this.presetManager.handleBeat(data);
             } else if (this.currentPresetType === 'threejs' && this.threeJSRenderer) {
                 this.threeJSRenderer.handleBeat(data);
+            } else if (this.currentPresetType === 'video' && this.videoRenderer) {
+                this.videoRenderer.handleBeat(data);
             }
         });
 
@@ -1113,7 +1166,14 @@ class RevisionAppV2 {
         this.renderer.stop();
         if (this.threeJSRenderer) this.threeJSRenderer.stop();
         if (this.milkdropRenderer) this.milkdropRenderer.stop();
-        if (this.videoRenderer) this.videoRenderer.stop();
+
+        // CRITICAL: Release camera when switching away from video mode
+        if (this.videoRenderer && this.currentPresetType === 'video' && type !== 'video') {
+            console.log('[Revision] Switching away from video mode - releasing camera');
+            this.videoRenderer.release();
+        } else if (this.videoRenderer && type !== 'video') {
+            this.videoRenderer.stop();
+        }
 
         // Hide all canvases
         this.builtinCanvas.style.display = 'none';
@@ -1199,6 +1259,13 @@ class RevisionAppV2 {
                     // Start rendering IMMEDIATELY
                     this.milkdropRenderer.start();
                     console.log('[Milkdrop] Renderer started');
+
+                    // Load first preset if none loaded yet
+                    if (this.milkdropPresetKeys && this.milkdropPresetKeys.length > 0) {
+                        this.loadMilkdropPreset(this.currentMilkdropIndex || 0);
+                        console.log('[Milkdrop] Auto-loaded preset:', this.milkdropPresetKeys[this.currentMilkdropIndex || 0]);
+                    }
+
                     console.log('[Milkdrop] Ready - use control.html to select preset');
                 } else {
                     console.error('[Revision] Milkdrop renderer not initialized properly');
@@ -1213,25 +1280,23 @@ class RevisionAppV2 {
             case 'video':
                 this.videoCanvas.style.display = 'block';
                 if (this.videoRenderer) {
-                    // Initialize camera if not already done
-                    if (!this.videoRenderer.isActive) {
-                        const savedCameraId = this.settings.get('videoDeviceId');
-                        await this.videoRenderer.initialize(savedCameraId);
+                    // Don't auto-initialize camera - let user select from dropdown
+                    // This avoids permission errors and camera conflicts
+                    if (this.videoRenderer.isActive) {
+                        // If already active, resize and start
+                        const isFullscreen = !!document.fullscreenElement;
+                        const w = window.innerWidth;
+                        const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
+                        this.videoRenderer.resize(w, h);
+                        this.videoRenderer.start();
+                        console.log('[Video] Renderer started - webcam feed active');
+                    } else {
+                        console.log('[Video] Ready - select camera in control.html to start');
                     }
-
-                    // Resize to fit canvas container
-                    const isFullscreen = !!document.fullscreenElement;
-                    const w = window.innerWidth;
-                    const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
-                    this.videoRenderer.resize(w, h);
-
-                    // Start rendering
-                    this.videoRenderer.start();
-                    console.log('[Video] Renderer started - webcam feed active');
                 } else {
                     console.error('[Revision] Video renderer not initialized');
                 }
-                this.enableSceneButtons(false, 'Video mode - audio-reactive webcam');
+                this.enableSceneButtons(false, 'Video mode - select camera in control.html');
                 break;
         }
 
@@ -1243,6 +1308,15 @@ class RevisionAppV2 {
 
         // Broadcast state update
         this.broadcastState();
+
+        // Explicitly send preset list when switching to milkdrop
+        if (type === 'milkdrop' && this.milkdropPresetKeys) {
+            this.controlChannel.postMessage({
+                type: 'presetList',
+                data: this.milkdropPresetKeys
+            });
+            console.log('[Revision] Sent preset list to control.html:', this.milkdropPresetKeys.length, 'presets');
+        }
 
         console.log('[Revision] Switched to preset type:', type);
     }
