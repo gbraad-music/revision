@@ -128,7 +128,16 @@
     <div class="section">
         <h2><span class="status" id="connection-status"></span>Connection</h2>
         <div class="info">Connected to main tab via BroadcastChannel</div>
-        <div class="info" style="margin-top: 5px;">Current Mode: <span id="current-mode" style="color: #0066FF;">-</span></div>
+        <div class="info" style="margin-top: 5px;">Mode: <span id="current-mode" style="color: #0066FF;">-</span></div>
+        <div class="info" style="margin-top: 5px;">BPM: <span id="current-bpm" style="color: #0066FF;">-</span> | Position: <span id="current-position" style="color: #0066FF;">-</span></div>
+    </div>
+
+    <div class="section">
+        <h2>Audio Input</h2>
+        <select id="audio-device-select">
+            <option value="none">No Audio Input</option>
+        </select>
+        <div class="info">Select microphone or audio input device</div>
     </div>
 
     <div class="section">
@@ -140,7 +149,7 @@
         </div>
     </div>
 
-    <div class="section">
+    <div class="section" id="builtin-section" style="display: none;">
         <h2>Built-in Scenes</h2>
         <div class="button-grid">
             <button onclick="sendCommand('switchScene', 0)" id="scene-0">Scene 1<br><small>Tunnel</small></button>
@@ -150,7 +159,7 @@
         </div>
     </div>
 
-    <div class="section">
+    <div class="section" id="milkdrop-section" style="display: none;">
         <h2>Milkdrop Presets</h2>
         <div class="button-grid">
             <button onclick="sendCommand('milkdropPrev')">◀ Previous</button>
@@ -204,6 +213,20 @@
             // Update connection status
             document.getElementById('connection-status').classList.add('connected');
 
+            // Update BPM and position
+            if (state.bpm !== undefined) {
+                document.getElementById('current-bpm').textContent = state.bpm;
+            }
+            if (state.position !== undefined) {
+                document.getElementById('current-position').textContent = state.position;
+            }
+
+            // Update audio device selection
+            if (state.audioDeviceId !== undefined) {
+                const audioSelect = document.getElementById('audio-device-select');
+                audioSelect.value = state.audioDeviceId;
+            }
+
             // Update current mode
             if (state.mode) {
                 document.getElementById('current-mode').textContent = state.mode;
@@ -216,6 +239,13 @@
                         btn.style.borderColor = mode === state.mode ? '#0088FF' : '#3a3a3a';
                     }
                 });
+
+                // Show/hide mode-specific sections
+                const builtinSection = document.getElementById('builtin-section');
+                const milkdropSection = document.getElementById('milkdrop-section');
+
+                builtinSection.style.display = state.mode === 'builtin' ? 'block' : 'none';
+                milkdropSection.style.display = state.mode === 'milkdrop' ? 'block' : 'none';
             }
 
             // Update active scene
@@ -330,6 +360,33 @@
             });
         }
 
+        // Audio device selection
+        document.getElementById('audio-device-select').addEventListener('change', (e) => {
+            sendCommand('audioDeviceSelect', e.target.value);
+        });
+
+        // Populate audio devices
+        async function loadAudioDevices() {
+            const select = document.getElementById('audio-device-select');
+            select.innerHTML = '<option value="none">No Audio Input</option>';
+
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(device => device.kind === 'audioinput');
+
+                audioInputs.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.textContent = device.label || `Microphone ${index + 1}`;
+                    select.appendChild(option);
+                });
+
+                console.log('[Control] Found', audioInputs.length, 'audio devices');
+            } catch (error) {
+                console.log('[Control] Failed to enumerate audio devices:', error.message);
+            }
+        }
+
         // Request initial state from main tab
         setTimeout(() => {
             sendCommand('requestState');
@@ -338,6 +395,7 @@
         // Initialize
         initMIDI();
         loadPresets();
+        loadAudioDevices();
     </script>
 </body>
 </html>

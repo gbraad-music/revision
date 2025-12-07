@@ -35,6 +35,10 @@ class RevisionAppV2 {
         // BroadcastChannel for control.html communication
         this.controlChannel = new BroadcastChannel('revision-control');
 
+        // Broadcast state periodically
+        this.lastBroadcastTime = 0;
+        this.lastSPPWarningTime = 0;
+
         // State
         this.currentBPM = 120;
         this.currentPosition = 0;
@@ -217,9 +221,9 @@ class RevisionAppV2 {
         }
 
         // Initialize Audio input (if enabled)
-        const audioEnabled = this.settings.get('audioInput');
-        if (audioEnabled === 'microphone') {
-            await this.enableAudioInput();
+        const audioDeviceId = this.settings.get('audioInputDeviceId');
+        if (audioDeviceId) {
+            await this.enableAudioInput(audioDeviceId);
         }
 
         // Initialize OSC (optional)
@@ -296,6 +300,15 @@ class RevisionAppV2 {
                         this.loadMilkdropPreset(data);
                     }
                     break;
+                case 'audioDeviceSelect':
+                    if (data === 'none') {
+                        this.disableAudioInput();
+                        this.settings.set('audioInputDeviceId', '');
+                    } else {
+                        this.settings.set('audioInputDeviceId', data);
+                        this.enableAudioInput(data);
+                    }
+                    break;
                 case 'requestState':
                     this.broadcastState();
                     break;
@@ -304,9 +317,16 @@ class RevisionAppV2 {
     }
 
     broadcastState() {
+        const bar = Math.floor(this.currentPosition / 16);
+        const beat = Math.floor((this.currentPosition % 16) / 4);
+        const sixteenth = Math.floor(this.currentPosition % 4);
+
         const state = {
             mode: this.currentPresetType,
             scene: this.currentScene,
+            bpm: this.currentBPM,
+            position: `${bar}.${beat}.${sixteenth}`,
+            audioDeviceId: this.settings.get('audioInputDeviceId') || 'none',
             presetName: this.currentPresetType === 'milkdrop' && this.milkdropPresetKeys
                 ? this.milkdropPresetKeys[this.currentMilkdropIndex]
                 : '-'
@@ -326,7 +346,7 @@ class RevisionAppV2 {
         }
     }
 
-    async enableAudioInput() {
+    async enableAudioInput(deviceId = null) {
         if (!this.audioSource) {
             this.audioSource = new AudioInputSource();
             await this.audioSource.initialize(
@@ -334,20 +354,24 @@ class RevisionAppV2 {
             );
         }
 
-        const success = await this.audioSource.connectMicrophone();
+        const success = await this.audioSource.connectMicrophone(deviceId);
         if (success) {
             this.inputManager.registerSource('audio', this.audioSource);
             this.audioIndicator.classList.add('connected');
             this.audioIndicator.style.backgroundColor = '#0066FF';
             this.audioIndicator.style.boxShadow = '0 0 8px #0066FF';
 
-            // Connect to Milkdrop if active
-            if (this.milkdropRenderer && this.milkdropRenderer.isInitialized && this.audioSource.analyser) {
+            // Connect to Milkdrop ONLY if Milkdrop is the active mode
+            if (this.currentPresetType === 'milkdrop' &&
+                this.milkdropRenderer &&
+                this.milkdropRenderer.isInitialized &&
+                this.audioSource.analyser) {
                 this.milkdropRenderer.connectAudioSource(this.audioSource.analyser);
-                console.log('[Revision] Audio connected to Milkdrop');
+                console.log('[Revision] Audio connected to Milkdrop renderer');
             }
 
-            console.log('[Revision] Audio input enabled');
+            const deviceInfo = deviceId ? `device: ${deviceId.substring(0, 8)}...` : 'default device';
+            console.log('[Revision] Audio input enabled:', deviceInfo);
         }
 
         return success;
@@ -553,6 +577,7 @@ class RevisionAppV2 {
         const estimatedSixteenths = timeSinceUpdate * sixteenthsPerMs;
 
         const interpolatedPosition = this.lastMIDIPosition + estimatedSixteenths;
+        this.currentPosition = interpolatedPosition;
 
         const sixteenthsPerBeat = 4;
         const beatsPerBar = 4;
@@ -562,6 +587,33 @@ class RevisionAppV2 {
 
         this.beatPhase = beatPosition;
         this.barPhase = barPosition;
+
+        // Update position display continuously
+        if (this.positionDisplay) {
+            const bar = Math.floor(this.currentPosition / 16);
+            const beat = Math.floor((this.currentPosition % 16) / 4);
+            const sixteenth = Math.floor(this.currentPosition % 4);
+
+            // Show if position is from SPP or just Clock interpolation
+            const timeSinceLastSPP = this.midiSource ? (now - (this.midiSource.lastSPPTime || 0)) : Infinity;
+            const positionSource = timeSinceLastSPP < 5000 ? '' : ' (Clock only - NO SPP!)';
+
+            this.positionDisplay.textContent = `${bar}.${beat}.${sixteenth}${positionSource}`;
+
+            // Warn in console if no SPP for 10 seconds
+            if (!this.lastSPPWarningTime || now - this.lastSPPWarningTime > 10000) {
+                if (timeSinceLastSPP > 10000 && timeSinceLastSPP < Infinity) {
+                    console.warn('[Revision] ⚠️ No SPP received for', Math.floor(timeSinceLastSPP / 1000), 'seconds - position may drift!');
+                    this.lastSPPWarningTime = now;
+                }
+            }
+        }
+
+        // Broadcast state to control.html every 100ms
+        if (now - this.lastBroadcastTime > 100) {
+            this.broadcastState();
+            this.lastBroadcastTime = now;
+        }
 
         // Only update built-in renderer if in builtin mode
         if (this.currentPresetType === 'builtin') {
@@ -621,13 +673,15 @@ class RevisionAppV2 {
 
         // Settings - Audio input
         document.getElementById('audio-input-select').addEventListener('change', async (e) => {
-            const audioInput = e.target.value;
-            this.settings.set('audioInput', audioInput);
+            const deviceId = e.target.value;
 
-            if (audioInput === 'microphone') {
-                await this.enableAudioInput();
-            } else {
+            if (deviceId === 'none') {
                 this.disableAudioInput();
+                this.settings.set('audioInputDeviceId', '');
+            } else {
+                // Store selected device ID
+                this.settings.set('audioInputDeviceId', deviceId);
+                await this.enableAudioInput(deviceId);
             }
         });
 
@@ -673,7 +727,33 @@ class RevisionAppV2 {
     }
 
     loadMilkdropPreset(index) {
-        if (!this.milkdropPresetKeys || !this.milkdropRenderer) return;
+        if (!this.milkdropRenderer) {
+            console.warn('[Milkdrop] Renderer not available');
+            return;
+        }
+
+        // Initialize preset keys if not already done
+        if (!this.milkdropPresetKeys || this.milkdropPresetKeys.length === 0) {
+            const allPresets = butterchurnPresets.getPresets();
+            const allPresetKeys = Object.keys(allPresets);
+
+            // Use playlist from config if available
+            if (this.presetConfig && this.presetConfig.milkdrop && this.presetConfig.milkdrop.playlist) {
+                const playlist = this.presetConfig.milkdrop.playlist;
+                this.milkdropPresetKeys = playlist.filter(name => allPresetKeys.includes(name));
+
+                // If playlist is empty or filtered out everything, use all presets
+                if (this.milkdropPresetKeys.length === 0) {
+                    console.warn('[Milkdrop] Playlist empty or invalid, using all presets');
+                    this.milkdropPresetKeys = allPresetKeys;
+                }
+            } else {
+                this.milkdropPresetKeys = allPresetKeys;
+            }
+
+            console.log('[Milkdrop] Initialized with', this.milkdropPresetKeys.length, 'presets');
+            this.currentMilkdropIndex = 0;
+        }
 
         // Clamp index
         index = Math.max(0, Math.min(index, this.milkdropPresetKeys.length - 1));
@@ -681,11 +761,21 @@ class RevisionAppV2 {
 
         const key = this.milkdropPresetKeys[this.currentMilkdropIndex];
         const presets = butterchurnPresets.getPresets();
-        this.milkdropRenderer.loadPreset(presets[key]);
-        console.log('[Milkdrop] Loaded preset', this.currentMilkdropIndex + 1, '/', this.milkdropPresetKeys.length, ':', key);
+        const preset = presets[key];
 
-        // Broadcast state update
-        this.broadcastState();
+        if (!preset) {
+            console.error('[Milkdrop] Preset not found for key:', key);
+            console.error('[Milkdrop] Index:', index, 'Keys length:', this.milkdropPresetKeys.length);
+            console.error('[Milkdrop] First 10 available keys:', Object.keys(presets).slice(0, 10));
+            return;
+        }
+
+        const success = this.milkdropRenderer.loadPreset(preset);
+        if (success) {
+            console.log('[Milkdrop] Loaded preset', this.currentMilkdropIndex + 1, '/', this.milkdropPresetKeys.length, ':', key);
+            // Broadcast state update
+            this.broadcastState();
+        }
     }
 
     async loadPresetConfig() {
@@ -763,19 +853,21 @@ class RevisionAppV2 {
             case 'threejs':
                 this.threejsCanvas.style.display = 'block';
                 if (this.threeJSRenderer) {
-                    // Force reflow to get proper dimensions
+                    // Force reflow
                     this.threejsCanvas.offsetHeight;
-                    const w = this.threejsCanvas.clientWidth || window.innerWidth;
-                    const h = this.threejsCanvas.clientHeight || (window.innerHeight - 120);
-                    console.log('[ThreeJS] Canvas size:', w, 'x', h);
-                    console.log('[ThreeJS] Canvas visible:', this.threejsCanvas.style.display);
-                    console.log('[ThreeJS] Renderer exists:', !!this.threeJSRenderer.renderer);
-                    console.log('[ThreeJS] Scene objects:', this.threeJSRenderer.objects.length);
-                    console.log('[ThreeJS] Camera position:', this.threeJSRenderer.camera.position);
-                    console.log('[ThreeJS] Debug info:', this.threeJSRenderer.getDebugInfo());
+
+                    // Use actual window dimensions
+                    const isFullscreen = !!document.fullscreenElement;
+                    const w = window.innerWidth;
+                    const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
+
                     this.threeJSRenderer.resize(w, h);
                     this.threeJSRenderer.start();
-                    console.log('[ThreeJS] Started, isAnimating:', this.threeJSRenderer.isAnimating);
+
+                    // Check if audio input is enabled
+                    if (!this.audioSource || !this.audioSource.isActive) {
+                        console.warn('[ThreeJS] Enable Audio Input (microphone) in Settings for audio reactivity');
+                    }
                 } else {
                     console.error('[Revision] Three.js renderer not initialized');
                 }
@@ -784,14 +876,12 @@ class RevisionAppV2 {
             case 'milkdrop':
                 this.milkdropCanvas.style.display = 'block';
                 if (this.milkdropRenderer && this.milkdropRenderer.isInitialized) {
+                    console.log('[Milkdrop] Starting renderer...');
+
                     // Force reflow
                     this.milkdropCanvas.offsetHeight;
                     const w = this.milkdropCanvas.clientWidth || window.innerWidth;
                     const h = this.milkdropCanvas.clientHeight || window.innerHeight - 120;
-                    console.log('[Milkdrop] Canvas size:', w, 'x', h);
-                    console.log('[Milkdrop] Canvas visible:', this.milkdropCanvas.style.display);
-                    console.log('[Milkdrop] Visualizer exists:', !!this.milkdropRenderer.visualizer);
-                    console.log('[Milkdrop] Is initialized:', this.milkdropRenderer.isInitialized);
 
                     this.milkdropRenderer.resize(w, h);
 
@@ -805,18 +895,21 @@ class RevisionAppV2 {
                         }
                     }
 
+                    // Start rendering IMMEDIATELY
                     this.milkdropRenderer.start();
+                    console.log('[Milkdrop] Renderer started - loading preset in background');
 
-                    // Load first preset
-                    if (this.milkdropPresetKeys && this.milkdropPresetKeys.length > 0) {
-                        this.loadMilkdropPreset(0);
-                        console.log('[Milkdrop]', this.milkdropPresetKeys.length, 'presets - use MIDI CC1 (mod wheel) to browse');
-                    }
-                    console.log('[Milkdrop] Started');
+                    // Load preset in next frame to avoid blocking UI
+                    requestAnimationFrame(() => {
+                        if (this.milkdropPresetKeys && this.milkdropPresetKeys.length > 0) {
+                            const startTime = performance.now();
+                            this.loadMilkdropPreset(0);
+                            const loadTime = performance.now() - startTime;
+                            console.log('[Milkdrop] Preset loaded in', loadTime.toFixed(0), 'ms');
+                        }
+                    });
                 } else {
                     console.error('[Revision] Milkdrop renderer not initialized properly');
-                    console.error('[Revision] Renderer exists:', !!this.milkdropRenderer);
-                    console.error('[Revision] Is initialized:', this.milkdropRenderer ? this.milkdropRenderer.isInitialized : 'N/A');
                     // Fallback to builtin
                     this.builtinCanvas.style.display = 'block';
                     this.milkdropCanvas.style.display = 'none';
@@ -915,16 +1008,24 @@ class RevisionAppV2 {
         });
     }
 
-    openSettings() {
+    async openSettings() {
         this.settingsModal.classList.add('active');
         this.populateMIDIDevices();
+        await this.populateAudioDevices();
 
         // Load current settings
         document.getElementById('renderer-select').value = this.settings.get('renderer') || 'webgl';
         document.getElementById('osc-server').value = this.settings.get('oscServer') || '';
-        document.getElementById('audio-input-select').value = this.settings.get('audioInput') || 'none';
         document.getElementById('preset-type-select').value = this.settings.get('presetType') || 'builtin';
         document.getElementById('sysex-enable').value = this.settings.get('enableSysEx') || 'true';
+
+        // Set audio input value
+        const currentAudio = this.settings.get('audioInputDeviceId');
+        if (currentAudio) {
+            document.getElementById('audio-input-select').value = currentAudio;
+        } else {
+            document.getElementById('audio-input-select').value = 'none';
+        }
 
         // Update mobile info
         if (this.mobileCompat.isMobile) {
@@ -958,6 +1059,33 @@ class RevisionAppV2 {
         const currentId = this.settings.get('midiInputId');
         if (currentId) {
             select.value = currentId;
+        }
+    }
+
+    async populateAudioDevices() {
+        const select = document.getElementById('audio-input-select');
+        select.innerHTML = '<option value="none">No Audio Input</option>';
+
+        try {
+            // Enumerate audio input devices
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter(device => device.kind === 'audioinput');
+
+            if (audioInputs.length === 0) {
+                console.warn('[Revision] No audio input devices found');
+                return;
+            }
+
+            audioInputs.forEach((device, index) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.textContent = device.label || `Microphone ${index + 1}`;
+                select.appendChild(option);
+            });
+
+            console.log('[Revision] Found', audioInputs.length, 'audio input devices');
+        } catch (error) {
+            console.error('[Revision] Failed to enumerate audio devices:', error);
         }
     }
 

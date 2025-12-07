@@ -245,12 +245,46 @@ class ThreeJSRenderer {
     handleFrequency(data) {
         this.frequencyBands = data.bands;
 
-        // React to frequency bands
-        // Example: bass affects particle movement
-        if (data.bands.bass) {
-            for (const obj of this.objects) {
-                if (obj.userData.type === 'particles') {
-                    obj.rotation.y += data.bands.bass * 0.1;
+        // React to frequency bands - STRONG audio reactivity
+        if (!data.bands) return;
+
+        const bass = data.bands.bass || 0;
+        const mid = data.bands.mid || 0;
+        const high = data.bands.high || 0;
+
+        // Debug: Log once per second
+        if (!this.lastFreqDebugTime || performance.now() - this.lastFreqDebugTime > 1000) {
+            if (bass > 0 || mid > 0 || high > 0) {
+                console.log('[ThreeJS] Frequency - Bass:', bass.toFixed(2), 'Mid:', mid.toFixed(2), 'High:', high.toFixed(2));
+            }
+            this.lastFreqDebugTime = performance.now();
+        }
+
+        // Bass affects scale
+        for (const obj of this.objects) {
+            if (obj.userData.type === 'beatReactive') {
+                const baseScale = obj.userData.baseScale || 1;
+                const scale = baseScale + bass * 3.0; // Strong bass reaction
+                obj.scale.setScalar(scale);
+            }
+
+            // Mid affects rotation
+            if (obj.userData.type === 'particles') {
+                obj.rotation.y += mid * 0.3;
+                obj.rotation.x += high * 0.2;
+            }
+        }
+
+        // Lights react to audio
+        for (const light of this.lights) {
+            if (light.userData.beatReactive) {
+                // Bass affects intensity
+                light.intensity = 1 + bass * 8;
+
+                // Mid affects color
+                if (light instanceof THREE.PointLight) {
+                    const hue = mid * 360;
+                    light.color.setHSL(hue / 360, 1.0, 0.5);
                 }
             }
         }
@@ -343,11 +377,19 @@ class ThreeJSRenderer {
     resize(width, height) {
         if (!this.isInitialized) return;
 
+        // Set canvas size explicitly
+        this.canvas.width = width;
+        this.canvas.height = height;
+        this.canvas.style.width = width + 'px';
+        this.canvas.style.height = height + 'px';
+
+        // Update Three.js renderer
         this.renderer.setSize(width, height, false);
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
 
-        console.log('[ThreeJS] Resized to:', width, 'x', height);
+        console.log('[ThreeJS] Resized canvas to:', width, 'x', height);
+        console.log('[ThreeJS] Canvas actual size:', this.canvas.width, 'x', this.canvas.height);
     }
 
     destroy() {

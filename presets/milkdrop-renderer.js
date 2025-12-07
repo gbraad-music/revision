@@ -176,8 +176,19 @@ class MilkdropRenderer {
         }
 
         try {
+            console.log('[Milkdrop] Connecting audio node:', audioNode);
+            console.log('[Milkdrop] Audio node type:', audioNode.constructor.name);
+            console.log('[Milkdrop] Audio context:', audioNode.context);
+            console.log('[Milkdrop] Audio context state:', audioNode.context.state);
+
             this.visualizer.connectAudio(audioNode);
-            console.log('[Milkdrop] Audio source connected');
+            console.log('[Milkdrop] ✓ Audio source connected successfully');
+
+            // Test: Create a test tone to verify audio path works
+            if (audioNode.context.state === 'suspended') {
+                console.warn('[Milkdrop] AudioContext is SUSPENDED - user interaction may be needed');
+            }
+
             return true;
         } catch (error) {
             console.error('[Milkdrop] Failed to connect audio:', error);

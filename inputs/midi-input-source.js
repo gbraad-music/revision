@@ -91,6 +91,24 @@ class MIDIInputSource {
         const command = status & 0xF0;
         const channel = status & 0x0F;
 
+        // Debug: Log all System Real-Time messages
+        if (status >= 0xF0) {
+            if (!this.lastMidiDebugTime || performance.now() - this.lastMidiDebugTime > 2000) {
+                const messageTypes = {
+                    0xF0: 'SysEx Start',
+                    0xF2: 'SPP',
+                    0xF7: 'SysEx End',
+                    0xF8: 'Clock',
+                    0xFA: 'Start',
+                    0xFB: 'Continue',
+                    0xFC: 'Stop'
+                };
+                console.log('[MIDIInput] Received:', messageTypes[status] || `0x${status.toString(16)}`,
+                    status === 0xF2 ? `Position: ${(data2 << 7) | data1}` : '');
+                this.lastMidiDebugTime = performance.now();
+            }
+        }
+
         // System Exclusive (SysEx) messages
         if (status === 0xF0) {
             // Start of SysEx
@@ -331,7 +349,7 @@ class MIDIInputSource {
         const newPosition = (msb << 7) | lsb;
         const now = performance.now();
 
-        console.log('[MIDIInput] SPP:', newPosition);
+        console.log('[MIDIInput] ►►► SPP RECEIVED ◄◄◄ Position:', newPosition, 'LSB:', lsb, 'MSB:', msb);
 
         // Calculate BPM from SPP changes
         if (this.lastSPPTime > 0) {
