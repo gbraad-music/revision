@@ -229,16 +229,12 @@
         }
 
         /* Canvas fade transitions for mode switching */
+        /* Note: Milkdrop excluded - it has built-in crossfade */
         #builtin-canvas,
         #threejs-canvas,
         #video-canvas,
         #media-canvas {
             transition: opacity 0.5s ease-in-out;
-        }
-
-        /* Milkdrop has NO opacity transition - it uses built-in crossfade */
-        #milkdrop-canvas {
-            transition: none !important;
         }
     </style>
 </head>
@@ -257,11 +253,15 @@
 
     <!-- Canvas for each renderer mode -->
     <div id="canvas-container" style="position: fixed; top: 40px; left: 0; right: 0; bottom: 80px; width: 100%; height: calc(100vh - 120px);">
-        <canvas id="builtin-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
-        <canvas id="threejs-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none;"></canvas>
-        <canvas id="milkdrop-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none;"></canvas>
-        <canvas id="video-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none;"></canvas>
-        <canvas id="media-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none;"></canvas>
+        <canvas id="builtin-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;"></canvas>
+
+        <!-- Black screen layer - prevents WebGL showing through during transitions -->
+        <div id="black-screen" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: #000; pointer-events: none; z-index: 2;"></div>
+
+        <canvas id="threejs-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; z-index: 3;"></canvas>
+        <canvas id="milkdrop-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; z-index: 3;"></canvas>
+        <canvas id="video-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; z-index: 3;"></canvas>
+        <canvas id="media-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; z-index: 3;"></canvas>
 
         <!-- Fullscreen drop zone overlay (only visible when dragging) -->
         <div id="fullscreen-drop-zone" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 102, 255, 0.1); border: 4px dashed #0066FF; display: none; pointer-events: none; z-index: 9999; align-items: center; justify-content: center;">
@@ -298,7 +298,7 @@
     <script type="importmap">
     {
         "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js"
+            "three": "./external/three.module.js"
         }
     }
     </script>
@@ -308,9 +308,9 @@
         window.THREE = THREE;
     </script>
 
-    <!-- Butterchurn for Milkdrop presets -->
-    <script src="https://unpkg.com/butterchurn@latest/lib/butterchurn.min.js"></script>
-    <script src="https://unpkg.com/butterchurn-presets@latest/lib/butterchurnPresets.min.js"></script>
+    <!-- Butterchurn for Milkdrop presets (local files) -->
+    <script src="external/butterchurn.min.js"></script>
+    <script src="external/butterchurnPresets.min.js"></script>
 
     <!-- Core Scripts -->
     <script src="utils/library-loader.js"></script>

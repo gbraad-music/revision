@@ -30,6 +30,7 @@ class RevisionAppV2 {
         this.milkdropCanvas = document.getElementById('milkdrop-canvas');
         this.videoCanvas = document.getElementById('video-canvas');
         this.mediaCanvas = document.getElementById('media-canvas');
+        this.blackScreen = document.getElementById('black-screen');
         this.midiIndicator = document.getElementById('midi-indicator');
         this.audioIndicator = document.getElementById('audio-indicator');
         this.bpmDisplay = document.getElementById('bpm-display');
@@ -621,21 +622,16 @@ class RevisionAppV2 {
         this.milkdropCanvas.style.display = 'none';
         this.videoCanvas.style.display = 'none';
 
-        // Load last preset type and scene
-        const lastPresetType = this.settings.get('presetType') || 'builtin';
+        // ALWAYS start with BLACK SCREEN for instant startup
+        // User switches to desired mode via control.html "GO TO PROGRAM"
         const lastScene = this.settings.get('lastScene') || 0;
         this.currentScene = lastScene;
 
-        console.log('[Revision] Loading last preset type:', lastPresetType);
+        console.log('[Revision] Starting with black screen - ready for GO TO PROGRAM');
 
-        if (lastPresetType !== 'builtin') {
-            await this.switchPresetType(lastPresetType);
-        } else {
-            this.builtinCanvas.style.display = 'block';
-            this.renderer.start();
-            this.presetManager.switchPreset(`builtin-${['tunnel', 'particles', 'kaleidoscope', 'waveform'][lastScene]}`);
-            this.updateSceneButtons(lastScene);
-        }
+        // Show black-screen, keep all canvases hidden
+        this.blackScreen.style.display = 'block';
+        this.currentPresetType = null; // No mode active yet
 
         // Start beat interpolation
         this.interpolateBeat();
@@ -1706,8 +1702,20 @@ class RevisionAppV2 {
     }
 
     async switchPresetType(type) {
+        const previousType = this.currentPresetType;
         this.currentPresetType = type;
         this.settings.set('presetType', type);
+
+        // If staying in same mode, check if we need to fade or not
+        // Media mode: ALWAYS fade (loading new image/video)
+        // Video mode: ALWAYS fade (might be switching cameras)
+        // Milkdrop: NO fade (preset changes handled by loadMilkdropPreset with internal crossfade)
+        // Builtin: NO fade (scene changes handled by switchScene)
+        // ThreeJS: NO fade (no sub-modes)
+        if (previousType === type && type !== 'media' && type !== 'video') {
+            console.log('[Revision] Already in', type, 'mode - no transition needed');
+            return;
+        }
 
         // Check if libraries need to be loaded
         let libraryNeeded = null;
@@ -1763,7 +1771,12 @@ class RevisionAppV2 {
             this.mediaRenderer.stop();
         }
 
-        // Fade out current canvas before switching
+        // Stop all renderers
+        this.renderer.stop();
+        if (this.threeJSRenderer) this.threeJSRenderer.stop();
+        if (this.milkdropRenderer) this.milkdropRenderer.stop();
+
+        // Find current visible canvas
         const canvases = [
             this.builtinCanvas,
             this.threejsCanvas,
@@ -1776,30 +1789,41 @@ class RevisionAppV2 {
             canvas && canvas.style.display !== 'none'
         );
 
-        // Fade out current canvas (except milkdrop which has no opacity transition)
-        if (currentCanvas && currentCanvas !== this.milkdropCanvas) {
+        // Fade out current canvas
+        if (currentCanvas) {
             currentCanvas.style.opacity = '0';
-            await new Promise(resolve => setTimeout(resolve, 500)); // Wait for CSS transition
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
 
-        // Hide all canvases
+        // Hide all canvases (except the one we're about to show)
         this.builtinCanvas.style.display = 'none';
         this.threejsCanvas.style.display = 'none';
         this.milkdropCanvas.style.display = 'none';
         this.videoCanvas.style.display = 'none';
         this.mediaCanvas.style.display = 'none';
 
+        // Manage black-screen visibility
+        // Black-screen is only used during transitions to hide builtin canvas
+        // It should NOT be visible while renderers are actively running
+        // We'll show it briefly during fade-out, then hide it after mode switch completes
+        this.blackScreen.style.display = 'block';
+
         // Switch to appropriate preset
         switch (type) {
             case 'builtin':
                 this.builtinCanvas.style.display = 'block';
                 this.builtinCanvas.style.opacity = '0';
+                this.renderer.resize(); // Force canvas to proper dimensions
                 this.renderer.start();
                 this.presetManager.switchPreset('builtin-tunnel');
                 this.enableSceneButtons(true);
                 // Fade in
                 setTimeout(() => {
                     this.builtinCanvas.style.opacity = '1';
+                    // Hide black-screen after fade completes
+                    setTimeout(() => {
+                        this.blackScreen.style.display = 'none';
+                    }, 500);
                 }, 50);
                 console.log('[Revision] Built-in canvas visible, renderer started');
                 break;
@@ -1825,7 +1849,7 @@ class RevisionAppV2 {
                 } else {
                     console.error('[Revision] Three.js renderer not initialized');
                 }
-                // Fade in
+                // Fade in (black-screen stays visible to block WebGL)
                 setTimeout(() => {
                     this.threejsCanvas.style.opacity = '1';
                 }, 50);
@@ -1833,6 +1857,9 @@ class RevisionAppV2 {
                 break;
             case 'milkdrop':
                 this.milkdropCanvas.style.display = 'block';
+                // Add transition temporarily for mode switch fade only
+                this.milkdropCanvas.style.transition = 'opacity 0.5s ease-in-out';
+                this.milkdropCanvas.style.opacity = '0';
                 if (this.milkdropRenderer && this.milkdropRenderer.isInitialized) {
                     console.log('[Milkdrop] Starting renderer...');
 
@@ -1893,6 +1920,14 @@ class RevisionAppV2 {
                     this.renderer.start();
                     this.currentPresetType = 'builtin';
                 }
+                // Fade in (black-screen stays visible to block WebGL)
+                setTimeout(() => {
+                    this.milkdropCanvas.style.opacity = '1';
+                    // Remove transition after fade completes to avoid interfering with Butterchurn's internal crossfade
+                    setTimeout(() => {
+                        this.milkdropCanvas.style.transition = '';
+                    }, 500);
+                }, 50);
                 this.enableSceneButtons(false, 'Milkdrop - MIDI CC1 controls preset');
                 break;
             case 'video':
@@ -1920,7 +1955,7 @@ class RevisionAppV2 {
                 } else {
                     console.error('[Revision] Video renderer not initialized');
                 }
-                // Fade in
+                // Fade in (black-screen stays visible to block WebGL)
                 setTimeout(() => {
                     this.videoCanvas.style.opacity = '1';
                 }, 50);
@@ -1945,7 +1980,7 @@ class RevisionAppV2 {
                 } else {
                     console.error('[Revision] Media renderer not initialized');
                 }
-                // Fade in
+                // Fade in (black-screen stays visible to block WebGL)
                 setTimeout(() => {
                     this.mediaCanvas.style.opacity = '1';
                 }, 50);
