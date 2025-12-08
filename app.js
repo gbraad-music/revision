@@ -1029,6 +1029,49 @@ class RevisionAppV2 {
                 // toggleFullscreen removed - fullscreen requires user gesture in main window
                 // User should press F11 to enter/exit fullscreen mode
                 // control.html displays read-only fullscreen status
+                case 'reloadPreset':
+                    console.log('[BroadcastChannel] Reload Preset:', data);
+                    if (data && data.key && data.className && data.code) {
+                        try {
+                            // Remove old script if exists
+                            const oldScript = document.querySelector(`script[data-preset="${data.key}"]`);
+                            if (oldScript) {
+                                oldScript.remove();
+                                console.log('[Revision] Removed old script for:', data.key);
+                            }
+
+                            // Delete old class from window
+                            if (window[data.className]) {
+                                delete window[data.className];
+                                console.log('[Revision] Deleted old class:', data.className);
+                            }
+
+                            // Create new script with code
+                            const script = document.createElement('script');
+                            script.setAttribute('data-preset', data.key);
+                            script.textContent = data.code;
+                            document.head.appendChild(script);
+
+                            console.log('[Revision] ✓ Loaded new preset code');
+
+                            // Re-register if Three.js renderer exists
+                            if (this.threeJSRenderer && window[data.className]) {
+                                this.threeJSRenderer.registerPreset(data.key, window[data.className]);
+                                console.log('[Revision] ✓ Registered preset:', data.key);
+
+                                // Reload if currently showing this preset
+                                if (this.currentPresetType === 'threejs') {
+                                    console.log('[Revision] Reloading current preset on main display...');
+                                    this.threeJSRenderer.loadPreset(data.key);
+                                }
+                            }
+
+                            console.log('[Revision] ✓ Preset reloaded without page refresh!');
+                        } catch (error) {
+                            console.error('[Revision] Failed to reload preset:', error);
+                        }
+                    }
+                    break;
                 case 'requestState':
                     this.broadcastState();
                     // Also send preset list if available
@@ -2125,7 +2168,8 @@ class RevisionAppV2 {
         const presetMap = {
             'geometric': { file: 'presets/threejs/GeometricShapes.js', className: 'GeometricShapesPreset' },
             'particles': { file: 'presets/threejs/Particles.js', className: 'ParticlesPreset' },
-            'tunnel': { file: 'presets/threejs/Tunnel.js', className: 'TunnelPreset' }
+            'tunnel': { file: 'presets/threejs/Tunnel.js', className: 'TunnelPreset' },
+            'gblogo': { file: 'presets/threejs/GBLogo.js', className: 'GBLogoPreset' }
         };
         return presetMap[presetName];
     }
