@@ -947,22 +947,19 @@ class RevisionAppV2 {
                 case 'mediaLoad':
                     console.log('[BroadcastChannel] Media Load:', data);
                     if (this.mediaRenderer && data.url && data.type) {
-                        this.mediaRenderer.loadMedia(data.url, data.type, {
+                        // Store pending media data - will be loaded AFTER fade completes
+                        this.pendingMediaLoad = {
+                            url: data.url,
+                            type: data.type,
                             loop: data.loop,
                             fitMode: data.fitMode
-                        });
+                        };
 
-                        // CRITICAL: Apply saved reactive settings after loading media
-                        const audioReactive = this.settings.get('mediaAudioReactive') === 'true';
-                        const beatReactive = this.settings.get('mediaBeatReactive') === 'true';
-                        this.mediaRenderer.audioReactive = audioReactive;
-                        this.mediaRenderer.beatReactive = beatReactive;
-
-                        console.log('[Revision] ✓ Media file loaded - fitMode:', data.fitMode, 'audioReactive:', audioReactive, 'beatReactive:', beatReactive);
+                        // Switch to media mode (will trigger fade and load media after)
+                        this.switchPresetType('media');
                     } else {
                         console.error('[Revision] ✗ Invalid media data or renderer not available');
                     }
-                    this.broadcastState();
                     break;
                 case 'mediaAudioReactive':
                     console.log('[BroadcastChannel] Media Audio Reactive:', data);
@@ -1976,7 +1973,25 @@ class RevisionAppV2 {
                     const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
                     this.mediaRenderer.resize(w, h);
 
-                    console.log('[Media] Ready - media will be loaded via control.html');
+                    // Load pending media AFTER fade-out completes (if any)
+                    if (this.pendingMediaLoad) {
+                        console.log('[Media] Loading pending media:', this.pendingMediaLoad.url);
+                        this.mediaRenderer.loadMedia(this.pendingMediaLoad.url, this.pendingMediaLoad.type, {
+                            loop: this.pendingMediaLoad.loop,
+                            fitMode: this.pendingMediaLoad.fitMode
+                        });
+
+                        // Apply saved reactive settings
+                        const audioReactive = this.settings.get('mediaAudioReactive') === 'true';
+                        const beatReactive = this.settings.get('mediaBeatReactive') === 'true';
+                        this.mediaRenderer.audioReactive = audioReactive;
+                        this.mediaRenderer.beatReactive = beatReactive;
+
+                        console.log('[Media] ✓ Loaded - fitMode:', this.pendingMediaLoad.fitMode, 'audioReactive:', audioReactive, 'beatReactive:', beatReactive);
+                        this.pendingMediaLoad = null; // Clear pending
+                    } else {
+                        console.log('[Media] Ready - waiting for media file');
+                    }
                 } else {
                     console.error('[Revision] Media renderer not initialized');
                 }
