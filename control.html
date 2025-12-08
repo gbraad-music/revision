@@ -310,44 +310,88 @@
     </div>
 
     <div class="section">
-        <h2>Preset Mode</h2>
-        <div class="button-grid">
-            <button onclick="sendCommand('switchMode', 'builtin')" id="mode-builtin">Built-in</button>
-            <button onclick="sendCommand('switchMode', 'threejs')" id="mode-threejs">Three.js</button>
-            <button onclick="sendCommand('switchMode', 'milkdrop')" id="mode-milkdrop">Milkdrop</button>
-            <button onclick="sendCommand('switchMode', 'video')" id="mode-video">Video</button>
-        </div>
+        <h2>PROGRAM Output</h2>
+        <div class="info">Mode: <span id="current-mode-display" style="color: #0066FF; font-weight: bold;">-</span></div>
+        <div class="info" id="program-scene-display" style="margin-top: 5px; display: none;">Scene: <span id="program-scene-name" style="color: #0066FF; font-weight: bold;">-</span></div>
+        <div class="info" style="margin-top: 5px; color: #888;">Select options below and click GO TO PROGRAM to update main display</div>
     </div>
 
-    <div class="section" id="builtin-section" style="display: none;">
-        <h2>Built-in Scenes</h2>
-        <div class="button-grid">
-            <button onclick="sendCommand('switchScene', 0)" id="scene-0">Scene 1<br><small>Tunnel</small></button>
-            <button onclick="sendCommand('switchScene', 1)" id="scene-1">Scene 2<br><small>Particles</small></button>
-            <button onclick="sendCommand('switchScene', 2)" id="scene-2">Scene 3<br><small>Kaleidoscope</small></button>
-            <button onclick="sendCommand('switchScene', 3)" id="scene-3">Scene 4<br><small>Waveform</small></button>
+    <div class="section" id="builtin-section">
+        <h2>Built-in Scenes (Preview)</h2>
+
+        <!-- Program status -->
+        <div class="info" id="program-builtin-display" style="margin-bottom: 10px; display: none;">Program: <span id="program-builtin-name" style="color: #00ff00; font-weight: bold;">-</span></div>
+
+        <!-- Renderer Selection -->
+        <div class="info" id="program-renderer-display" style="margin-bottom: 10px; display: none;">Program Renderer: <span id="program-renderer-name" style="color: #00ff00; font-weight: bold;">-</span></div>
+
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">Staged Renderer Mode</label>
+        <select id="renderer-select" style="width: 100%; margin-bottom: 15px;">
+            <option value="webgl">WebGL (Recommended)</option>
+            <option value="canvas2d">Canvas 2D</option>
+        </select>
+
+        <!-- Preview Canvas -->
+        <div id="builtin-preview-container" style="margin-bottom: 15px; display: none;">
+            <div style="position: relative; background: #000; border: 2px solid #0066FF; border-radius: 4px; overflow: hidden;">
+                <canvas id="builtin-preview-canvas" style="width: 100%; height: auto; display: block;"></canvas>
+                <div style="position: absolute; top: 5px; left: 5px; background: rgba(0,102,255,0.8); color: white; padding: 3px 8px; border-radius: 3px; font-size: 10px; font-weight: bold;">PREVIEW</div>
+            </div>
         </div>
+
+        <div class="info" style="margin-bottom: 5px;">Staged: <span id="staged-builtin-name" style="color: #0066FF; font-weight: bold;">-</span></div>
+
+        <div class="button-grid">
+            <button onclick="previewBuiltinScene(0)" id="scene-0">Scene 1<br><small>Tunnel</small></button>
+            <button onclick="previewBuiltinScene(1)" id="scene-1">Scene 2<br><small>Particles</small></button>
+            <button onclick="previewBuiltinScene(2)" id="scene-2">Scene 3<br><small>Kaleidoscope</small></button>
+            <button onclick="previewBuiltinScene(3)" id="scene-3">Scene 4<br><small>Waveform</small></button>
+        </div>
+        <button onclick="goToProgramBuiltin()" style="width: 100%; padding: 12px; margin-top: 10px; background: #00aa00; border-color: #00cc00; font-weight: bold;">▶ GO TO PROGRAM (Built-in)</button>
     </div>
 
-    <div class="section" id="milkdrop-section" style="display: none;">
-        <h2>Milkdrop Presets</h2>
-        <div class="button-grid">
-            <button onclick="sendCommand('milkdropPrev')">◀ Previous</button>
-            <button onclick="sendCommand('milkdropNext')">Next ▶</button>
+    <div class="section" id="milkdrop-section">
+        <h2>Milkdrop Presets (Preview)</h2>
+
+        <!-- Program status -->
+        <div class="info" id="program-preset-display" style="margin-bottom: 10px; display: none;">Program: <span id="program-preset-name" style="color: #00ff00; font-weight: bold;">-</span></div>
+
+        <!-- Preview Canvas -->
+        <div id="milkdrop-preview-container" style="margin-bottom: 15px; display: none;">
+            <div style="position: relative; background: #000; border: 2px solid #0066FF; border-radius: 4px; overflow: hidden;">
+                <canvas id="milkdrop-preview-canvas" style="width: 100%; height: auto; display: block;"></canvas>
+                <div style="position: absolute; top: 5px; left: 5px; background: rgba(0,102,255,0.8); color: white; padding: 3px 8px; border-radius: 3px; font-size: 10px; font-weight: bold;">PREVIEW</div>
+            </div>
         </div>
-        <div class="info">Current: <span id="current-preset">-</span></div>
+
+        <div class="button-grid">
+            <button onclick="stageMilkdropNav('prev')">◀ Previous</button>
+            <button onclick="stageMilkdropNav('next')">Next ▶</button>
+        </div>
+        <div class="info">Staged: <span id="staged-preset" style="color: #0066FF; font-weight: bold;">-</span></div>
 
         <div class="preset-list" id="preset-list">
             <!-- Populated dynamically -->
         </div>
+        <button onclick="goToProgramMilkdrop()" style="width: 100%; padding: 12px; margin-top: 10px; background: #00aa00; border-color: #00cc00; font-weight: bold;">▶ GO TO PROGRAM (Milkdrop)</button>
     </div>
 
-    <div class="section" id="video-section" style="display: none;">
+    <div class="section" id="video-section">
         <h2>Video Feed <span id="video-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
         <select id="video-device-select">
             <option value="">No camera selected</option>
         </select>
-        <div class="info">Select webcam or video input device for video feed</div>
+        <div class="info">Select camera to preview</div>
+
+        <!-- Camera Preview -->
+        <div id="video-preview-container" style="margin-top: 15px; display: none;">
+            <div style="position: relative; background: #000; border: 2px solid #0066FF; border-radius: 4px; overflow: hidden;">
+                <canvas id="video-preview-canvas" style="width: 100%; height: auto; display: block;"></canvas>
+                <div style="position: absolute; top: 5px; left: 5px; background: rgba(0,102,255,0.8); color: white; padding: 3px 8px; border-radius: 3px; font-size: 10px; font-weight: bold;">PREVIEW</div>
+            </div>
+            <button id="video-go-program" style="width: 100%; padding: 12px; margin-top: 10px; background: #00aa00; border-color: #00cc00; font-weight: bold;">▶ GO TO PROGRAM</button>
+            <button id="video-release-preview" style="width: 100%; padding: 8px; margin-top: 5px;">Release Preview</button>
+        </div>
 
         <label style="display: block; margin-top: 15px; font-size: 12px;">
             <input type="checkbox" id="video-audio-reactive" style="width: auto; margin-right: 5px;">
@@ -360,18 +404,9 @@
         </label>
 
         <div style="margin-top: 15px;">
-            <button onclick="sendCommand('videoRelease')" style="width: 100%; padding: 10px;">Release Camera</button>
-            <div class="info" style="margin-top: 5px;">Stop camera stream (fixes "camera in use" errors)</div>
+            <button onclick="sendCommand('videoRelease')" style="width: 100%; padding: 10px;">Release Program Camera</button>
+            <div class="info" style="margin-top: 5px;">Release camera on main display</div>
         </div>
-    </div>
-
-    <div class="section">
-        <h2>Renderer</h2>
-        <select id="renderer-select">
-            <option value="webgl">WebGL</option>
-            <option value="canvas2d">Canvas 2D</option>
-        </select>
-        <div class="info">Graphics renderer (requires page reload)</div>
     </div>
 
     <div class="section">
@@ -380,9 +415,231 @@
         <div class="info">WebSocket OSC server for external control</div>
     </div>
 
+    <!-- Butterchurn for Milkdrop preview -->
+    <script src="https://unpkg.com/butterchurn@latest/lib/butterchurn.min.js"></script>
+    <script src="https://unpkg.com/butterchurn-presets@latest/lib/butterchurnPresets.min.js"></script>
+
+    <!-- Renderers for preview -->
+    <script src="renderers/video-renderer.js"></script>
+    <script src="visuals/renderer.js"></script>
+    <script src="scenes/scene-manager.js"></script>
+
     <script>
         // BroadcastChannel for tab-to-tab communication
         const controlChannel = new BroadcastChannel('revision-control');
+
+        // Video preview
+        let videoPreviewRenderer = null;
+        let currentPreviewDeviceId = null;
+
+        // Effect previews
+        let builtinPreviewRenderer = null;
+        let builtinSceneManager = null;
+        let milkdropPreviewVisualizer = null;
+        let milkdropPreviewAudioContext = null;
+
+        // Current program state (synced from main app)
+        let currentProgramMode = 'builtin';
+        let currentProgramRenderer = 'webgl';
+        let currentProgramScene = 0;
+
+        // Staged renderer mode (for preview, not synced after init)
+        let currentRendererMode = 'webgl';
+
+        // Staged state (preview before sending to program)
+        let stagedBuiltinScene = 0;
+        let stagedMilkdropIndex = 0;
+        let milkdropPresetList = [];
+
+        // GO TO PROGRAM functions
+        function goToProgramBuiltin() {
+            console.log('[Control] GO TO PROGRAM: Built-in Scene', stagedBuiltinScene, 'Renderer:', currentRendererMode);
+            console.log('[Control] Current program state - Mode:', currentProgramMode, 'Scene:', currentProgramScene, 'Renderer:', currentProgramRenderer);
+
+            // If already in builtin mode, just switch scene and renderer
+            if (currentProgramMode === 'builtin') {
+                console.log('[Control] Already in builtin mode - switching scene and renderer simultaneously');
+
+                // Send both commands at the same time (no delay)
+                sendCommand('switchScene', stagedBuiltinScene);
+                sendCommand('rendererSelect', currentRendererMode);
+            } else {
+                // Not in builtin mode - need to switch mode first
+                console.log('[Control] Switching to builtin mode');
+                sendCommand('switchMode', 'builtin');
+
+                // Then switch scene AND renderer simultaneously (wait for mode to activate)
+                setTimeout(() => {
+                    sendCommand('switchScene', stagedBuiltinScene);
+                    sendCommand('rendererSelect', currentRendererMode);
+                }, 100);
+            }
+        }
+
+        function goToProgramMilkdrop() {
+            console.log('[Control] GO TO PROGRAM: Milkdrop Preset', stagedMilkdropIndex);
+            sendCommand('switchMode', 'milkdrop');
+            setTimeout(() => {
+                sendCommand('milkdropSelect', stagedMilkdropIndex);
+            }, 100);
+        }
+
+        function stageMilkdropNav(direction) {
+            if (direction === 'next') {
+                stagedMilkdropIndex = (stagedMilkdropIndex + 1) % milkdropPresetList.length;
+            } else {
+                stagedMilkdropIndex--;
+                if (stagedMilkdropIndex < 0) stagedMilkdropIndex = milkdropPresetList.length - 1;
+            }
+            // Preview the new preset
+            previewMilkdropPreset(stagedMilkdropIndex);
+        }
+
+        function updateStagedPresetDisplay() {
+            const display = document.getElementById('staged-preset');
+            if (milkdropPresetList.length > 0) {
+                display.textContent = milkdropPresetList[stagedMilkdropIndex];
+            }
+        }
+
+        // Preview Built-in Scene
+        function previewBuiltinScene(sceneIndex) {
+            stagedBuiltinScene = sceneIndex;
+
+            // Update staged display
+            const sceneNames = ['1 - Tunnel', '2 - Particles', '3 - Kaleidoscope', '4 - Waveform'];
+            document.getElementById('staged-builtin-name').textContent = sceneNames[sceneIndex];
+
+            // Update button visual states
+            for (let i = 0; i < 4; i++) {
+                const btn = document.getElementById(`scene-${i}`);
+                if (btn) {
+                    if (i === sceneIndex) {
+                        btn.style.background = '#0066FF';
+                        btn.style.borderColor = '#0088FF';
+                    } else {
+                        btn.style.background = '#2a2a2a';
+                        btn.style.borderColor = '#3a3a3a';
+                    }
+                }
+            }
+
+            // Reinitialize renderer if mode changed
+            const needsReinit = builtinPreviewRenderer && builtinPreviewRenderer.mode !== currentRendererMode;
+            if (needsReinit) {
+                console.log('[Control] Renderer mode changed, reinitializing preview...');
+                builtinPreviewRenderer.stop();
+                builtinPreviewRenderer = null;
+                builtinSceneManager = null;
+            }
+
+            // Initialize renderer if not exists
+            if (!builtinPreviewRenderer) {
+                const canvas = document.getElementById('builtin-preview-canvas');
+                canvas.width = 640;
+                canvas.height = 360;
+                builtinPreviewRenderer = new VisualRenderer(canvas.id);
+                builtinPreviewRenderer.initialize(currentRendererMode);
+                builtinSceneManager = new SceneManager(builtinPreviewRenderer);
+                console.log('[Control] Preview renderer initialized with mode:', currentRendererMode);
+            }
+
+            // Show preview container
+            document.getElementById('builtin-preview-container').style.display = 'block';
+
+            // Switch scene
+            builtinSceneManager.switchScene(sceneIndex);
+            builtinPreviewRenderer.start();
+
+            console.log('[Control] Previewing Built-in Scene', sceneIndex, 'with renderer:', currentRendererMode);
+        }
+
+        // Preview Milkdrop Preset
+        function previewMilkdropPreset(index) {
+            try {
+                if (!milkdropPresetList || milkdropPresetList.length === 0) {
+                    console.warn('[Control] No milkdrop preset list available');
+                    return;
+                }
+
+                // Check if butterchurn is loaded
+                if (typeof butterchurn === 'undefined' || typeof butterchurnPresets === 'undefined') {
+                    console.error('[Control] Butterchurn library not loaded - skipping preview');
+                    return;
+                }
+
+                stagedMilkdropIndex = index;
+                updateStagedPresetDisplay();
+
+                // Initialize Milkdrop if not exists
+                if (!milkdropPreviewVisualizer) {
+                    console.log('[Control] Creating Milkdrop preview visualizer...');
+                    const canvas = document.getElementById('milkdrop-preview-canvas');
+                    canvas.width = 640;
+                    canvas.height = 360;
+
+                    // Create AudioContext for butterchurn
+                    milkdropPreviewAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+                    // Try both API variations (butterchurn vs butterchurn.default)
+                    const butterchurnAPI = butterchurn.createVisualizer ? butterchurn : (butterchurn.default || butterchurn);
+
+                    if (!butterchurnAPI.createVisualizer) {
+                        console.error('[Control] Butterchurn API not available - createVisualizer not found');
+                        console.log('[Control] Available butterchurn properties:', Object.keys(butterchurn));
+                        return;
+                    }
+
+                    // Create butterchurn instance
+                    milkdropPreviewVisualizer = butterchurnAPI.createVisualizer(milkdropPreviewAudioContext, canvas, {
+                        width: 640,
+                        height: 360,
+                        pixelRatio: 1,
+                        meshWidth: 32,
+                        meshHeight: 24
+                    });
+
+                    console.log('[Control] ✓ Milkdrop preview visualizer created');
+                }
+
+                // Show preview container
+                document.getElementById('milkdrop-preview-container').style.display = 'block';
+
+                // Load preset
+                const allPresets = butterchurnPresets.getPresets();
+                const presetKey = milkdropPresetList[index];
+                const preset = allPresets[presetKey];
+
+                if (!preset) {
+                    console.error('[Control] Preset not found:', presetKey);
+                    return;
+                }
+
+                milkdropPreviewVisualizer.loadPreset(preset, 0); // 0 = no blend transition
+                console.log('[Control] ✓ Previewing Milkdrop preset:', presetKey);
+
+                // Start render loop if not already running
+                if (!window.milkdropPreviewAnimating) {
+                    window.milkdropPreviewAnimating = true;
+                    function animateMilkdropPreview() {
+                        if (milkdropPreviewVisualizer) {
+                            try {
+                                milkdropPreviewVisualizer.render();
+                                requestAnimationFrame(animateMilkdropPreview);
+                            } catch (err) {
+                                console.error('[Control] Milkdrop render error:', err);
+                                window.milkdropPreviewAnimating = false;
+                            }
+                        }
+                    }
+                    animateMilkdropPreview();
+                }
+            } catch (error) {
+                console.error('[Control] Failed to preview Milkdrop preset:', error);
+                console.error('[Control] Error stack:', error.stack);
+                // Don't show alert - just log error to avoid blocking UI
+            }
+        }
 
         // MIDI for optional external control
         let midiAccess = null;
@@ -467,43 +724,48 @@
                 document.getElementById('midi-synth-audible').checked = state.midiSynthAudible === 'true';
             }
 
-            // Update current mode
+            // Update current mode display and track program mode
             if (state.mode) {
-                document.getElementById('current-mode').textContent = state.mode;
+                currentProgramMode = state.mode; // Track current program mode
+                const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video' };
+                document.getElementById('current-mode-display').textContent = modeNames[state.mode] || state.mode;
 
-                // Highlight active mode button
-                ['builtin', 'threejs', 'milkdrop', 'video'].forEach(mode => {
-                    const btn = document.getElementById(`mode-${mode}`);
-                    if (btn) {
-                        btn.style.background = mode === state.mode ? '#0066FF' : '#2a2a2a';
-                        btn.style.borderColor = mode === state.mode ? '#0088FF' : '#3a3a3a';
-                    }
-                });
+                // Show/hide scene display based on mode
+                const sceneDisplay = document.getElementById('program-scene-display');
+                if (state.mode === 'builtin' && state.scene !== undefined) {
+                    currentProgramScene = state.scene; // Track current scene
+                    const sceneNames = ['1 - Tunnel', '2 - Particles', '3 - Kaleidoscope', '4 - Waveform'];
+                    document.getElementById('program-scene-name').textContent = sceneNames[state.scene] || state.scene;
+                    sceneDisplay.style.display = '';
+                } else {
+                    sceneDisplay.style.display = 'none';
+                }
 
-                // Show/hide mode-specific sections
-                const builtinSection = document.getElementById('builtin-section');
-                const milkdropSection = document.getElementById('milkdrop-section');
-                const videoSection = document.getElementById('video-section');
-
-                builtinSection.style.display = state.mode === 'builtin' ? 'block' : 'none';
-                milkdropSection.style.display = state.mode === 'milkdrop' ? 'block' : 'none';
-                videoSection.style.display = state.mode === 'video' ? 'block' : 'none';
-            }
-
-            // Update active scene
-            if (state.scene !== undefined) {
-                for (let i = 0; i < 4; i++) {
-                    const btn = document.getElementById(`scene-${i}`);
-                    if (btn) {
-                        btn.style.background = i === state.scene ? '#0066FF' : '#2a2a2a';
-                        btn.style.borderColor = i === state.scene ? '#0088FF' : '#3a3a3a';
-                    }
+                // Update Built-in section program display
+                const builtinProgramDisplay = document.getElementById('program-builtin-display');
+                if (state.mode === 'builtin' && state.scene !== undefined) {
+                    const sceneNames = ['1 - Tunnel', '2 - Particles', '3 - Kaleidoscope', '4 - Waveform'];
+                    document.getElementById('program-builtin-name').textContent = sceneNames[state.scene];
+                    builtinProgramDisplay.style.display = '';
+                } else {
+                    builtinProgramDisplay.style.display = 'none';
                 }
             }
 
-            // Update current preset name
-            if (state.presetName) {
-                document.getElementById('current-preset').textContent = state.presetName;
+            // DON'T sync scene buttons from program - they represent what's staged, not what's on program
+            // Scene button styling is controlled by previewBuiltinScene() function
+
+            // Update program preset name (what's on main display)
+            if (state.presetName && state.mode === 'milkdrop') {
+                const programPresetDisplay = document.getElementById('program-preset-display');
+                const programPresetName = document.getElementById('program-preset-name');
+                programPresetName.textContent = state.presetName;
+                programPresetDisplay.style.display = '';
+            } else {
+                const programPresetDisplay = document.getElementById('program-preset-display');
+                if (programPresetDisplay) {
+                    programPresetDisplay.style.display = 'none';
+                }
             }
 
             // Update audio source display
@@ -524,9 +786,24 @@
                 document.getElementById('sysex-enable').value = state.enableSysEx;
             }
 
-            // Update renderer
-            if (state.renderer !== undefined) {
-                document.getElementById('renderer-select').value = state.renderer;
+            // Update program renderer display (what's actually on main display)
+            if (state.renderer !== undefined && state.mode === 'builtin') {
+                currentProgramRenderer = state.renderer; // Track current program renderer
+                const rendererNames = { webgl: 'WebGL', canvas2d: 'Canvas 2D' };
+                document.getElementById('program-renderer-name').textContent = rendererNames[state.renderer] || state.renderer;
+                document.getElementById('program-renderer-display').style.display = '';
+
+                // Only initialize staged renderer dropdown once on first state update
+                if (!window.rendererInitialized) {
+                    currentRendererMode = state.renderer;
+                    document.getElementById('renderer-select').value = state.renderer;
+                    window.rendererInitialized = true;
+                }
+            } else {
+                const rendererDisplay = document.getElementById('program-renderer-display');
+                if (rendererDisplay) {
+                    rendererDisplay.style.display = 'none';
+                }
             }
 
             // Update OSC server
@@ -566,6 +843,9 @@
                 return;
             }
 
+            // Store preset list for staging
+            milkdropPresetList = presets;
+
             const list = document.getElementById('preset-list');
             list.innerHTML = '';
 
@@ -577,19 +857,23 @@
                 item.dataset.preset = preset;
                 list.appendChild(item);
             });
+
+            // Update staged display
+            updateStagedPresetDisplay();
         }
 
-        // Event delegation for preset clicks
+        // Event delegation for preset clicks - PREVIEW preset
         document.getElementById('preset-list').addEventListener('click', (e) => {
             const item = e.target.closest('.preset-item');
             if (item) {
                 const index = parseInt(item.dataset.index);
-                const preset = item.dataset.preset;
-                sendCommand('milkdropSelect', index);
 
                 // Update active state
                 document.querySelectorAll('.preset-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
+
+                // Preview the preset
+                previewMilkdropPreset(index);
             }
         });
 
@@ -628,9 +912,23 @@
             sendCommand('sysexEnable', e.target.value);
         });
 
-        // Renderer selection
+        // Renderer selection - STAGE ONLY (don't send to program immediately)
         document.getElementById('renderer-select').addEventListener('change', (e) => {
-            sendCommand('rendererSelect', e.target.value);
+            const newMode = e.target.value;
+            currentRendererMode = newMode;
+
+            // Reinitialize preview if it's active
+            if (builtinPreviewRenderer) {
+                console.log('[Control] Renderer changed to:', newMode, '- reinitializing preview...');
+                builtinPreviewRenderer.stop();
+                builtinPreviewRenderer = null;
+                builtinSceneManager = null;
+
+                // Re-preview current scene with new renderer
+                previewBuiltinScene(stagedBuiltinScene);
+            }
+
+            // DON'T send to main app - only send when user clicks GO TO PROGRAM
         });
 
         // OSC server
@@ -638,9 +936,80 @@
             sendCommand('oscServer', e.target.value);
         });
 
-        // Video device selection
-        document.getElementById('video-device-select').addEventListener('change', (e) => {
-            sendCommand('videoDeviceSelect', e.target.value);
+        // Video device selection - show preview first
+        document.getElementById('video-device-select').addEventListener('change', async (e) => {
+            const deviceId = e.target.value;
+
+            if (!deviceId) {
+                // No camera selected - hide preview
+                document.getElementById('video-preview-container').style.display = 'none';
+                if (videoPreviewRenderer) {
+                    videoPreviewRenderer.release();
+                    videoPreviewRenderer = null;
+                }
+                currentPreviewDeviceId = null;
+                return;
+            }
+
+            // CRITICAL: Fully destroy old renderer before creating new one
+            if (videoPreviewRenderer) {
+                console.log('[Control] Releasing previous preview renderer...');
+                videoPreviewRenderer.release();
+                // Wait for release to complete
+                await new Promise(resolve => setTimeout(resolve, 300));
+                videoPreviewRenderer = null;
+            }
+
+            // Create fresh renderer
+            const canvas = document.getElementById('video-preview-canvas');
+            videoPreviewRenderer = new VideoRenderer(canvas);
+
+            // Set canvas size BEFORE initializing
+            canvas.width = 640;
+            canvas.height = 360;
+
+            // Show preview with camera feed
+            console.log('[Control] Loading preview for device:', deviceId);
+            const success = await videoPreviewRenderer.initialize(deviceId);
+
+            if (success) {
+                currentPreviewDeviceId = deviceId;
+
+                // Show preview container
+                document.getElementById('video-preview-container').style.display = 'block';
+
+                // Start preview render loop
+                videoPreviewRenderer.start();
+                console.log('[Control] ✓ Preview started');
+            } else {
+                console.error('[Control] ✗ Failed to load preview');
+                videoPreviewRenderer = null;
+                alert('Failed to load camera preview. Try clicking "Release Preview" first.');
+            }
+        });
+
+        // Go to Program button - switch to video mode AND send camera to main display
+        document.getElementById('video-go-program').addEventListener('click', () => {
+            if (currentPreviewDeviceId) {
+                console.log('[Control] Sending camera to PROGRAM:', currentPreviewDeviceId);
+                // First switch to video mode
+                sendCommand('switchMode', 'video');
+                // Then send the camera device (wait a bit for mode switch)
+                setTimeout(() => {
+                    sendCommand('videoDeviceSelect', currentPreviewDeviceId);
+                }, 100);
+            }
+        });
+
+        // Release Preview button
+        document.getElementById('video-release-preview').addEventListener('click', () => {
+            if (videoPreviewRenderer) {
+                videoPreviewRenderer.release();
+                document.getElementById('video-preview-container').style.display = 'none';
+                document.getElementById('video-device-select').value = '';
+                currentPreviewDeviceId = null;
+                console.log('[Control] Preview released');
+            }
         });
 
         // Video audio reactive toggle
@@ -789,6 +1158,10 @@
         // This ensures MIDI synth is never auto-started
         console.log('[Control] Forcing Visual Reactive Input to microphone...');
         sendCommand('milkdropAudioSource', 'microphone');
+
+        // Initialize staged displays
+        const sceneNames = ['1 - Tunnel', '2 - Particles', '3 - Kaleidoscope', '4 - Waveform'];
+        document.getElementById('staged-builtin-name').textContent = sceneNames[stagedBuiltinScene];
 
         // Initialize
         loadPresets();

@@ -1358,6 +1358,11 @@ class RevisionAppV2 {
             case 'video':
                 this.videoCanvas.style.display = 'block';
                 if (this.videoRenderer) {
+                    // Clear canvas to avoid showing old camera frame
+                    const ctx = this.videoCanvas.getContext('2d');
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, this.videoCanvas.width, this.videoCanvas.height);
+
                     // Don't auto-initialize camera - let user select from dropdown
                     // This avoids permission errors and camera conflicts
                     if (this.videoRenderer.isActive) {

@@ -28,9 +28,9 @@ class VideoRenderer {
         this.lastBeatTime = 0;
     }
 
-    async initialize(deviceId = null) {
+    async initialize(deviceId = null, retryCount = 0) {
         try {
-            console.log('[VideoRenderer] Initializing camera...');
+            console.log('[VideoRenderer] Initializing camera... (attempt', retryCount + 1, ')');
 
             // Clean up any existing stream first
             if (this.stream) {
@@ -44,10 +44,13 @@ class VideoRenderer {
                 this.video = document.createElement('video');
                 this.video.autoplay = true;
                 this.video.playsInline = true;
-                this.video.muted = true; // Mute to avoid audio feedback
-                this.video.style.display = 'none'; // Hidden - we draw to canvas
-                document.body.appendChild(this.video); // CRITICAL: Add to DOM for metadata loading
+                this.video.muted = true;
+                this.video.style.display = 'none';
+                document.body.appendChild(this.video);
                 console.log('[VideoRenderer] Created video element in DOM');
+            } else {
+                // Clear old srcObject
+                this.video.srcObject = null;
             }
 
             // Request camera access
@@ -61,14 +64,13 @@ class VideoRenderer {
             console.log('[VideoRenderer] ✓ Got media stream, tracks:', this.stream.getTracks().map(t => t.label).join(', '));
 
             this.video.srcObject = this.stream;
-            console.log('[VideoRenderer] Waiting for video metadata...');
 
-            // Wait for video to be ready (with fallback for virtual cameras)
+            // Wait for metadata with longer timeout for C920
             const metadataLoaded = await new Promise((resolve) => {
                 const timeout = setTimeout(() => {
-                    console.warn('[VideoRenderer] Metadata timeout - probably virtual camera, proceeding anyway');
-                    resolve(false); // Don't reject - just flag as failed
-                }, 3000); // Shorter timeout, then fallback
+                    console.warn('[VideoRenderer] Metadata timeout - camera slow to respond');
+                    resolve(false);
+                }, 5000);
 
                 this.video.onloadedmetadata = () => {
                     clearTimeout(timeout);
@@ -83,8 +85,8 @@ class VideoRenderer {
                 };
             });
 
-            // Wait a moment for video to start streaming
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Wait for video to start streaming
+            await new Promise(resolve => setTimeout(resolve, 200));
 
             // Try to play
             try {
@@ -94,14 +96,28 @@ class VideoRenderer {
                 console.warn('[VideoRenderer] Auto-play failed:', err.message);
             }
 
-            // Mark as active immediately - render loop will wait for dimensions
-            this.isActive = true;
-
-            // Log initial dimensions (might be 0x0, render loop will handle it)
-            console.log('[VideoRenderer] ✓ Stream initialized, dimensions:', this.video.videoWidth, 'x', this.video.videoHeight);
-            if (this.video.videoWidth === 0 || this.video.videoHeight === 0) {
-                console.log('[VideoRenderer] Dimensions not ready yet - render loop will start drawing when available');
+            // Check if we got valid dimensions
+            let attempts = 0;
+            while ((this.video.videoWidth === 0 || this.video.videoHeight === 0) && attempts < 10) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
             }
+
+            if (this.video.videoWidth === 0 || this.video.videoHeight === 0) {
+                console.error('[VideoRenderer] ✗ Camera failed to provide valid dimensions after 1 second');
+
+                // Retry if first attempt (common with C920)
+                if (retryCount < 2) {
+                    console.log('[VideoRenderer] Retrying initialization...');
+                    return this.initialize(deviceId, retryCount + 1);
+                }
+
+                throw new Error('Camera dimensions invalid (0x0)');
+            }
+
+            // Mark as active
+            this.isActive = true;
+            console.log('[VideoRenderer] ✓ Stream initialized successfully, dimensions:', this.video.videoWidth, 'x', this.video.videoHeight);
 
             return true;
         } catch (error) {
@@ -146,11 +162,21 @@ class VideoRenderer {
             this.stream = null;
         }
 
+        // CRITICAL: Destroy video element completely
         if (this.video) {
             this.video.srcObject = null;
+            this.video.load(); // Force unload
+            if (this.video.parentNode) {
+                this.video.parentNode.removeChild(this.video);
+            }
+            this.video = null;
+            console.log('[VideoRenderer] Video element destroyed');
         }
 
         this.isActive = false;
+
+        // Wait for browser to release hardware
+        await new Promise(resolve => setTimeout(resolve, 200));
 
         // Try to initialize new camera with clean slate
         const success = await this.initialize(deviceId);
@@ -334,11 +360,21 @@ class VideoRenderer {
         }
 
         if (this.video) {
+            this.video.pause();
             this.video.srcObject = null;
+            this.video.load(); // Force browser to release resources
+
+            // Remove from DOM if still attached
+            if (this.video.parentNode) {
+                this.video.parentNode.removeChild(this.video);
+                console.log('[VideoRenderer] Video element removed from DOM');
+            }
+
+            this.video = null;
         }
 
         this.isActive = false;
-        console.log('[VideoRenderer] ✓ Camera released');
+        console.log('[VideoRenderer] ✓ Camera fully released');
     }
 
     destroy() {
