@@ -227,6 +227,19 @@
             bottom: 0 !important;
             height: 100vh !important;
         }
+
+        /* Canvas fade transitions for mode switching */
+        #builtin-canvas,
+        #threejs-canvas,
+        #video-canvas,
+        #media-canvas {
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        /* Milkdrop has NO opacity transition - it uses built-in crossfade */
+        #milkdrop-canvas {
+            transition: none !important;
+        }
     </style>
 </head>
 <body>

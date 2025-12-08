@@ -1763,6 +1763,25 @@ class RevisionAppV2 {
             this.mediaRenderer.stop();
         }
 
+        // Fade out current canvas before switching
+        const canvases = [
+            this.builtinCanvas,
+            this.threejsCanvas,
+            this.milkdropCanvas,
+            this.videoCanvas,
+            this.mediaCanvas
+        ];
+
+        const currentCanvas = canvases.find(canvas =>
+            canvas && canvas.style.display !== 'none'
+        );
+
+        // Fade out current canvas (except milkdrop which has no opacity transition)
+        if (currentCanvas && currentCanvas !== this.milkdropCanvas) {
+            currentCanvas.style.opacity = '0';
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait for CSS transition
+        }
+
         // Hide all canvases
         this.builtinCanvas.style.display = 'none';
         this.threejsCanvas.style.display = 'none';
@@ -1774,13 +1793,19 @@ class RevisionAppV2 {
         switch (type) {
             case 'builtin':
                 this.builtinCanvas.style.display = 'block';
+                this.builtinCanvas.style.opacity = '0';
                 this.renderer.start();
                 this.presetManager.switchPreset('builtin-tunnel');
                 this.enableSceneButtons(true);
+                // Fade in
+                setTimeout(() => {
+                    this.builtinCanvas.style.opacity = '1';
+                }, 50);
                 console.log('[Revision] Built-in canvas visible, renderer started');
                 break;
             case 'threejs':
                 this.threejsCanvas.style.display = 'block';
+                this.threejsCanvas.style.opacity = '0';
                 if (this.threeJSRenderer) {
                     // Force reflow
                     this.threejsCanvas.offsetHeight;
@@ -1800,6 +1825,10 @@ class RevisionAppV2 {
                 } else {
                     console.error('[Revision] Three.js renderer not initialized');
                 }
+                // Fade in
+                setTimeout(() => {
+                    this.threejsCanvas.style.opacity = '1';
+                }, 50);
                 this.enableSceneButtons(false, 'Three.js mode - scene buttons disabled');
                 break;
             case 'milkdrop':
@@ -1868,6 +1897,7 @@ class RevisionAppV2 {
                 break;
             case 'video':
                 this.videoCanvas.style.display = 'block';
+                this.videoCanvas.style.opacity = '0';
                 if (this.videoRenderer) {
                     // Clear canvas to avoid showing old camera frame
                     const ctx = this.videoCanvas.getContext('2d');
@@ -1890,10 +1920,15 @@ class RevisionAppV2 {
                 } else {
                     console.error('[Revision] Video renderer not initialized');
                 }
+                // Fade in
+                setTimeout(() => {
+                    this.videoCanvas.style.opacity = '1';
+                }, 50);
                 this.enableSceneButtons(false, 'Video mode - select camera in control.html');
                 break;
             case 'media':
                 this.mediaCanvas.style.display = 'block';
+                this.mediaCanvas.style.opacity = '0';
                 if (this.mediaRenderer) {
                     // Clear canvas
                     const ctx = this.mediaCanvas.getContext('2d');
@@ -1910,6 +1945,10 @@ class RevisionAppV2 {
                 } else {
                     console.error('[Revision] Media renderer not initialized');
                 }
+                // Fade in
+                setTimeout(() => {
+                    this.mediaCanvas.style.opacity = '1';
+                }, 50);
                 this.enableSceneButtons(false, 'Media mode - load media in control.html');
                 break;
         }

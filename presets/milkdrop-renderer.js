@@ -128,7 +128,7 @@ class MilkdropRenderer {
 
         try {
             console.log('[Milkdrop] Loading preset...');
-            this.visualizer.loadPreset(presetData, 0); // 0 = immediate transition
+            this.visualizer.loadPreset(presetData, 1); // 1 second blend time
             this.currentPreset = presetData;
             console.log('[Milkdrop] Preset loaded successfully');
             return true;
