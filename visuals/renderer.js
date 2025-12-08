@@ -449,6 +449,9 @@ class VisualRenderer {
             case 'waveform':
                 this.renderWaveform(ctx, w, h, time);
                 break;
+            case 'blank':
+                // Black screen - do nothing (already cleared to black)
+                break;
             default:
                 this.renderTunnel(ctx, w, h, centerX, centerY, time);
         }

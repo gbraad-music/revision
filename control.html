@@ -9,10 +9,11 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            font-family: Arial, sans-serif;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: Arial, sans-serif;
             background: #0a0a0a;
             color: #ffffff;
             padding: 20px;
@@ -322,6 +323,7 @@
 
         <!-- Mode Selector Tabs -->
         <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+            <button onclick="switchPreviewMode('black')" id="preview-tab-black" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Black</button>
             <button onclick="switchPreviewMode('builtin')" id="preview-tab-builtin" style="flex: 1; padding: 10px; background: #0066FF; border: 1px solid #0088FF; border-radius: 4px; color: white; font-weight: bold; cursor: pointer;">Built-in</button>
             <button onclick="switchPreviewMode('threejs')" id="preview-tab-threejs" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Three.js</button>
             <button onclick="switchPreviewMode('milkdrop')" id="preview-tab-milkdrop" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Milkdrop</button>
@@ -331,7 +333,7 @@
 
         <!-- Single Unified Preview Canvas -->
         <div id="unified-preview-container" style="margin-bottom: 15px; max-width: 640px;">
-            <div style="position: relative; background: #000; border: 2px solid #0066FF; border-radius: 4px; overflow: hidden; width: 100%; padding-bottom: 56.25%; /* 16:9 aspect ratio */">
+            <div id="preview-aspect-wrapper" style="position: relative; background: #000; border: 2px solid #0066FF; border-radius: 4px; overflow: hidden; width: 100%; padding-bottom: 56.25%;">
                 <canvas id="unified-preview-canvas" width="640" height="360" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block;"></canvas>
                 <div style="position: absolute; top: 5px; left: 5px; background: rgba(0,102,255,0.8); color: white; padding: 3px 8px; border-radius: 3px; font-size: 10px; font-weight: bold; z-index: 10;">PREVIEW</div>
                 <div id="preview-mode-label" style="position: absolute; top: 5px; right: 5px; background: rgba(0,102,255,0.8); color: white; padding: 3px 8px; border-radius: 3px; font-size: 10px; font-weight: bold; z-index: 10;">BUILT-IN</div>
@@ -548,6 +550,14 @@
             console.log('[Control] GO TO PROGRAM - Preview Mode:', currentPreviewMode);
 
             switch (currentPreviewMode) {
+                case 'black':
+                    console.log('[Control] GO TO PROGRAM: Black Screen');
+                    sendCommand('switchMode', 'builtin');
+                    setTimeout(() => {
+                        sendCommand('switchScene', 4); // Scene 4 is black screen
+                        sendCommand('rendererSelect', 'webgl');
+                    }, 100);
+                    break;
                 case 'builtin':
                     goToProgramBuiltin();
                     break;
@@ -611,12 +621,16 @@
             }
         }
 
-        // SWITCH PREVIEW MODE - Tabs for Built-in/Milkdrop/Video/Media
+        // SWITCH PREVIEW MODE - Tabs for Black/Built-in/ThreeJS/Milkdrop/Video/Media
         function switchPreviewMode(mode) {
             console.log('[Control] Switching preview mode to:', mode);
             currentPreviewMode = mode;
 
             // Update tab button styles
+            document.getElementById('preview-tab-black').style.background = mode === 'black' ? '#0066FF' : '#2a2a2a';
+            document.getElementById('preview-tab-black').style.borderColor = mode === 'black' ? '#0088FF' : '#3a3a3a';
+            document.getElementById('preview-tab-black').style.color = mode === 'black' ? 'white' : '#888';
+
             document.getElementById('preview-tab-builtin').style.background = mode === 'builtin' ? '#0066FF' : '#2a2a2a';
             document.getElementById('preview-tab-builtin').style.borderColor = mode === 'builtin' ? '#0088FF' : '#3a3a3a';
             document.getElementById('preview-tab-builtin').style.color = mode === 'builtin' ? 'white' : '#888';
@@ -645,7 +659,7 @@
             document.getElementById('media-controls').style.display = mode === 'media' ? 'block' : 'none';
 
             // Update preview mode label
-            const labels = { builtin: 'BUILT-IN', threejs: 'THREE.JS', milkdrop: 'MILKDROP', video: 'VIDEO', media: 'MEDIA' };
+            const labels = { black: 'BLACK', builtin: 'BUILT-IN', threejs: 'THREE.JS', milkdrop: 'MILKDROP', video: 'VIDEO', media: 'MEDIA' };
             document.getElementById('preview-mode-label').textContent = labels[mode];
 
             // Stop and cleanup old preview renderer
@@ -653,6 +667,9 @@
 
             // Start appropriate preview
             switch (mode) {
+                case 'black':
+                    initBlackPreview();
+                    break;
                 case 'builtin':
                     initBuiltinPreview();
                     break;
@@ -705,6 +722,22 @@
             }
 
             unifiedSceneManager = null;
+        }
+
+        // INIT BLACK PREVIEW
+        function initBlackPreview() {
+            console.log('[Control] Initializing black screen preview...');
+
+            // Clear canvas to black
+            const ctx = unifiedCanvas.getContext('2d');
+            if (ctx) {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+            }
+
+            // Update staged name
+            document.getElementById('staged-name').textContent = 'Black Screen';
+            console.log('[Control] ✓ Black screen preview loaded');
         }
 
         // INIT BUILT-IN PREVIEW
@@ -945,7 +978,7 @@
                             ctx.fillStyle = '#000';
                             ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
                             ctx.fillStyle = '#ff0000';
-                            ctx.font = '14px sans-serif';
+                            ctx.font = '14px Arial, sans-serif';
                             ctx.textAlign = 'center';
                             ctx.fillText('Camera failed to load', unifiedCanvas.width / 2, unifiedCanvas.height / 2 - 10);
                             ctx.fillStyle = '#888';
@@ -966,7 +999,7 @@
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
                     ctx.fillStyle = '#888';
-                    ctx.font = '14px sans-serif';
+                    ctx.font = '14px Arial, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.fillText('Select a camera below', unifiedCanvas.width / 2, unifiedCanvas.height / 2);
                 }
@@ -1000,7 +1033,7 @@
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
                     ctx.fillStyle = '#888';
-                    ctx.font = '14px sans-serif';
+                    ctx.font = '14px Arial, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.fillText('Select a media file below', unifiedCanvas.width / 2, unifiedCanvas.height / 2);
                 }
@@ -1230,7 +1263,7 @@
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
                     ctx.fillStyle = '#888';
-                    ctx.font = '14px sans-serif';
+                    ctx.font = '14px Arial, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.fillText('Select a media file below', unifiedCanvas.width / 2, unifiedCanvas.height / 2);
                 }
@@ -1838,7 +1871,7 @@
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
                     ctx.fillStyle = '#888';
-                    ctx.font = '14px sans-serif';
+                    ctx.font = '14px Arial, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.fillText('Select a camera below', unifiedCanvas.width / 2, unifiedCanvas.height / 2);
                     document.getElementById('staged-name').textContent = 'No camera selected';
@@ -2216,9 +2249,28 @@
         console.log('[Control] Forcing Visual Reactive Input to microphone...');
         sendCommand('milkdropAudioSource', 'microphone');
 
+        // Update preview aspect ratio to match main program display
+        function updatePreviewAspectRatio() {
+            // Use standard 16:9 aspect ratio (typical for VJ displays)
+            // This matches what most users will have for their main program window
+            const aspectRatio = 16 / 9; // 1.778:1
+
+            // Convert to padding-bottom percentage (height/width * 100)
+            const paddingBottom = (1 / aspectRatio) * 100;
+
+            const wrapper = document.getElementById('preview-aspect-wrapper');
+            if (wrapper) {
+                wrapper.style.paddingBottom = `${paddingBottom}%`;
+                console.log(`[Control] Preview aspect ratio set to 16:9 (${paddingBottom.toFixed(2)}%)`);
+            }
+        }
+
         // Initialize unified preview system
         console.log('[Control] Initializing unified preview system...');
         unifiedCanvas = document.getElementById('unified-preview-canvas');
+
+        // Set preview aspect ratio to match main program (16:9 standard)
+        updatePreviewAspectRatio();
 
         // Start with built-in preview by default
         setTimeout(() => {

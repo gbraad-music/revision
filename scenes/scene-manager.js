@@ -187,6 +187,25 @@ class SceneManager {
             }
         });
 
+        // Scene 4: Black Screen - Clear the view
+        this.scenes.push({
+            name: 'Black Screen',
+            init: () => {
+                this.renderer.setMode('blank');
+                this.renderer.setParameter('brightness', 0);
+            },
+            update: (beatPhase, barPhase) => {
+                // Always stay black
+                this.renderer.setParameter('brightness', 0);
+            },
+            onMIDICC: (controller, value) => {
+                // No response to MIDI CC
+            },
+            onMIDINote: (note, velocity) => {
+                // No response to MIDI notes
+            }
+        });
+
         console.log(`[SceneManager] Initialized ${this.scenes.length} scenes`);
     }
 
