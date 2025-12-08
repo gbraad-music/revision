@@ -21,6 +21,10 @@ class ThreeJSRenderer {
 
         // Animation time
         this.clock = null;
+
+        // Preset system
+        this.currentPreset = null;
+        this.availablePresets = {};
     }
 
     async initialize() {
@@ -172,6 +176,12 @@ class ThreeJSRenderer {
     }
 
     clearScene() {
+        // Dispose current preset if exists
+        if (this.currentPreset) {
+            this.currentPreset.dispose();
+            this.currentPreset = null;
+        }
+
         // Remove all objects
         for (const obj of this.objects) {
             this.scene.remove(obj);
@@ -193,39 +203,75 @@ class ThreeJSRenderer {
         this.lights = [];
     }
 
+    // Preset system
+    registerPreset(name, PresetClass) {
+        this.availablePresets[name] = PresetClass;
+        console.log('[ThreeJS] Registered preset:', name);
+    }
+
+    loadPreset(name) {
+        if (!this.availablePresets[name]) {
+            console.error('[ThreeJS] Preset not found:', name);
+            return false;
+        }
+
+        // Clear current scene/preset
+        this.clearScene();
+
+        // Create and initialize new preset
+        const PresetClass = this.availablePresets[name];
+        this.currentPreset = new PresetClass(this.scene, this.camera, this.renderer, null);
+        this.currentPreset.initialize();
+
+        console.log('[ThreeJS] Loaded preset:', name);
+        return true;
+    }
+
+    getAvailablePresets() {
+        return Object.keys(this.availablePresets);
+    }
+
     // Handle input events
     handleBeat(data) {
         this.beatIntensity = data.intensity;
         this.beatPhase = data.phase;
 
+        // Forward to current preset if exists
+        if (this.currentPreset) {
+            this.currentPreset.onBeat(data.intensity);
+            return;
+        }
+
         console.log('[ThreeJS] Beat received - intensity:', data.intensity, 'phase:', data.phase);
 
-        // React to beat: pulse objects
+        // Legacy scene handling
         for (const obj of this.objects) {
             if (obj.userData.type === 'beatReactive') {
                 const baseScale = obj.userData.baseScale || 1;
-                const scale = baseScale + data.intensity * 1.5; // Increased scaling
+                const scale = baseScale + data.intensity * 1.5;
                 obj.scale.setScalar(scale);
-                console.log('[ThreeJS] Cube scaled to:', scale);
             }
         }
 
-        // Pulse lights
         for (const light of this.lights) {
             if (light.userData.beatReactive !== false) {
-                const intensity = 1 + data.intensity * 5; // Increased intensity
+                const intensity = 1 + data.intensity * 5;
                 light.intensity = intensity;
-                console.log('[ThreeJS] Light intensity:', intensity);
             }
         }
     }
 
     handleNote(data) {
-        // Create a flash or spawn object based on note
+        // Forward to current preset if exists
+        if (this.currentPreset) {
+            this.currentPreset.onNote(data.note, data.velocity);
+            return;
+        }
+
+        // Legacy scene handling
         const hue = (data.note / 127) * 360;
         const color = new THREE.Color(`hsl(${hue}, 100%, 50%)`);
 
-        // Change main object color
         for (const obj of this.objects) {
             if (obj.material && obj.userData.type === 'beatReactive') {
                 obj.material.color = color;
@@ -235,8 +281,13 @@ class ThreeJSRenderer {
     }
 
     handleControl(data) {
-        // Map CC to camera or object properties
-        // Example: CC1 = camera rotation
+        // Forward to current preset if exists
+        if (this.currentPreset) {
+            this.currentPreset.onControl(data.id, data.value);
+            return;
+        }
+
+        // Legacy scene handling
         if (data.id === 1) {
             this.camera.rotation.y = data.value * Math.PI * 2;
         }
@@ -245,30 +296,26 @@ class ThreeJSRenderer {
     handleFrequency(data) {
         this.frequencyBands = data.bands;
 
-        // React to frequency bands - STRONG audio reactivity
+        // Forward to current preset if exists
+        if (this.currentPreset && data.bands) {
+            this.currentPreset.onFrequency(data.bands);
+            return;
+        }
+
+        // Legacy scene handling
         if (!data.bands) return;
 
         const bass = data.bands.bass || 0;
         const mid = data.bands.mid || 0;
         const high = data.bands.high || 0;
 
-        // Debug: Log once per second
-        if (!this.lastFreqDebugTime || performance.now() - this.lastFreqDebugTime > 1000) {
-            if (bass > 0 || mid > 0 || high > 0) {
-                console.log('[ThreeJS] Frequency - Bass:', bass.toFixed(2), 'Mid:', mid.toFixed(2), 'High:', high.toFixed(2));
-            }
-            this.lastFreqDebugTime = performance.now();
-        }
-
-        // Bass affects scale
         for (const obj of this.objects) {
             if (obj.userData.type === 'beatReactive') {
                 const baseScale = obj.userData.baseScale || 1;
-                const scale = baseScale + bass * 3.0; // Strong bass reaction
+                const scale = baseScale + bass * 3.0;
                 obj.scale.setScalar(scale);
             }
 
-            // Mid affects rotation
             if (obj.userData.type === 'particles') {
                 obj.rotation.y += mid * 0.3;
                 obj.rotation.x += high * 0.2;
@@ -323,14 +370,18 @@ class ThreeJSRenderer {
     }
 
     updateScene(delta, elapsed) {
-        // Animate objects
+        // If preset loaded, update it
+        if (this.currentPreset) {
+            this.currentPreset.update(delta);
+            return;
+        }
+
+        // Legacy scene animation
         for (const obj of this.objects) {
             if (obj.userData.type === 'beatReactive') {
-                // Rotate
                 obj.rotation.x += delta * 0.5;
                 obj.rotation.y += delta * 0.3;
 
-                // Decay beat scale
                 const currentScale = obj.scale.x;
                 const baseScale = obj.userData.baseScale || 1;
                 obj.scale.setScalar(THREE.MathUtils.lerp(currentScale, baseScale, delta * 5));
@@ -341,7 +392,6 @@ class ThreeJSRenderer {
             }
         }
 
-        // Decay light intensity
         for (const light of this.lights) {
             if (light.intensity > 1) {
                 light.intensity = THREE.MathUtils.lerp(light.intensity, 1, delta * 5);

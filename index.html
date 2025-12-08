@@ -294,19 +294,8 @@
 
 
     <!-- External Libraries (Optional - for enhanced features) -->
-    <!-- Three.js for 3D scenes (ES Module version) -->
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "./external/three.module.js"
-        }
-    }
-    </script>
-    <script type="module">
-        // Make Three.js available globally for compatibility
-        import * as THREE from 'three';
-        window.THREE = THREE;
-    </script>
+    <!-- Three.js for 3D scenes (global build) -->
+    <script src="external/three.min.js"></script>
 
     <!-- Butterchurn for Milkdrop presets (local files) -->
     <script src="external/butterchurn.min.js"></script>
@@ -330,6 +319,10 @@
     <script src="presets/preset-manager.js"></script>
     <script src="presets/milkdrop-renderer.js"></script>
     <script src="presets/threejs-renderer.js"></script>
+
+    <!-- Three.js Base Preset Class -->
+    <script src="presets/threejs/BasePreset.js"></script>
+
     <script src="renderers/video-renderer.js"></script>
 
     <!-- Legacy MIDI Manager (for backwards compatibility) -->

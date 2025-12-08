@@ -323,6 +323,7 @@
         <!-- Mode Selector Tabs -->
         <div style="display: flex; gap: 5px; margin-bottom: 15px;">
             <button onclick="switchPreviewMode('builtin')" id="preview-tab-builtin" style="flex: 1; padding: 10px; background: #0066FF; border: 1px solid #0088FF; border-radius: 4px; color: white; font-weight: bold; cursor: pointer;">Built-in</button>
+            <button onclick="switchPreviewMode('threejs')" id="preview-tab-threejs" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Three.js</button>
             <button onclick="switchPreviewMode('milkdrop')" id="preview-tab-milkdrop" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Milkdrop</button>
             <button onclick="switchPreviewMode('video')" id="preview-tab-video" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Camera</button>
             <button onclick="switchPreviewMode('media')" id="preview-tab-media" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Media</button>
@@ -372,6 +373,22 @@
 
         <div class="preset-list" id="preset-list">
             <!-- Populated dynamically -->
+        </div>
+    </div>
+
+    <!-- Three.js Preset Controls -->
+    <div class="section" id="threejs-controls" style="display: none;">
+        <h2>Three.js Presets</h2>
+
+        <div class="button-grid">
+            <button onclick="stageThreeJSNav('prev')">◀ Previous</button>
+            <button onclick="stageThreeJSNav('next')">Next ▶</button>
+        </div>
+
+        <div class="button-grid" id="threejs-preset-grid" style="margin-top: 15px;">
+            <button onclick="previewThreeJSPreset(0)" id="threejs-preset-0">Geometric<br><small>Shapes</small></button>
+            <button onclick="previewThreeJSPreset(1)" id="threejs-preset-1">Particles<br><small>Field</small></button>
+            <button onclick="previewThreeJSPreset(2)" id="threejs-preset-2">Tunnel<br><small>Infinity</small></button>
         </div>
     </div>
 
@@ -475,24 +492,30 @@
         <div class="info">WebSocket OSC server for external control</div>
     </div>
 
-    <!-- Butterchurn for Milkdrop preview -->
-    <script src="https://unpkg.com/butterchurn@latest/lib/butterchurn.min.js"></script>
-    <script src="https://unpkg.com/butterchurn-presets@latest/lib/butterchurnPresets.min.js"></script>
+    <!-- Butterchurn for Milkdrop preview (local files) -->
+    <script src="external/butterchurn.min.js"></script>
+    <script src="external/butterchurnPresets.min.js"></script>
+
+    <!-- Three.js for 3D preview (global build) -->
+    <script src="external/three.min.js"></script>
 
     <!-- Renderers for preview -->
     <script src="renderers/video-renderer.js"></script>
     <script src="visuals/renderer.js"></script>
     <script src="scenes/scene-manager.js"></script>
+    <script src="presets/threejs-renderer.js"></script>
+    <script src="presets/threejs/BasePreset.js"></script>
 
     <script>
         // BroadcastChannel for tab-to-tab communication
         const controlChannel = new BroadcastChannel('revision-control');
 
         // UNIFIED PREVIEW SYSTEM - Single canvas, one renderer at a time
-        let currentPreviewMode = 'builtin'; // Which tab is active: builtin/milkdrop/video/media
+        let currentPreviewMode = 'builtin'; // Which tab is active: builtin/threejs/milkdrop/video/media
         let unifiedCanvas = null;
         let unifiedPreviewRenderer = null; // VideoRenderer OR VisualRenderer
         let unifiedSceneManager = null; // For built-in scenes
+        let unifiedThreeJSRenderer = null; // For Three.js
         let unifiedMilkdropVisualizer = null; // For Milkdrop
         let unifiedAudioContext = null;
         let currentVideoDeviceId = null;
@@ -515,8 +538,10 @@
         // Staged state (preview before sending to program)
         let stagedBuiltinScene = 0;
         let stagedMilkdropIndex = 0;
+        let stagedThreeJSIndex = 0;
         let stagedVideoDeviceId = '';
         let milkdropPresetList = [];
+        let threejsPresetList = ['geometric', 'particles', 'tunnel'];
 
         // UNIFIED GO TO PROGRAM - Single button for all modes
         function goToProgram() {
@@ -525,6 +550,9 @@
             switch (currentPreviewMode) {
                 case 'builtin':
                     goToProgramBuiltin();
+                    break;
+                case 'threejs':
+                    goToProgramThreeJS();
                     break;
                 case 'milkdrop':
                     goToProgramMilkdrop();
@@ -553,6 +581,14 @@
                     sendCommand('rendererSelect', currentRendererMode);
                 }, 100);
             }
+        }
+
+        function goToProgramThreeJS() {
+            console.log('[Control] GO TO PROGRAM: Three.js Preset', threejsPresetList[stagedThreeJSIndex]);
+            sendCommand('switchMode', 'threejs');
+            setTimeout(() => {
+                sendCommand('threejsSelect', threejsPresetList[stagedThreeJSIndex]);
+            }, 100);
         }
 
         function goToProgramMilkdrop() {
@@ -585,6 +621,10 @@
             document.getElementById('preview-tab-builtin').style.borderColor = mode === 'builtin' ? '#0088FF' : '#3a3a3a';
             document.getElementById('preview-tab-builtin').style.color = mode === 'builtin' ? 'white' : '#888';
 
+            document.getElementById('preview-tab-threejs').style.background = mode === 'threejs' ? '#0066FF' : '#2a2a2a';
+            document.getElementById('preview-tab-threejs').style.borderColor = mode === 'threejs' ? '#0088FF' : '#3a3a3a';
+            document.getElementById('preview-tab-threejs').style.color = mode === 'threejs' ? 'white' : '#888';
+
             document.getElementById('preview-tab-milkdrop').style.background = mode === 'milkdrop' ? '#0066FF' : '#2a2a2a';
             document.getElementById('preview-tab-milkdrop').style.borderColor = mode === 'milkdrop' ? '#0088FF' : '#3a3a3a';
             document.getElementById('preview-tab-milkdrop').style.color = mode === 'milkdrop' ? 'white' : '#888';
@@ -599,12 +639,13 @@
 
             // Show/hide control sections
             document.getElementById('builtin-controls').style.display = mode === 'builtin' ? 'block' : 'none';
+            document.getElementById('threejs-controls').style.display = mode === 'threejs' ? 'block' : 'none';
             document.getElementById('milkdrop-controls').style.display = mode === 'milkdrop' ? 'block' : 'none';
             document.getElementById('video-controls').style.display = mode === 'video' ? 'block' : 'none';
             document.getElementById('media-controls').style.display = mode === 'media' ? 'block' : 'none';
 
             // Update preview mode label
-            const labels = { builtin: 'BUILT-IN', milkdrop: 'MILKDROP', video: 'VIDEO', media: 'MEDIA' };
+            const labels = { builtin: 'BUILT-IN', threejs: 'THREE.JS', milkdrop: 'MILKDROP', video: 'VIDEO', media: 'MEDIA' };
             document.getElementById('preview-mode-label').textContent = labels[mode];
 
             // Stop and cleanup old preview renderer
@@ -614,6 +655,9 @@
             switch (mode) {
                 case 'builtin':
                     initBuiltinPreview();
+                    break;
+                case 'threejs':
+                    initThreeJSPreview();
                     break;
                 case 'milkdrop':
                     initMilkdropPreview();
@@ -641,6 +685,12 @@
             if (unifiedPreviewRenderer && unifiedPreviewRenderer.stop) {
                 unifiedPreviewRenderer.stop();
                 unifiedPreviewRenderer = null;
+            }
+
+            // Stop Three.js renderer
+            if (unifiedThreeJSRenderer && unifiedThreeJSRenderer.stop) {
+                unifiedThreeJSRenderer.stop();
+                unifiedThreeJSRenderer = null;
             }
 
             // Stop Milkdrop visualizer
@@ -691,6 +741,75 @@
             // Update staged name
             const sceneNames = ['1 - Tunnel', '2 - Particles', '3 - Kaleidoscope', '4 - Waveform'];
             document.getElementById('staged-name').textContent = sceneNames[stagedBuiltinScene];
+        }
+
+        // INIT THREE.JS PREVIEW
+        async function initThreeJSPreview() {
+            console.log('[Control] Initializing Three.js preview...');
+
+            if (typeof THREE === 'undefined') {
+                console.error('[Control] THREE.js library not loaded');
+                document.getElementById('staged-name').textContent = 'THREE.js not loaded';
+                return;
+            }
+
+            console.log('[Control] THREE.js ready');
+
+            // Replace canvas to ensure fresh WebGL context
+            const oldCanvas = document.getElementById('unified-preview-canvas');
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = 'unified-preview-canvas';
+            newCanvas.width = 640;
+            newCanvas.height = 360;
+            newCanvas.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block;';
+
+            oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+            unifiedCanvas = newCanvas;
+            console.log('[Control] Canvas refreshed for Three.js mode');
+
+            // Create Three.js renderer if not exists
+            if (!unifiedThreeJSRenderer) {
+                try {
+                    unifiedThreeJSRenderer = new ThreeJSRenderer(unifiedCanvas);
+                    await unifiedThreeJSRenderer.initialize();
+                    console.log('[Control] ✓ Three.js renderer created');
+
+                    // Load current staged preset on-demand
+                    const presetKey = threejsPresetList[stagedThreeJSIndex];
+                    const loaded = await loadThreeJSPreset(presetKey, true);
+
+                    if (loaded) {
+                        unifiedThreeJSRenderer.loadPreset(presetKey);
+                        unifiedThreeJSRenderer.start();
+
+                        // Update staged name
+                        const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity'];
+                        document.getElementById('staged-name').textContent = presetNames[stagedThreeJSIndex];
+
+                        console.log('[Control] ✓ Three.js preview initialized with fresh preset:', presetKey);
+                    }
+                } catch (error) {
+                    console.error('[Control] Failed to initialize Three.js renderer:', error);
+                    document.getElementById('staged-name').textContent = 'Error loading Three.js';
+                }
+            } else {
+                // Renderer exists, load preset on-demand
+                const presetKey = threejsPresetList[stagedThreeJSIndex];
+                const loaded = await loadThreeJSPreset(presetKey, true);
+
+                if (loaded) {
+                    unifiedThreeJSRenderer.loadPreset(presetKey);
+                    if (!unifiedThreeJSRenderer.isAnimating) {
+                        unifiedThreeJSRenderer.start();
+                    }
+
+                    // Update staged name
+                    const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity'];
+                    document.getElementById('staged-name').textContent = presetNames[stagedThreeJSIndex];
+
+                    console.log('[Control] ✓ Three.js preview loaded fresh preset:', presetKey);
+                }
+            }
         }
 
         // INIT MILKDROP PREVIEW
@@ -1140,6 +1259,55 @@
                     document.getElementById('staged-name').textContent = presetKey;
                     console.log('[Control] ✓ Loaded preset:', presetKey);
                 }
+            }
+        }
+
+        // THREE.JS NAVIGATION
+        function stageThreeJSNav(direction) {
+            if (direction === 'next') {
+                stagedThreeJSIndex = (stagedThreeJSIndex + 1) % threejsPresetList.length;
+            } else {
+                stagedThreeJSIndex--;
+                if (stagedThreeJSIndex < 0) stagedThreeJSIndex = threejsPresetList.length - 1;
+            }
+
+            // Update preview if in threejs mode
+            previewThreeJSPreset(stagedThreeJSIndex);
+        }
+
+        // THREE.JS PRESET PREVIEW
+        async function previewThreeJSPreset(index) {
+            stagedThreeJSIndex = index;
+
+            // Update button visual states
+            for (let i = 0; i < 3; i++) {
+                const btn = document.getElementById(`threejs-preset-${i}`);
+                if (btn) {
+                    if (i === index) {
+                        btn.style.background = '#0066FF';
+                        btn.style.borderColor = '#0088FF';
+                    } else {
+                        btn.style.background = '#2a2a2a';
+                        btn.style.borderColor = '#3a3a3a';
+                    }
+                }
+            }
+
+            // Update staged name
+            const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity'];
+            document.getElementById('staged-name').textContent = presetNames[index];
+
+            // If currently in threejs preview mode, load the preset on-demand
+            if (currentPreviewMode === 'threejs' && unifiedThreeJSRenderer) {
+                const presetKey = threejsPresetList[index];
+                // Load fresh preset from disk
+                const loaded = await loadThreeJSPreset(presetKey, true);
+                if (loaded) {
+                    unifiedThreeJSRenderer.loadPreset(presetKey);
+                    console.log('[Control] ✓ Loaded fresh Three.js preset:', presetKey);
+                }
+            } else {
+                console.log('[Control] Staged Three.js preset:', threejsPresetList[index]);
             }
         }
 
@@ -1970,6 +2138,71 @@
             } catch (error) {
                 console.error('[Control] Failed to enumerate video devices:', error.message);
             }
+        }
+
+        // Dynamic Three.js preset loader
+        // Preset info mapping
+        function getThreeJSPresetInfo(presetName) {
+            const presetMap = {
+                'geometric': { file: 'presets/threejs/GeometricShapes.js', className: 'GeometricShapesPreset' },
+                'particles': { file: 'presets/threejs/Particles.js', className: 'ParticlesPreset' },
+                'tunnel': { file: 'presets/threejs/Tunnel.js', className: 'TunnelPreset' }
+            };
+            return presetMap[presetName];
+        }
+
+        async function loadThreeJSPreset(presetName, cacheBust = true) {
+            const presetInfo = getThreeJSPresetInfo(presetName);
+            if (!presetInfo) {
+                console.error(`[Control] Unknown preset: ${presetName}`);
+                return false;
+            }
+
+            try {
+                console.log(`[Control] Loading Three.js preset on-demand: ${presetName}${cacheBust ? ' (fresh)' : ''}`);
+                await loadScript(presetInfo.file, cacheBust);
+
+                if (typeof window[presetInfo.className] !== 'undefined') {
+                    unifiedThreeJSRenderer.registerPreset(presetName, window[presetInfo.className]);
+                    console.log(`[Control] ✓ Loaded Three.js preset: ${presetName}`);
+                    return true;
+                } else {
+                    console.warn(`[Control] ✗ Preset class ${presetInfo.className} not found`);
+                    return false;
+                }
+            } catch (error) {
+                console.error(`[Control] Failed to load preset ${presetName}:`, error);
+                return false;
+            }
+        }
+
+        async function loadThreeJSPresets() {
+            const presetNames = ['geometric', 'particles', 'tunnel'];
+            for (const presetName of presetNames) {
+                await loadThreeJSPreset(presetName, false);
+            }
+        }
+
+        function loadScript(src, cacheBust = false) {
+            return new Promise((resolve, reject) => {
+                // Remove old script with same src if it exists
+                const oldScripts = document.querySelectorAll(`script[data-preset-src="${src}"]`);
+                oldScripts.forEach(s => s.remove());
+
+                const script = document.createElement('script');
+                script.setAttribute('data-preset-src', src);
+
+                // Add cache-busting timestamp to force reload
+                if (cacheBust) {
+                    script.src = `${src}?t=${Date.now()}`;
+                } else {
+                    script.src = src;
+                }
+
+                script.onload = () => resolve();
+                script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+                document.head.appendChild(script);
+            });
         }
 
         // Force dropdown to default to "microphone" on load

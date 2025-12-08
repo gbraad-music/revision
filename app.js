@@ -206,11 +206,10 @@ class RevisionAppV2 {
                 this.presetManager.setRenderer('threejs', this.threeJSRenderer);
                 console.log('[Revision] ✓ Three.js renderer initialized successfully');
 
-                // Register Three.js presets
-                this.presetManager.registerThreeJSPreset('threejs-default', {
-                    name: 'Three.js Default',
-                    description: 'Beat-reactive 3D scene with geometric shapes'
-                });
+                // Dynamically load Three.js presets
+                await this.loadThreeJSPresets();
+
+                console.log('[Revision] ✓ Registered Three.js presets:', this.threeJSRenderer.getAvailablePresets());
             } else {
                 console.error('[Revision] ✗ Three.js renderer failed to initialize');
             }
@@ -751,6 +750,23 @@ class RevisionAppV2 {
                         this.loadMilkdropPreset(data);
                     } else {
                         console.warn('[Control] Milkdrop preset selected but mode is:', this.currentPresetType);
+                    }
+                    break;
+                case 'threejsSelect':
+                    console.log('[BroadcastChannel] threejsSelect - preset:', data, 'currentMode:', this.currentPresetType);
+                    if (this.currentPresetType === 'threejs') {
+                        if (this.threeJSRenderer) {
+                            // Load preset on-demand with fresh cache
+                            const loaded = await this.loadThreeJSPreset(data, true);
+                            if (loaded) {
+                                this.threeJSRenderer.loadPreset(data);
+                                console.log(`[Revision] ✓ Switched to fresh preset: ${data}`);
+                            } else {
+                                console.error(`[Revision] ✗ Failed to load preset: ${data}`);
+                            }
+                        }
+                    } else {
+                        console.warn('[Control] Three.js preset selected but mode is:', this.currentPresetType);
                     }
                     break;
                 case 'audioDeviceSelect':
@@ -1729,7 +1745,7 @@ class RevisionAppV2 {
             this.hideLoadingMessage();
 
             if (!success) {
-                alert(`Failed to load ${libraryNeeded}. Check your internet connection.`);
+                console.error(`[Revision] Failed to load ${libraryNeeded} library`);
                 return;
             }
 
@@ -1831,11 +1847,12 @@ class RevisionAppV2 {
                     // Force reflow
                     this.threejsCanvas.offsetHeight;
 
-                    // Use actual window dimensions
-                    const isFullscreen = !!document.fullscreenElement;
-                    const w = window.innerWidth;
-                    const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
+                    // Use canvas container's actual dimensions for perfect fit
+                    const container = document.getElementById('canvas-container');
+                    const w = container.clientWidth;
+                    const h = container.clientHeight;
 
+                    console.log('[ThreeJS] Resizing to container dimensions:', w, 'x', h);
                     this.threeJSRenderer.resize(w, h);
                     this.threeJSRenderer.start();
 
@@ -2100,6 +2117,81 @@ class RevisionAppV2 {
         });
     }
 
+    // Preset file mappings
+    getThreeJSPresetInfo(presetName) {
+        const presetMap = {
+            'geometric': { file: 'presets/threejs/GeometricShapes.js', className: 'GeometricShapesPreset' },
+            'particles': { file: 'presets/threejs/Particles.js', className: 'ParticlesPreset' },
+            'tunnel': { file: 'presets/threejs/Tunnel.js', className: 'TunnelPreset' }
+        };
+        return presetMap[presetName];
+    }
+
+    async loadThreeJSPreset(presetName, cacheBust = true) {
+        const presetInfo = this.getThreeJSPresetInfo(presetName);
+        if (!presetInfo) {
+            console.error(`[Revision] Unknown preset: ${presetName}`);
+            return false;
+        }
+
+        try {
+            console.log(`[Revision] Loading Three.js preset on-demand: ${presetName}${cacheBust ? ' (fresh)' : ''}`);
+
+            // Dynamically load the script with cache busting
+            await this.loadScript(presetInfo.file, cacheBust);
+
+            // Check if the class is now available
+            if (typeof window[presetInfo.className] !== 'undefined') {
+                this.threeJSRenderer.registerPreset(presetName, window[presetInfo.className]);
+                console.log(`[Revision] ✓ Loaded Three.js preset: ${presetName}`);
+                return true;
+            } else {
+                console.warn(`[Revision] ✗ Preset class ${presetInfo.className} not found after loading ${presetInfo.file}`);
+                return false;
+            }
+        } catch (error) {
+            console.error(`[Revision] Failed to load preset ${presetName}:`, error);
+            return false;
+        }
+    }
+
+    async loadThreeJSPresets() {
+        // Load all presets at startup (without cache busting)
+        const presetNames = ['geometric', 'particles', 'tunnel'];
+
+        for (const presetName of presetNames) {
+            await this.loadThreeJSPreset(presetName, false);
+        }
+
+        // Load first preset as default
+        const presets = this.threeJSRenderer.getAvailablePresets();
+        if (presets.length > 0) {
+            this.threeJSRenderer.loadPreset(presets[0]);
+        }
+    }
+
+    loadScript(src, cacheBust = false) {
+        return new Promise((resolve, reject) => {
+            // Remove old script with same src if it exists
+            const oldScripts = document.querySelectorAll(`script[data-preset-src="${src}"]`);
+            oldScripts.forEach(s => s.remove());
+
+            const script = document.createElement('script');
+            script.setAttribute('data-preset-src', src);
+
+            // Add cache-busting timestamp to force reload
+            if (cacheBust) {
+                script.src = `${src}?t=${Date.now()}`;
+            } else {
+                script.src = src;
+            }
+
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+            document.head.appendChild(script);
+        });
+    }
+
     toggleFullscreen() {
         if (!document.fullscreenElement) {
             document.body.requestFullscreen().catch(err => {
@@ -2118,7 +2210,6 @@ class RevisionAppV2 {
 
     handleResize() {
         const isFullscreen = !!document.fullscreenElement;
-        const w = window.innerWidth;
 
         // Calculate height based on visible UI elements
         let topOffset = 0;
@@ -2136,17 +2227,21 @@ class RevisionAppV2 {
             }
         }
 
-        const h = window.innerHeight - topOffset - bottomOffset;
-
-        console.log('[Revision] Window resized:', w, 'x', h, 'fullscreen:', isFullscreen, 'top:', topOffset, 'bottom:', bottomOffset);
+        const calcHeight = window.innerHeight - topOffset - bottomOffset;
 
         // Update canvas container height to match calculated size
         const canvasContainer = document.getElementById('canvas-container');
         if (canvasContainer && isFullscreen) {
             canvasContainer.style.height = '100vh';
         } else if (canvasContainer) {
-            canvasContainer.style.height = `${h}px`;
+            canvasContainer.style.height = `${calcHeight}px`;
         }
+
+        // Use container's actual dimensions after CSS update
+        const w = canvasContainer ? canvasContainer.clientWidth : window.innerWidth;
+        const h = canvasContainer ? canvasContainer.clientHeight : calcHeight;
+
+        console.log('[Revision] Window resized - container:', w, 'x', h, 'fullscreen:', isFullscreen);
 
         // Resize active renderer
         switch (this.currentPresetType) {

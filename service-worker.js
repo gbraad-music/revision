@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v6';
+const CACHE_NAME = 'revision-v9';
 const ASSETS = [
     './',
     './index.html',
@@ -8,6 +8,7 @@ const ASSETS = [
     // External libraries (local files)
     './external/butterchurn.min.js',
     './external/butterchurnPresets.min.js',
+    './external/three.min.js',
     './external/three.module.js',
     // Input sources
     './inputs/audio-input-source.js',
@@ -18,6 +19,11 @@ const ASSETS = [
     './presets/milkdrop-renderer.js',
     './presets/preset-manager.js',
     './presets/threejs-renderer.js',
+    // Three.js Presets
+    './presets/threejs/BasePreset.js',
+    './presets/threejs/GeometricShapes.js',
+    './presets/threejs/Particles.js',
+    './presets/threejs/Tunnel.js',
     './renderers/video-renderer.js',
     // Scenes
     './scenes/scene-manager.js',
