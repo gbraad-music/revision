@@ -249,7 +249,7 @@
     </div>
 
     <div class="section">
-        <h2>MIDI Device</h2>
+        <h2>MIDI Device <span id="midi-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
         <select id="midi-input-select">
             <option value="">No MIDI devices found</option>
         </select>
@@ -264,7 +264,7 @@
     </div>
 
     <div class="section">
-        <h2>Audio Input</h2>
+        <h2>Audio Input <span id="audio-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
         <select id="audio-device-select">
             <option value="none">No Audio Input</option>
         </select>
@@ -343,7 +343,7 @@
     </div>
 
     <div class="section" id="video-section" style="display: none;">
-        <h2>Video Feed</h2>
+        <h2>Video Feed <span id="video-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
         <select id="video-device-select">
             <option value="">No camera selected</option>
         </select>
@@ -654,38 +654,71 @@
         });
 
         // Populate audio devices
+        // NOTE: Devices need permission granted first to show proper labels
+        // Permission should already be granted by index.html on load
         async function loadAudioDevices() {
             const select = document.getElementById('audio-device-select');
+            const warning = document.getElementById('audio-perm-warning');
             select.innerHTML = '<option value="none">No Audio Input</option>';
 
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const audioInputs = devices.filter(device => device.kind === 'audioinput');
 
+                // Check if we have permission (devices will have labels)
+                const hasPermission = audioInputs.length > 0 && audioInputs[0].label !== '';
+
+                if (!hasPermission && audioInputs.length > 0) {
+                    // Devices exist but no labels = permission not granted
+                    console.log('[Control] Audio permission not granted - device labels are empty');
+                    console.log('[Control] ⚠️ Click PERMISSIONS button in index.html to grant audio access');
+                    warning.style.display = 'inline';
+                    return;
+                }
+
+                // Hide warning - permission granted
+                warning.style.display = 'none';
+
+                if (audioInputs.length === 0) {
+                    console.log('[Control] No audio input devices found');
+                    select.innerHTML = '<option value="none">No audio devices found</option>';
+                    return;
+                }
+
+                // We have permission - show device names
                 audioInputs.forEach((device, index) => {
                     const option = document.createElement('option');
                     option.value = device.deviceId;
-                    option.textContent = device.label || `Microphone ${index + 1}`;
+                    option.textContent = device.label;
                     select.appendChild(option);
                 });
 
-                console.log('[Control] Found', audioInputs.length, 'audio devices');
+                console.log('[Control] Found', audioInputs.length, 'audio devices with labels');
             } catch (error) {
-                console.log('[Control] Failed to enumerate audio devices:', error.message);
+                console.error('[Control] Failed to enumerate audio devices:', error.message);
+                select.innerHTML = '<option value="none">Error loading audio devices</option>';
             }
         }
 
         // Populate MIDI devices
+        // NOTE: MIDI is OPTIONAL - browser may not support it or it may require HTTPS
         async function loadMIDIDevices() {
+            const select = document.getElementById('midi-input-select');
+            const warning = document.getElementById('midi-perm-warning');
+
             try {
+                // Only request if not already available (won't trigger new prompt if granted)
                 const access = await navigator.requestMIDIAccess();
-                const select = document.getElementById('midi-input-select');
                 select.innerHTML = '';
+
+                // Hide warning - MIDI is available
+                warning.style.display = 'none';
 
                 const inputs = Array.from(access.inputs.values());
 
                 if (inputs.length === 0) {
                     select.innerHTML = '<option value="">No MIDI devices found</option>';
+                    console.log('[Control] MIDI access granted but no devices connected');
                     return;
                 }
 
@@ -698,29 +731,51 @@
 
                 console.log('[Control] Found', inputs.length, 'MIDI devices');
             } catch (error) {
-                console.log('[Control] Failed to enumerate MIDI devices:', error.message);
+                // MIDI not available - this is OPTIONAL, so just hide warning and show message
+                console.log('[Control] MIDI not available:', error.message);
+                console.log('[Control] This is optional - browser may not support MIDI or requires HTTPS');
+
+                // Hide warning - MIDI is optional, not required
+                warning.style.display = 'none';
+
+                select.innerHTML = '<option value="">MIDI not available (browser may not support it)</option>';
             }
         }
 
         // Populate video devices
         async function loadVideoDevices() {
             const select = document.getElementById('video-device-select');
+            const warning = document.getElementById('video-perm-warning');
             select.innerHTML = '<option value="">No camera selected</option>';
 
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const videoInputs = devices.filter(device => device.kind === 'videoinput');
 
+                // Check if we have permission (devices will have labels)
+                const hasPermission = videoInputs.length > 0 && videoInputs[0].label !== '';
+
+                if (!hasPermission && videoInputs.length > 0) {
+                    // Devices exist but no labels = permission not granted
+                    console.log('[Control] Video permission not granted - device labels are empty');
+                    console.log('[Control] ⚠️ Click PERMISSIONS button in index.html to grant camera access');
+                    warning.style.display = 'inline';
+                    return;
+                }
+
+                // Hide warning - permission granted
+                warning.style.display = 'none';
+
                 videoInputs.forEach((device, index) => {
                     const option = document.createElement('option');
                     option.value = device.deviceId;
-                    option.textContent = device.label || `Camera ${index + 1}`;
+                    option.textContent = device.label;
                     select.appendChild(option);
                 });
 
-                console.log('[Control] Found', videoInputs.length, 'video devices');
+                console.log('[Control] Found', videoInputs.length, 'video devices with labels');
             } catch (error) {
-                console.log('[Control] Failed to enumerate video devices:', error.message);
+                console.error('[Control] Failed to enumerate video devices:', error.message);
             }
         }
 

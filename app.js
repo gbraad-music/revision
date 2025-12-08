@@ -64,6 +64,74 @@ class RevisionAppV2 {
         this.presetConfig = null;
     }
 
+
+    async checkAndUpdatePermissionButton() {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const hasCamera = devices.some(d => d.kind === 'videoinput' && d.label);
+        const hasAudio = devices.some(d => d.kind === 'audioinput' && d.label);
+
+        const btn = document.getElementById('permissions-btn');
+        if (!btn) return;
+
+        // Only show button if camera OR audio missing
+        // MIDI is checked separately (never auto-initialized to avoid blocking prompts)
+        if (hasCamera && hasAudio) {
+            btn.style.display = 'none';
+        } else {
+            btn.classList.add('perm-denied');
+            btn.textContent = 'PERMISSIONS !';
+            btn.style.display = '';
+        }
+    }
+
+    async requestPermissions() {
+        console.log('[Revision] Requesting permissions...');
+        let hasMidi = false;
+
+        // Request camera
+        try {
+            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            videoStream.getTracks().forEach(track => track.stop());
+            console.log('[Revision] Camera: granted');
+        } catch (error) {
+            console.error('[Revision] Camera: denied -', error.message);
+        }
+
+        // Request audio
+        try {
+            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioStream.getTracks().forEach(track => track.stop());
+            console.log('[Revision] Audio: granted');
+        } catch (error) {
+            console.error('[Revision] Audio: denied -', error.message);
+        }
+
+        // Request MIDI and initialize the MIDI source
+        try {
+            const enableSysEx = this.settings.get('enableSysEx') !== 'false';
+            const midiSuccess = await this.midiSource.initialize(enableSysEx);
+            if (midiSuccess) {
+                this.inputManager.registerSource('midi', this.midiSource);
+                console.log('[Revision] MIDI: granted');
+                console.log('[Revision] MIDI midiAccess:', this.midiSource.midiAccess);
+                hasMidi = true;
+
+                // Auto-connect to last MIDI device
+                const lastMidiId = this.settings.get('midiInputId');
+                if (lastMidiId) {
+                    this.midiSource.connectInput(lastMidiId);
+                }
+            } else {
+                console.error('[Revision] MIDI: initialize returned false');
+            }
+        } catch (error) {
+            console.error('[Revision] MIDI: denied -', error.message);
+        }
+
+        // Check and update button immediately
+        await this.checkAndUpdatePermissionButton();
+    }
+
     async initialize() {
         console.log('[Revision V2] Initializing...');
 
@@ -73,6 +141,9 @@ class RevisionAppV2 {
             document.body.classList.add('url-fullscreen');
             console.log('[Revision] URL fullscreen mode enabled (for OBS/browser sources)');
         }
+
+        // DO NOT request permissions here - it blocks the entire UI!
+        // Permissions are requested AFTER UI setup, and user can manually trigger
 
         // Load preset configuration
         await this.loadPresetConfig();
@@ -192,6 +263,33 @@ class RevisionAppV2 {
         // Setup UI
         this.setupUI();
 
+        // Hide button by default - will show only if needed
+        const btn = document.getElementById('permissions-btn');
+        if (btn) {
+            btn.style.display = 'none';
+        }
+
+        // Check permissions multiple times to catch when they're granted
+        // First check after 100ms
+        setTimeout(async () => {
+            await this.checkAndUpdatePermissionButton();
+        }, 100);
+
+        // Second check after 500ms (in case first was too early)
+        setTimeout(async () => {
+            await this.checkAndUpdatePermissionButton();
+        }, 500);
+
+        // Third check after 1 second (final check)
+        setTimeout(async () => {
+            await this.checkAndUpdatePermissionButton();
+        }, 1000);
+
+        // Check permissions when window gains focus
+        window.addEventListener('focus', async () => {
+            await this.checkAndUpdatePermissionButton();
+        });
+
         // Setup BroadcastChannel for control.html
         this.setupControlChannel();
 
@@ -220,55 +318,14 @@ class RevisionAppV2 {
         // Start beat interpolation
         this.interpolateBeat();
 
-        console.log('[Revision V2] ═══════════════════════════════════════════════════════');
-        console.log('[Revision V2] ✓ Initialized successfully');
-        console.log('[Revision V2] Available presets:', this.presetManager.getAllPresets().length);
-        console.log('[Revision V2] ═══════════════════════════════════════════════════════');
-        console.log('[Revision V2] CURRENT CONFIGURATION:');
-        console.log('[Revision V2]   Visual Mode:', this.currentPresetType);
-        console.log('[Revision V2]   Audio Source Setting:', this.settings.get('visualAudioSource') || 'microphone');
-        console.log('[Revision V2]   MIDI Synth Active:', !!this.midiAudioSynth);
-        console.log('[Revision V2]   MIDI Device Selected:', this.settings.get('midiInputId') || 'NONE');
-        console.log('[Revision V2]   MIDI Channel Filter:', this.settings.get('midiSynthChannel') || 'all');
-        console.log('[Revision V2]   Audio Input Active:', this.audioSource?.isActive || false);
-        console.log('[Revision V2] ═══════════════════════════════════════════════════════');
-        console.log('[Revision V2] 📝 To use MIDI Synth:');
-        console.log('[Revision V2]   1. Open control.html');
-        console.log('[Revision V2]   2. Select a MIDI device in "MIDI Device"');
-        console.log('[Revision V2]   3. Switch to MILKDROP mode (Preset Mode)');
-        console.log('[Revision V2]   4. Load a Milkdrop preset (Next/Prev buttons)');
-        console.log('[Revision V2]   5. Select "MIDI Synthesizer" in "MIDI Input"');
-        console.log('[Revision V2]   6. Play notes on the selected MIDI channel');
-        console.log('[Revision V2] ═══════════════════════════════════════════════════════');
-
-        if (this.currentPresetType !== 'milkdrop') {
-            console.warn('[Revision V2] ⚠️⚠️⚠️ YOU ARE NOT IN MILKDROP MODE! ⚠️⚠️⚠️');
-            console.warn('[Revision V2] Current mode:', this.currentPresetType);
-            console.warn('[Revision V2] Switch to Milkdrop in control.html to see MIDI visuals!');
-        }
+        console.log('[Revision] Initialized - Mode:', this.currentPresetType);
     }
 
     async initializeInputs() {
-        // Initialize MIDI input
-        const enableSysEx = this.settings.get('enableSysEx') !== 'false'; // Default true
+        // Create MIDI source but DON'T initialize yet (requires user permission)
+        // Will be initialized when user clicks PERMISSIONS button
         this.midiSource = new MIDIInputSource();
-        const midiSuccess = await this.midiSource.initialize(enableSysEx);
-
-        if (midiSuccess) {
-            this.inputManager.registerSource('midi', this.midiSource);
-            console.log('[Revision] MIDI input registered (SysEx:', enableSysEx, ')');
-
-            // Auto-connect to last MIDI device
-            const lastMidiId = this.settings.get('midiInputId');
-            if (lastMidiId) {
-                console.log('[Revision] 🔌 Auto-connecting to saved MIDI device:', lastMidiId);
-                this.midiSource.connectInput(lastMidiId);
-            } else {
-                console.warn('[Revision] ⚠️ NO MIDI DEVICE SELECTED! Go to control.html -> MIDI Device to select one');
-            }
-        } else {
-            console.error('[Revision] ❌ MIDI initialization FAILED - no MIDI support');
-        }
+        console.log('[Revision] MIDI source created (not initialized - waiting for permissions)');
 
         // Initialize Audio input (if enabled)
         const audioDeviceId = this.settings.get('audioInputDeviceId');
@@ -1012,15 +1069,41 @@ class RevisionAppV2 {
     }
 
     setupUI() {
+        // Permissions button
+        const permBtn = document.getElementById('permissions-btn');
+        if (permBtn) {
+            const requestPerms = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await this.requestPermissions();
+            };
+            permBtn.addEventListener('click', requestPerms);
+            permBtn.addEventListener('touchend', requestPerms);
+        }
+
         // Control page
-        document.getElementById('control-btn').addEventListener('click', () => {
-            window.open('control.html', '_blank');
-        });
+        const controlBtn = document.getElementById('control-btn');
+        if (controlBtn) {
+            const openControl = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                window.open('control.html', '_blank');
+            };
+            controlBtn.addEventListener('click', openControl);
+            controlBtn.addEventListener('touchend', openControl);
+        }
 
         // Fullscreen
-        document.getElementById('fullscreen-btn').addEventListener('click', () => {
-            this.toggleFullscreen();
-        });
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        if (fullscreenBtn) {
+            const toggleFs = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.toggleFullscreen();
+            };
+            fullscreenBtn.addEventListener('click', toggleFs);
+            fullscreenBtn.addEventListener('touchend', toggleFs);
+        }
 
         // Fullscreen change
         document.addEventListener('fullscreenchange', () => {

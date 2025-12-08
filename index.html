@@ -62,11 +62,33 @@
             cursor: pointer;
             font-size: 11px;
             margin-left: 8px;
+            position: relative;
+            z-index: 1001;
+            pointer-events: auto;
         }
 
         .status-bar button:hover {
             background-color: #2a2a2a;
             color: #ffffff;
+        }
+
+        /* Permission button states */
+        #permissions-btn.perm-granted {
+            background-color: #00aa00 !important;
+            border-color: #00cc00 !important;
+            color: #ffffff !important;
+        }
+
+        #permissions-btn.perm-denied {
+            background-color: #cc0000 !important;
+            border-color: #ff0000 !important;
+            color: #ffffff !important;
+        }
+
+        #permissions-btn.perm-partial {
+            background-color: #cc6600 !important;
+            border-color: #ff8800 !important;
+            color: #ffffff !important;
         }
 
         .midi-indicator {
@@ -212,6 +234,7 @@
     <div class="status-bar">
         <div>REVISION</div>
         <div style="display: flex; align-items: center; gap: 5px;">
+            <button id="permissions-btn" title="Request camera, audio, and MIDI permissions">PERMISSIONS</button>
             <button id="control-btn">CONTROL</button>
             <button id="fullscreen-btn">FULLSCREEN</button>
             <span class="midi-indicator" id="midi-indicator" title="MIDI"></span>
@@ -220,11 +243,11 @@
     </div>
 
     <!-- Canvas for each renderer mode -->
-    <div id="canvas-container" style="position: fixed; top: 40px; left: 0; right: 0; bottom: 80px; width: 100%; height: calc(100vh - 120px);">
-        <canvas id="builtin-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
-        <canvas id="threejs-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></canvas>
-        <canvas id="milkdrop-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></canvas>
-        <canvas id="video-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></canvas>
+    <div id="canvas-container" style="position: fixed; top: 40px; left: 0; right: 0; bottom: 80px; width: 100%; height: calc(100vh - 120px); pointer-events: none;">
+        <canvas id="builtin-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+        <canvas id="threejs-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none;"></canvas>
+        <canvas id="milkdrop-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none;"></canvas>
+        <canvas id="video-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none;"></canvas>
     </div>
 
     <!-- Control Panel -->
