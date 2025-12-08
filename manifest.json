@@ -2,7 +2,7 @@
   "name": "Revision - MIDI VJ Tool",
   "short_name": "Revision",
   "description": "Beat-matched visual performance tool with MIDI control",
-  "start_url": "/",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
