@@ -603,6 +603,12 @@
 
         function goToProgramMilkdrop() {
             console.log('[Control] GO TO PROGRAM: Milkdrop Preset', stagedMilkdropIndex);
+
+            if (milkdropPresetList.length === 0) {
+                console.warn('[Control] No Milkdrop presets loaded yet - staying in current mode');
+                return;
+            }
+
             sendCommand('switchMode', 'milkdrop');
             setTimeout(() => {
                 sendCommand('milkdropSelect', stagedMilkdropIndex);
@@ -855,6 +861,17 @@
                 return;
             }
 
+            // Load preset list directly from butterchurnPresets (control.html is in charge)
+            if (milkdropPresetList.length === 0) {
+                console.log('[Control] Loading Milkdrop presets directly from butterchurnPresets...');
+                const allPresets = butterchurnPresets.getPresets();
+                milkdropPresetList = Object.keys(allPresets);
+                console.log('[Control] ✓ Loaded', milkdropPresetList.length, 'Milkdrop presets');
+
+                // Update preset list UI
+                displayPresets(milkdropPresetList);
+            }
+
             // Replace canvas to ensure fresh WebGL context
             const oldCanvas = document.getElementById('unified-preview-canvas');
             const newCanvas = document.createElement('canvas');
@@ -894,18 +911,23 @@
                 console.log('[Control] ✓ Milkdrop visualizer created at', displayWidth, 'x', displayHeight);
             }
 
-            // Load current preset
+            // Load first preset automatically
             if (milkdropPresetList.length > 0) {
+                console.log('[Control] Auto-loading first preset...');
                 const allPresets = butterchurnPresets.getPresets();
-                const presetKey = milkdropPresetList[stagedMilkdropIndex];
+                const presetKey = milkdropPresetList[0]; // Always load first preset
                 const preset = allPresets[presetKey];
 
-                if (preset) {
-                    unifiedMilkdropVisualizer.loadPreset(preset, 0);
+                if (preset && unifiedMilkdropVisualizer) {
+                    stagedMilkdropIndex = 0; // Set to first preset
+                    unifiedMilkdropVisualizer.loadPreset(preset, 2.7); // 2.7 second blend time
                     document.getElementById('staged-name').textContent = presetKey;
-                    console.log('[Control] ✓ Loaded preset:', presetKey);
+                    console.log('[Control] ✓ Auto-loaded first preset:', presetKey);
+                } else {
+                    console.error('[Control] Failed to load first preset - preset or visualizer not ready');
                 }
             } else {
+                console.warn('[Control] No presets available to load');
                 document.getElementById('staged-name').textContent = 'No presets available';
             }
 
@@ -1500,7 +1522,8 @@
                     updateState(data);
                     break;
                 case 'presetList':
-                    displayPresets(data);
+                    // Ignore - control.html loads presets directly from butterchurnPresets
+                    // (Similar to how Three.js works)
                     break;
             }
         };
@@ -1724,20 +1747,19 @@
         }
 
 
-        // Load preset list from main app (not local config)
-        // This is now handled by 'requestState' which triggers 'presetList' broadcast
+        // Load preset list - control.html is in charge (like Three.js)
         async function loadPresets() {
-            console.log('[Control] Preset list will be loaded from main app via BroadcastChannel');
-            // No local loading - main app is source of truth
+            console.log('[Control] Milkdrop presets will be loaded on-demand when preview is opened');
+            // Presets loaded directly from butterchurnPresets in initMilkdropPreview()
         }
 
         function displayPresets(presets) {
             if (!presets || presets.length === 0) {
+                console.warn('[Control] displayPresets called with empty list');
                 return;
             }
 
-            // Store preset list for staging
-            milkdropPresetList = presets;
+            console.log('[Control] Displaying', presets.length, 'presets in UI');
 
             const list = document.getElementById('preset-list');
             list.innerHTML = '';

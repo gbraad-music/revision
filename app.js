@@ -1032,11 +1032,14 @@ class RevisionAppV2 {
                 case 'requestState':
                     this.broadcastState();
                     // Also send preset list if available
-                    if (this.milkdropPresetKeys) {
+                    if (this.milkdropPresetKeys && this.milkdropPresetKeys.length > 0) {
+                        console.log('[BroadcastChannel] Sending preset list:', this.milkdropPresetKeys.length, 'presets');
                         this.controlChannel.postMessage({
                             type: 'presetList',
                             data: this.milkdropPresetKeys
                         });
+                    } else {
+                        console.warn('[BroadcastChannel] No Milkdrop presets loaded yet');
                     }
                     break;
             }
