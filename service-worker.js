@@ -1,10 +1,14 @@
-const CACHE_NAME = 'revision-v5';
+const CACHE_NAME = 'revision-v6';
 const ASSETS = [
     './',
     './index.html',
     './control.html',
     './app.js',
     './manifest.json',
+    // External libraries (local files)
+    './external/butterchurn.min.js',
+    './external/butterchurnPresets.min.js',
+    './external/three.module.js',
     // Input sources
     './inputs/audio-input-source.js',
     './inputs/input-manager.js',
