@@ -324,11 +324,12 @@
         <div style="display: flex; gap: 5px; margin-bottom: 15px;">
             <button onclick="switchPreviewMode('builtin')" id="preview-tab-builtin" style="flex: 1; padding: 10px; background: #0066FF; border: 1px solid #0088FF; border-radius: 4px; color: white; font-weight: bold; cursor: pointer;">Built-in</button>
             <button onclick="switchPreviewMode('milkdrop')" id="preview-tab-milkdrop" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Milkdrop</button>
-            <button onclick="switchPreviewMode('video')" id="preview-tab-video" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Video</button>
+            <button onclick="switchPreviewMode('video')" id="preview-tab-video" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Camera</button>
+            <button onclick="switchPreviewMode('media')" id="preview-tab-media" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Media</button>
         </div>
 
         <!-- Single Unified Preview Canvas -->
-        <div id="unified-preview-container" style="margin-bottom: 15px;">
+        <div id="unified-preview-container" style="margin-bottom: 15px; max-width: 640px;">
             <div style="position: relative; background: #000; border: 2px solid #0066FF; border-radius: 4px; overflow: hidden; width: 100%; padding-bottom: 56.25%; /* 16:9 aspect ratio */">
                 <canvas id="unified-preview-canvas" width="640" height="360" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block;"></canvas>
                 <div style="position: absolute; top: 5px; left: 5px; background: rgba(0,102,255,0.8); color: white; padding: 3px 8px; border-radius: 3px; font-size: 10px; font-weight: bold; z-index: 10;">PREVIEW</div>
@@ -376,7 +377,7 @@
 
     <!-- Video Camera Controls -->
     <div class="section" id="video-controls" style="display: none;">
-        <h2>Video Feed <span id="video-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
+        <h2>Camera Feed <span id="video-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
 
         <select id="video-device-select">
             <option value="">No camera selected</option>
@@ -399,6 +400,75 @@
         </div>
     </div>
 
+    <!-- Media File Controls (Images & Videos) -->
+    <div class="section" id="media-controls" style="display: none;">
+        <h2>Media Files (Images & Videos)</h2>
+
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">Select or Drop Media File</label>
+        <div id="media-drop-zone" style="width: 100%; padding: 30px; background: #0a0a0a; color: #666; border: 2px dashed #2a2a2a; border-radius: 4px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 10px;">
+            <div style="font-size: 14px; margin-bottom: 5px;">📁 Drop media file here</div>
+            <div style="font-size: 11px;">or click to browse</div>
+        </div>
+        <input type="file" id="media-file-input" accept="image/*,video/*" style="display: none;">
+        <div class="info">Supports images (JPG, PNG, GIF) and videos (MP4, WebM)</div>
+
+        <div id="media-file-info" style="margin-top: 15px; padding: 10px; background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 4px; display: none;">
+            <div style="font-size: 11px; color: #888; text-transform: uppercase; margin-bottom: 5px;">Selected File</div>
+            <div id="media-file-name" style="color: #0066FF; font-weight: bold; margin-bottom: 5px;">-</div>
+            <div id="media-file-type" style="font-size: 11px; color: #888;">-</div>
+            <div id="media-file-size" style="font-size: 11px; color: #888; margin-top: 3px;">-</div>
+        </div>
+
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Fit Mode</label>
+        <select id="media-fit-mode" style="width: 100%; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px; margin-bottom: 5px;">
+            <option value="cover">Cover (Fill, may crop)</option>
+            <option value="contain">Contain (Fit all, may letterbox)</option>
+            <option value="fill">Stretch (Fill, may distort)</option>
+        </select>
+        <div class="info" style="margin-bottom: 10px;">How media should fit in the canvas</div>
+
+        <label style="display: block; margin-top: 10px; font-size: 12px;">
+            <input type="checkbox" id="media-loop" style="width: auto; margin-right: 5px;" checked>
+            Loop video playback
+        </label>
+
+        <label style="display: block; margin-top: 10px; font-size: 12px;">
+            <input type="checkbox" id="media-audio-reactive" style="width: auto; margin-right: 5px;">
+            Audio-reactive effects
+        </label>
+
+        <label style="display: block; margin-top: 10px; font-size: 12px;">
+            <input type="checkbox" id="media-beat-reactive" style="width: auto; margin-right: 5px;">
+            Beat-reactive zoom
+        </label>
+
+        <div style="margin-top: 15px;">
+            <button onclick="clearMediaFile()" style="width: 100%; padding: 10px;">Clear Media</button>
+            <div class="info" style="margin-top: 5px;">Clear loaded media file</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Display Settings</h2>
+
+        <label style="display: block; margin-bottom: 10px; font-size: 12px;">
+            <input type="checkbox" id="show-status-bar" style="width: auto; margin-right: 5px;" checked>
+            Show Status Bar (Top)
+        </label>
+
+        <label style="display: block; margin-bottom: 10px; font-size: 12px;">
+            <input type="checkbox" id="show-control-panel" style="width: auto; margin-right: 5px;">
+            Show Control Panel (Bottom)
+        </label>
+
+        <label style="display: block; margin-bottom: 10px; font-size: 12px;">
+            <input type="checkbox" id="use-fullscreen" style="width: auto; margin-right: 5px;" disabled>
+            Fullscreen Active (use F11 to toggle)
+        </label>
+
+        <div class="info">Press F11 on main display to enter/exit fullscreen mode</div>
+    </div>
+
     <div class="section">
         <h2>OSC Server (Optional)</h2>
         <input type="text" id="osc-server" placeholder="ws://localhost:8080" style="width: 100%; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px;" />
@@ -419,13 +489,20 @@
         const controlChannel = new BroadcastChannel('revision-control');
 
         // UNIFIED PREVIEW SYSTEM - Single canvas, one renderer at a time
-        let currentPreviewMode = 'builtin'; // Which tab is active: builtin/milkdrop/video
+        let currentPreviewMode = 'builtin'; // Which tab is active: builtin/milkdrop/video/media
         let unifiedCanvas = null;
         let unifiedPreviewRenderer = null; // VideoRenderer OR VisualRenderer
         let unifiedSceneManager = null; // For built-in scenes
         let unifiedMilkdropVisualizer = null; // For Milkdrop
         let unifiedAudioContext = null;
         let currentVideoDeviceId = null;
+
+        // Media file state
+        let stagedMediaFile = null; // File object
+        let stagedMediaURL = null; // Object URL for preview
+        let stagedMediaType = null; // 'image' or 'video'
+        let mediaElement = null; // IMG or VIDEO element for rendering
+        let mediaFitMode = 'cover'; // How to fit media: cover, contain, fill
 
         // Current program state (synced from main app)
         let currentProgramMode = 'builtin';
@@ -454,6 +531,9 @@
                     break;
                 case 'video':
                     goToProgramVideo();
+                    break;
+                case 'media':
+                    goToProgramMedia();
                     break;
             }
         }
@@ -495,7 +575,7 @@
             }
         }
 
-        // SWITCH PREVIEW MODE - Tabs for Built-in/Milkdrop/Video
+        // SWITCH PREVIEW MODE - Tabs for Built-in/Milkdrop/Video/Media
         function switchPreviewMode(mode) {
             console.log('[Control] Switching preview mode to:', mode);
             currentPreviewMode = mode;
@@ -513,13 +593,18 @@
             document.getElementById('preview-tab-video').style.borderColor = mode === 'video' ? '#0088FF' : '#3a3a3a';
             document.getElementById('preview-tab-video').style.color = mode === 'video' ? 'white' : '#888';
 
+            document.getElementById('preview-tab-media').style.background = mode === 'media' ? '#0066FF' : '#2a2a2a';
+            document.getElementById('preview-tab-media').style.borderColor = mode === 'media' ? '#0088FF' : '#3a3a3a';
+            document.getElementById('preview-tab-media').style.color = mode === 'media' ? 'white' : '#888';
+
             // Show/hide control sections
             document.getElementById('builtin-controls').style.display = mode === 'builtin' ? 'block' : 'none';
             document.getElementById('milkdrop-controls').style.display = mode === 'milkdrop' ? 'block' : 'none';
             document.getElementById('video-controls').style.display = mode === 'video' ? 'block' : 'none';
+            document.getElementById('media-controls').style.display = mode === 'media' ? 'block' : 'none';
 
             // Update preview mode label
-            const labels = { builtin: 'BUILT-IN', milkdrop: 'MILKDROP', video: 'VIDEO' };
+            const labels = { builtin: 'BUILT-IN', milkdrop: 'MILKDROP', video: 'VIDEO', media: 'MEDIA' };
             document.getElementById('preview-mode-label').textContent = labels[mode];
 
             // Stop and cleanup old preview renderer
@@ -535,6 +620,9 @@
                     break;
                 case 'video':
                     initVideoPreview();
+                    break;
+                case 'media':
+                    initMediaPreview();
                     break;
             }
         }
@@ -559,6 +647,11 @@
             if (unifiedMilkdropVisualizer) {
                 window.milkdropPreviewAnimating = false;
                 unifiedMilkdropVisualizer = null;
+            }
+
+            // Stop media rendering
+            if (window.mediaPreviewAnimating) {
+                window.mediaPreviewAnimating = false;
             }
 
             unifiedSceneManager = null;
@@ -760,6 +853,271 @@
                 }
                 document.getElementById('staged-name').textContent = 'No camera selected';
             }
+        }
+
+        // INIT MEDIA PREVIEW
+        function initMediaPreview() {
+            console.log('[Control] Initializing media preview...');
+
+            // Replace canvas to ensure fresh 2D context
+            const oldCanvas = document.getElementById('unified-preview-canvas');
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = 'unified-preview-canvas';
+            newCanvas.width = oldCanvas.clientWidth;
+            newCanvas.height = oldCanvas.clientHeight;
+            newCanvas.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block;';
+
+            oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+            unifiedCanvas = newCanvas;
+            console.log('[Control] Canvas refreshed for media mode');
+
+            if (stagedMediaFile) {
+                // Render the staged media file
+                renderMediaPreview();
+            } else {
+                // Show placeholder
+                const ctx = unifiedCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+                    ctx.fillStyle = '#888';
+                    ctx.font = '14px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Select a media file below', unifiedCanvas.width / 2, unifiedCanvas.height / 2);
+                }
+                document.getElementById('staged-name').textContent = 'No media selected';
+            }
+        }
+
+        // Calculate dimensions based on fit mode
+        function calculateFitDimensions(mediaWidth, mediaHeight, canvasWidth, canvasHeight, fitMode) {
+            const mediaAspect = mediaWidth / mediaHeight;
+            const canvasAspect = canvasWidth / canvasHeight;
+            let drawWidth, drawHeight, drawX, drawY;
+
+            switch (fitMode) {
+                case 'cover':
+                    // Fill canvas, may crop
+                    if (canvasAspect > mediaAspect) {
+                        drawWidth = canvasWidth;
+                        drawHeight = drawWidth / mediaAspect;
+                        drawX = 0;
+                        drawY = (canvasHeight - drawHeight) / 2;
+                    } else {
+                        drawHeight = canvasHeight;
+                        drawWidth = drawHeight * mediaAspect;
+                        drawX = (canvasWidth - drawWidth) / 2;
+                        drawY = 0;
+                    }
+                    break;
+
+                case 'contain':
+                    // Fit all, may letterbox
+                    if (canvasAspect > mediaAspect) {
+                        drawHeight = canvasHeight;
+                        drawWidth = drawHeight * mediaAspect;
+                        drawX = (canvasWidth - drawWidth) / 2;
+                        drawY = 0;
+                    } else {
+                        drawWidth = canvasWidth;
+                        drawHeight = drawWidth / mediaAspect;
+                        drawX = 0;
+                        drawY = (canvasHeight - drawHeight) / 2;
+                    }
+                    break;
+
+                case 'fill':
+                    // Stretch to fill
+                    drawWidth = canvasWidth;
+                    drawHeight = canvasHeight;
+                    drawX = 0;
+                    drawY = 0;
+                    break;
+
+                default:
+                    // Default to cover
+                    return calculateFitDimensions(mediaWidth, mediaHeight, canvasWidth, canvasHeight, 'cover');
+            }
+
+            return { drawWidth, drawHeight, drawX, drawY };
+        }
+
+        // RENDER MEDIA PREVIEW
+        function renderMediaPreview() {
+            if (!stagedMediaFile || !stagedMediaURL) return;
+
+            const ctx = unifiedCanvas.getContext('2d');
+            if (!ctx) {
+                console.error('[Control] Failed to get 2D context for media preview');
+                return;
+            }
+
+            // Create IMG or VIDEO element based on type
+            if (stagedMediaType === 'image') {
+                if (!mediaElement || mediaElement.tagName !== 'IMG') {
+                    mediaElement = document.createElement('img');
+                }
+
+                mediaElement.onload = () => {
+                    console.log('[Control] Image loaded:', stagedMediaFile.name);
+                    document.getElementById('staged-name').textContent = 'Image: ' + stagedMediaFile.name;
+
+                    // Start animation loop for image (needed for fit mode changes)
+                    if (!window.mediaPreviewAnimating) {
+                        window.mediaPreviewAnimating = true;
+                        function renderImageFrame() {
+                            if (!window.mediaPreviewAnimating) return;
+
+                            if (mediaElement && mediaElement.tagName === 'IMG' && mediaElement.complete) {
+                                ctx.fillStyle = '#000';
+                                ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+
+                                const { drawWidth, drawHeight, drawX, drawY } = calculateFitDimensions(
+                                    mediaElement.width,
+                                    mediaElement.height,
+                                    unifiedCanvas.width,
+                                    unifiedCanvas.height,
+                                    mediaFitMode
+                                );
+
+                                ctx.drawImage(mediaElement, drawX, drawY, drawWidth, drawHeight);
+                            }
+
+                            requestAnimationFrame(renderImageFrame);
+                        }
+                        renderImageFrame();
+                    }
+                };
+
+                mediaElement.onerror = () => {
+                    console.error('[Control] Failed to load image');
+                    document.getElementById('staged-name').textContent = 'Error loading image';
+                };
+
+                mediaElement.src = stagedMediaURL;
+
+            } else if (stagedMediaType === 'video') {
+                if (!mediaElement || mediaElement.tagName !== 'VIDEO') {
+                    mediaElement = document.createElement('video');
+                    mediaElement.muted = true; // ALWAYS muted - preview is visual only
+                    mediaElement.loop = document.getElementById('media-loop').checked;
+                }
+
+                mediaElement.onloadedmetadata = () => {
+                    console.log('[Control] Video loaded:', stagedMediaFile.name, 'Duration:', mediaElement.duration);
+                    document.getElementById('staged-name').textContent = 'Video: ' + stagedMediaFile.name;
+
+                    mediaElement.play().catch(err => {
+                        console.warn('[Control] Video autoplay failed:', err);
+                    });
+
+                    // Start render loop for video
+                    if (!window.mediaPreviewAnimating) {
+                        window.mediaPreviewAnimating = true;
+                        function renderVideoFrame() {
+                            if (!window.mediaPreviewAnimating) return;
+
+                            if (mediaElement && mediaElement.readyState >= 2) {
+                                ctx.fillStyle = '#000';
+                                ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+
+                                const { drawWidth, drawHeight, drawX, drawY } = calculateFitDimensions(
+                                    mediaElement.videoWidth,
+                                    mediaElement.videoHeight,
+                                    unifiedCanvas.width,
+                                    unifiedCanvas.height,
+                                    mediaFitMode
+                                );
+
+                                ctx.drawImage(mediaElement, drawX, drawY, drawWidth, drawHeight);
+                            }
+
+                            requestAnimationFrame(renderVideoFrame);
+                        }
+                        renderVideoFrame();
+                    }
+                };
+
+                mediaElement.onerror = () => {
+                    console.error('[Control] Failed to load video');
+                    document.getElementById('staged-name').textContent = 'Error loading video';
+                };
+
+                mediaElement.src = stagedMediaURL;
+            }
+        }
+
+        // GO TO PROGRAM - Media mode
+        function goToProgramMedia() {
+            console.log('[Control] GO TO PROGRAM: Media file');
+
+            if (!stagedMediaFile || !stagedMediaURL) {
+                console.warn('[Control] No media file selected');
+                return;
+            }
+
+            // Send media file data to main app
+            // Note: We can't send File objects via BroadcastChannel, so we send the Object URL
+            sendCommand('switchMode', 'media');
+            setTimeout(() => {
+                sendCommand('mediaLoad', {
+                    url: stagedMediaURL,
+                    type: stagedMediaType,
+                    name: stagedMediaFile.name,
+                    loop: document.getElementById('media-loop').checked,
+                    fitMode: mediaFitMode
+                });
+            }, 100);
+        }
+
+        // CLEAR MEDIA FILE
+        function clearMediaFile() {
+            console.log('[Control] Clearing media file...');
+
+            // Revoke object URL to free memory
+            if (stagedMediaURL) {
+                URL.revokeObjectURL(stagedMediaURL);
+                stagedMediaURL = null;
+            }
+
+            // Clear media element
+            if (mediaElement) {
+                if (mediaElement.tagName === 'VIDEO') {
+                    mediaElement.pause();
+                }
+                mediaElement.src = '';
+                mediaElement = null;
+            }
+
+            stagedMediaFile = null;
+            stagedMediaType = null;
+
+            // Update UI
+            const fileInput = document.getElementById('media-file-input');
+            if (fileInput) {
+                fileInput.value = '';
+            }
+
+            document.getElementById('media-file-info').style.display = 'none';
+            document.getElementById('staged-name').textContent = 'No media selected';
+
+            // Stop animation loop
+            window.mediaPreviewAnimating = false;
+
+            // If currently in media preview mode, show placeholder
+            if (currentPreviewMode === 'media') {
+                const ctx = unifiedCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+                    ctx.fillStyle = '#888';
+                    ctx.font = '14px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Select a media file below', unifiedCanvas.width / 2, unifiedCanvas.height / 2);
+                }
+            }
+
+            console.log('[Control] ✓ Media file cleared');
         }
 
         // MILKDROP NAVIGATION
@@ -1012,23 +1370,33 @@
 
                 // Show/hide scene display based on mode
                 const sceneDisplay = document.getElementById('program-scene-display');
-                if (state.mode === 'builtin' && state.scene !== undefined) {
-                    currentProgramScene = state.scene; // Track current scene
-                    const sceneNames = ['1 - Tunnel', '2 - Particles', '3 - Kaleidoscope', '4 - Waveform'];
-                    document.getElementById('program-scene-name').textContent = sceneNames[state.scene] || state.scene;
-                    sceneDisplay.style.display = '';
-                } else {
-                    sceneDisplay.style.display = 'none';
+                if (sceneDisplay) {
+                    if (state.mode === 'builtin' && state.scene !== undefined) {
+                        currentProgramScene = state.scene; // Track current scene
+                        const sceneNames = ['1 - Tunnel', '2 - Particles', '3 - Kaleidoscope', '4 - Waveform'];
+                        const sceneNameElement = document.getElementById('program-scene-name');
+                        if (sceneNameElement) {
+                            sceneNameElement.textContent = sceneNames[state.scene] || state.scene;
+                        }
+                        sceneDisplay.style.display = '';
+                    } else {
+                        sceneDisplay.style.display = 'none';
+                    }
                 }
 
                 // Update Built-in section program display
                 const builtinProgramDisplay = document.getElementById('program-builtin-display');
-                if (state.mode === 'builtin' && state.scene !== undefined) {
-                    const sceneNames = ['1 - Tunnel', '2 - Particles', '3 - Kaleidoscope', '4 - Waveform'];
-                    document.getElementById('program-builtin-name').textContent = sceneNames[state.scene];
-                    builtinProgramDisplay.style.display = '';
-                } else {
-                    builtinProgramDisplay.style.display = 'none';
+                if (builtinProgramDisplay) {
+                    if (state.mode === 'builtin' && state.scene !== undefined) {
+                        const sceneNames = ['1 - Tunnel', '2 - Particles', '3 - Kaleidoscope', '4 - Waveform'];
+                        const builtinNameElement = document.getElementById('program-builtin-name');
+                        if (builtinNameElement) {
+                            builtinNameElement.textContent = sceneNames[state.scene];
+                        }
+                        builtinProgramDisplay.style.display = '';
+                    } else {
+                        builtinProgramDisplay.style.display = 'none';
+                    }
                 }
             }
 
@@ -1039,8 +1407,10 @@
             if (state.presetName && state.mode === 'milkdrop') {
                 const programPresetDisplay = document.getElementById('program-preset-display');
                 const programPresetName = document.getElementById('program-preset-name');
-                programPresetName.textContent = state.presetName;
-                programPresetDisplay.style.display = '';
+                if (programPresetDisplay && programPresetName) {
+                    programPresetName.textContent = state.presetName;
+                    programPresetDisplay.style.display = '';
+                }
             } else {
                 const programPresetDisplay = document.getElementById('program-preset-display');
                 if (programPresetDisplay) {
@@ -1050,7 +1420,10 @@
 
             // Update audio source display
             if (state.audioSourceDisplay) {
-                document.getElementById('current-audio-source').textContent = state.audioSourceDisplay;
+                const audioSourceElement = document.getElementById('current-audio-source');
+                if (audioSourceElement) {
+                    audioSourceElement.textContent = state.audioSourceDisplay;
+                }
             }
 
             // Update MIDI input device
@@ -1063,20 +1436,30 @@
 
             // Update SysEx setting
             if (state.enableSysEx !== undefined) {
-                document.getElementById('sysex-enable').value = state.enableSysEx;
+                const sysexElement = document.getElementById('sysex-enable');
+                if (sysexElement) {
+                    sysexElement.value = state.enableSysEx;
+                }
             }
 
             // Update program renderer display (what's actually on main display)
             if (state.renderer !== undefined && state.mode === 'builtin') {
                 currentProgramRenderer = state.renderer; // Track current program renderer
                 const rendererNames = { webgl: 'WebGL', canvas2d: 'Canvas 2D' };
-                document.getElementById('program-renderer-name').textContent = rendererNames[state.renderer] || state.renderer;
-                document.getElementById('program-renderer-display').style.display = '';
+                const rendererNameElement = document.getElementById('program-renderer-name');
+                const rendererDisplayElement = document.getElementById('program-renderer-display');
+                if (rendererNameElement && rendererDisplayElement) {
+                    rendererNameElement.textContent = rendererNames[state.renderer] || state.renderer;
+                    rendererDisplayElement.style.display = '';
+                }
 
                 // Only initialize staged renderer dropdown once on first state update
                 if (!window.rendererInitialized) {
                     currentRendererMode = state.renderer;
-                    document.getElementById('renderer-select').value = state.renderer;
+                    const rendererSelect = document.getElementById('renderer-select');
+                    if (rendererSelect) {
+                        rendererSelect.value = state.renderer;
+                    }
                     window.rendererInitialized = true;
                 }
             } else {
@@ -1088,7 +1471,10 @@
 
             // Update OSC server
             if (state.oscServer !== undefined) {
-                document.getElementById('osc-server').value = state.oscServer;
+                const oscServerElement = document.getElementById('osc-server');
+                if (oscServerElement) {
+                    oscServerElement.value = state.oscServer;
+                }
             }
 
             // Update video device selection
@@ -1101,12 +1487,38 @@
 
             // Update video audio reactive toggle
             if (state.videoAudioReactive !== undefined) {
-                document.getElementById('video-audio-reactive').checked = state.videoAudioReactive === 'true';
+                const videoAudioReactiveElement = document.getElementById('video-audio-reactive');
+                if (videoAudioReactiveElement) {
+                    videoAudioReactiveElement.checked = state.videoAudioReactive === 'true';
+                }
             }
 
             // Update video beat reactive toggle
             if (state.videoBeatReactive !== undefined) {
-                document.getElementById('video-beat-reactive').checked = state.videoBeatReactive === 'true';
+                const videoBeatReactiveElement = document.getElementById('video-beat-reactive');
+                if (videoBeatReactiveElement) {
+                    videoBeatReactiveElement.checked = state.videoBeatReactive === 'true';
+                }
+            }
+
+            // Update display settings checkboxes
+            if (state.showStatusBar !== undefined) {
+                const showStatusBarElement = document.getElementById('show-status-bar');
+                if (showStatusBarElement) {
+                    showStatusBarElement.checked = state.showStatusBar === 'true';
+                }
+            }
+            if (state.showControlPanel !== undefined) {
+                const showControlPanelElement = document.getElementById('show-control-panel');
+                if (showControlPanelElement) {
+                    showControlPanelElement.checked = state.showControlPanel === 'true';
+                }
+            }
+            if (state.isFullscreen !== undefined) {
+                const useFullscreenElement = document.getElementById('use-fullscreen');
+                if (useFullscreenElement) {
+                    useFullscreenElement.checked = state.isFullscreen === 'true';
+                }
             }
         }
 
@@ -1226,6 +1638,20 @@
             // DON'T send to main app - only send when user clicks GO TO PROGRAM
         });
 
+        // Display settings - Status Bar
+        document.getElementById('show-status-bar').addEventListener('change', (e) => {
+            sendCommand('toggleStatusBar', e.target.checked ? 'true' : 'false');
+        });
+
+        // Display settings - Control Panel
+        document.getElementById('show-control-panel').addEventListener('change', (e) => {
+            sendCommand('toggleControlPanel', e.target.checked ? 'true' : 'false');
+        });
+
+        // Display settings - Fullscreen (read-only status display)
+        // Fullscreen can only be triggered by user gesture in main window (use F11)
+        // Checkbox is disabled and only shows current fullscreen state
+
         // OSC server
         document.getElementById('osc-server').addEventListener('change', (e) => {
             sendCommand('oscServer', e.target.value);
@@ -1286,6 +1712,138 @@
         // Video beat reactive toggle
         document.getElementById('video-beat-reactive').addEventListener('change', (e) => {
             sendCommand('videoBeatReactive', e.target.checked ? 'true' : 'false');
+        });
+
+        // Drag-and-drop for media files
+        const dropZone = document.getElementById('media-drop-zone');
+        const fileInput = document.getElementById('media-file-input');
+
+        // Click to browse
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Drag over
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#0066FF';
+            dropZone.style.background = '#0a1a2a';
+        });
+
+        // Drag leave
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.style.borderColor = '#2a2a2a';
+            dropZone.style.background = '#0a0a0a';
+        });
+
+        // Drop
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#2a2a2a';
+            dropZone.style.background = '#0a0a0a';
+
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                handleMediaFile(file);
+            }
+        });
+
+        // File input change (from click to browse)
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleMediaFile(file);
+            }
+        });
+
+        // Unified media file handler
+        function handleMediaFile(file) {
+            console.log('[Control] Media file selected:', file.name, 'Type:', file.type, 'Size:', file.size);
+
+            // Determine media type
+            if (file.type.startsWith('image/')) {
+                stagedMediaType = 'image';
+            } else if (file.type.startsWith('video/')) {
+                stagedMediaType = 'video';
+            } else {
+                alert('Unsupported file type. Please select an image or video file.');
+                fileInput.value = '';
+                return;
+            }
+
+            // Revoke previous object URL if exists
+            if (stagedMediaURL) {
+                URL.revokeObjectURL(stagedMediaURL);
+            }
+
+            // Create object URL for preview
+            stagedMediaFile = file;
+            stagedMediaURL = URL.createObjectURL(file);
+
+            // Update file info display
+            document.getElementById('media-file-name').textContent = file.name;
+            document.getElementById('media-file-type').textContent = `Type: ${file.type}`;
+            document.getElementById('media-file-size').textContent = `Size: ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+            document.getElementById('media-file-info').style.display = 'block';
+
+            // If currently in media preview mode, reload preview
+            if (currentPreviewMode === 'media') {
+                renderMediaPreview();
+            } else {
+                console.log('[Control] Media file staged - switch to Media tab to preview');
+            }
+        }
+
+        // Media fit mode selector
+        document.getElementById('media-fit-mode').addEventListener('change', (e) => {
+            mediaFitMode = e.target.value;
+            console.log('[Control] Media fit mode STAGED:', mediaFitMode);
+
+            // DON'T send to program - only stage it for preview
+            // It will be sent when user clicks "GO TO PROGRAM"
+
+            // If currently in media preview mode and media is loaded, re-render
+            if (currentPreviewMode === 'media' && mediaElement) {
+                if (stagedMediaType === 'image') {
+                    // Re-render image
+                    const ctx = unifiedCanvas.getContext('2d');
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+
+                    const { drawWidth, drawHeight, drawX, drawY } = calculateFitDimensions(
+                        mediaElement.width,
+                        mediaElement.height,
+                        unifiedCanvas.width,
+                        unifiedCanvas.height,
+                        mediaFitMode
+                    );
+
+                    ctx.drawImage(mediaElement, drawX, drawY, drawWidth, drawHeight);
+                }
+                // Video will update automatically in render loop
+            }
+        });
+
+        // Media loop toggle
+        document.getElementById('media-loop').addEventListener('change', (e) => {
+            if (mediaElement && mediaElement.tagName === 'VIDEO') {
+                mediaElement.loop = e.target.checked;
+                console.log('[Control] Video loop:', e.target.checked);
+            }
+        });
+
+        // Media audio reactive toggle
+        document.getElementById('media-audio-reactive').addEventListener('change', (e) => {
+            console.log('[Control] Media audio reactive:', e.target.checked);
+            // Send to program in real-time
+            sendCommand('mediaAudioReactive', e.target.checked ? 'true' : 'false');
+        });
+
+        // Media beat reactive toggle
+        document.getElementById('media-beat-reactive').addEventListener('change', (e) => {
+            console.log('[Control] Media beat reactive:', e.target.checked);
+            // Send to program in real-time
+            sendCommand('mediaBeatReactive', e.target.checked ? 'true' : 'false');
         });
 
         // Populate audio devices

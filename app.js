@@ -22,12 +22,14 @@ class RevisionAppV2 {
         this.threeJSRenderer = null;
         this.milkdropRenderer = null;
         this.videoRenderer = null;
+        this.mediaRenderer = null;
 
         // UI elements
         this.builtinCanvas = document.getElementById('builtin-canvas');
         this.threejsCanvas = document.getElementById('threejs-canvas');
         this.milkdropCanvas = document.getElementById('milkdrop-canvas');
         this.videoCanvas = document.getElementById('video-canvas');
+        this.mediaCanvas = document.getElementById('media-canvas');
         this.midiIndicator = document.getElementById('midi-indicator');
         this.audioIndicator = document.getElementById('audio-indicator');
         this.bpmDisplay = document.getElementById('bpm-display');
@@ -251,6 +253,297 @@ class RevisionAppV2 {
         this.videoRenderer = new VideoRenderer(this.videoCanvas);
         console.log('[Revision] ✓ Video renderer initialized');
 
+        // Initialize Media renderer (for static images and video files)
+        // Load saved reactive settings
+        const savedAudioReactive = this.settings.get('mediaAudioReactive') === 'true';
+        const savedBeatReactive = this.settings.get('mediaBeatReactive') === 'true';
+
+        this.mediaRenderer = {
+            canvas: this.mediaCanvas,
+            ctx: this.mediaCanvas.getContext('2d'),
+            mediaElement: null,
+            mediaType: null,
+            animationId: null,
+            isActive: false,
+            fitMode: 'cover',
+            audioReactive: savedAudioReactive,
+            beatReactive: savedBeatReactive,
+            bassLevel: 0,
+            midLevel: 0,
+            highLevel: 0,
+            hueShift: 0,
+            saturation: 1.0,
+            brightness: 1.0,
+            beatZoom: 1.0,
+            targetZoom: 1.0,
+            lastBeatTime: 0,
+
+            loadMedia: function(url, type, options = {}) {
+                console.log('[MediaRenderer] Loading media:', type, 'URL:', url);
+
+                // CRITICAL: Clean up old media element before creating new one
+                if (this.mediaElement) {
+                    console.log('[MediaRenderer] Cleaning up old media element...');
+                    if (this.mediaElement.tagName === 'VIDEO') {
+                        this.mediaElement.pause();
+                        this.mediaElement.muted = true; // Mute before removing
+                    }
+                    this.mediaElement.src = '';
+                    this.mediaElement.remove();
+                    this.mediaElement = null;
+                }
+
+                // Stop animation loop
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                    this.animationId = null;
+                }
+
+                this.mediaType = type;
+                this.isActive = true;
+                this.fitMode = options.fitMode || 'cover';
+
+                if (type === 'image') {
+                    this.mediaElement = document.createElement('img');
+                    this.mediaElement.onload = () => {
+                        console.log('[MediaRenderer] Image loaded');
+                        this.renderImage();
+                    };
+                    this.mediaElement.onerror = () => {
+                        console.error('[MediaRenderer] Failed to load image');
+                    };
+                    this.mediaElement.src = url;
+                } else if (type === 'video') {
+                    this.mediaElement = document.createElement('video');
+                    this.mediaElement.muted = true; // ALWAYS muted - this is visual only!
+                    this.mediaElement.loop = options.loop !== false;
+                    this.mediaElement.onloadedmetadata = () => {
+                        console.log('[MediaRenderer] Video loaded, duration:', this.mediaElement.duration);
+                        this.mediaElement.play().catch(err => {
+                            console.warn('[MediaRenderer] Video autoplay failed:', err);
+                        });
+                        this.startVideoRender();
+                    };
+                    this.mediaElement.onerror = () => {
+                        console.error('[MediaRenderer] Failed to load video');
+                    };
+                    this.mediaElement.src = url;
+                }
+            },
+
+            calculateFitDimensions: function(mediaWidth, mediaHeight) {
+                const mediaAspect = mediaWidth / mediaHeight;
+                const canvasAspect = this.canvas.width / this.canvas.height;
+                let drawWidth, drawHeight, drawX, drawY;
+
+                switch (this.fitMode) {
+                    case 'cover':
+                        // Fill canvas, may crop
+                        if (canvasAspect > mediaAspect) {
+                            drawWidth = this.canvas.width;
+                            drawHeight = drawWidth / mediaAspect;
+                            drawX = 0;
+                            drawY = (this.canvas.height - drawHeight) / 2;
+                        } else {
+                            drawHeight = this.canvas.height;
+                            drawWidth = drawHeight * mediaAspect;
+                            drawX = (this.canvas.width - drawWidth) / 2;
+                            drawY = 0;
+                        }
+                        break;
+
+                    case 'contain':
+                        // Fit all, may letterbox
+                        if (canvasAspect > mediaAspect) {
+                            drawHeight = this.canvas.height;
+                            drawWidth = drawHeight * mediaAspect;
+                            drawX = (this.canvas.width - drawWidth) / 2;
+                            drawY = 0;
+                        } else {
+                            drawWidth = this.canvas.width;
+                            drawHeight = drawWidth / mediaAspect;
+                            drawX = 0;
+                            drawY = (this.canvas.height - drawHeight) / 2;
+                        }
+                        break;
+
+                    case 'fill':
+                        // Stretch to fill
+                        drawWidth = this.canvas.width;
+                        drawHeight = this.canvas.height;
+                        drawX = 0;
+                        drawY = 0;
+                        break;
+
+                    default:
+                        // Default to cover
+                        this.fitMode = 'cover';
+                        return this.calculateFitDimensions(mediaWidth, mediaHeight);
+                }
+
+                return { drawWidth, drawHeight, drawX, drawY };
+            },
+
+            renderImage: function() {
+                if (!this.mediaElement || !this.ctx) return;
+
+                // Start animation loop for reactive effects
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                }
+
+                const renderFrame = () => {
+                    if (!this.isActive || !this.mediaElement) return;
+
+                    this.ctx.fillStyle = '#000';
+                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                    let { drawWidth, drawHeight, drawX, drawY } = this.calculateFitDimensions(
+                        this.mediaElement.width,
+                        this.mediaElement.height
+                    );
+
+                    // Apply beat-reactive zoom (smooth interpolation)
+                    if (this.beatReactive) {
+                        this.beatZoom += (this.targetZoom - this.beatZoom) * 0.15;
+                        this.targetZoom += (1.0 - this.targetZoom) * 0.1;
+
+                        if (this.beatZoom !== 1.0) {
+                            const centerX = this.canvas.width / 2;
+                            const centerY = this.canvas.height / 2;
+
+                            drawWidth *= this.beatZoom;
+                            drawHeight *= this.beatZoom;
+                            drawX = centerX - (drawWidth / 2);
+                            drawY = centerY - (drawHeight / 2);
+                        }
+                    }
+
+                    // Apply audio-reactive effects
+                    if (this.audioReactive) {
+                        this.hueShift = this.bassLevel * 180;
+                        this.saturation = 1.0 + (this.midLevel * 0.5);
+                        this.brightness = 1.0 + (this.highLevel * 0.3);
+
+                        this.ctx.filter = `
+                            hue-rotate(${this.hueShift}deg)
+                            saturate(${this.saturation})
+                            brightness(${this.brightness})
+                        `;
+                    } else {
+                        this.ctx.filter = 'none';
+                    }
+
+                    this.ctx.drawImage(this.mediaElement, drawX, drawY, drawWidth, drawHeight);
+                    this.ctx.filter = 'none';
+
+                    this.animationId = requestAnimationFrame(renderFrame);
+                };
+
+                renderFrame();
+            },
+
+            startVideoRender: function() {
+                if (this.animationId) return;
+
+                const renderFrame = () => {
+                    if (!this.isActive) return;
+
+                    if (this.mediaElement && this.mediaElement.readyState >= 2) {
+                        this.ctx.fillStyle = '#000';
+                        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                        let { drawWidth, drawHeight, drawX, drawY } = this.calculateFitDimensions(
+                            this.mediaElement.videoWidth,
+                            this.mediaElement.videoHeight
+                        );
+
+                        // Apply beat-reactive zoom (smooth interpolation)
+                        if (this.beatReactive) {
+                            this.beatZoom += (this.targetZoom - this.beatZoom) * 0.15;
+                            this.targetZoom += (1.0 - this.targetZoom) * 0.1;
+
+                            if (this.beatZoom !== 1.0) {
+                                const centerX = this.canvas.width / 2;
+                                const centerY = this.canvas.height / 2;
+
+                                drawWidth *= this.beatZoom;
+                                drawHeight *= this.beatZoom;
+                                drawX = centerX - (drawWidth / 2);
+                                drawY = centerY - (drawHeight / 2);
+                            }
+                        }
+
+                        // Apply audio-reactive effects
+                        if (this.audioReactive) {
+                            this.hueShift = this.bassLevel * 180;
+                            this.saturation = 1.0 + (this.midLevel * 0.5);
+                            this.brightness = 1.0 + (this.highLevel * 0.3);
+
+                            this.ctx.filter = `
+                                hue-rotate(${this.hueShift}deg)
+                                saturate(${this.saturation})
+                                brightness(${this.brightness})
+                            `;
+                        } else {
+                            this.ctx.filter = 'none';
+                        }
+
+                        this.ctx.drawImage(this.mediaElement, drawX, drawY, drawWidth, drawHeight);
+                        this.ctx.filter = 'none';
+                    }
+
+                    this.animationId = requestAnimationFrame(renderFrame);
+                };
+
+                renderFrame();
+            },
+
+            stop: function() {
+                console.log('[MediaRenderer] Stopping...');
+                this.isActive = false;
+
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                    this.animationId = null;
+                }
+
+                if (this.mediaElement) {
+                    if (this.mediaElement.tagName === 'VIDEO') {
+                        this.mediaElement.pause();
+                        this.mediaElement.muted = true; // Mute before cleanup
+                        console.log('[MediaRenderer] Video paused and muted');
+                    }
+                    this.mediaElement.src = '';
+                    this.mediaElement.load(); // Force release
+                    if (this.mediaElement.parentNode) {
+                        this.mediaElement.remove();
+                    }
+                    this.mediaElement = null;
+                }
+
+                // Clear canvas
+                if (this.ctx) {
+                    this.ctx.fillStyle = '#000';
+                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                }
+
+                console.log('[MediaRenderer] ✓ Stopped and cleaned up');
+            },
+
+            resize: function(width, height) {
+                console.log('[MediaRenderer] Resizing canvas to:', width, 'x', height);
+                this.canvas.width = width;
+                this.canvas.height = height;
+                // Force re-render for both images and videos
+                if (this.mediaType === 'image' && this.mediaElement) {
+                    this.renderImage();
+                }
+                // Video will automatically update in its render loop
+            }
+        };
+        console.log('[Revision] ✓ Media renderer initialized - audioReactive:', savedAudioReactive, 'beatReactive:', savedBeatReactive);
+
         // Initialize input sources (MIDI, connect audio if enabled)
         await this.initializeInputs();
 
@@ -262,6 +555,32 @@ class RevisionAppV2 {
 
         // Setup UI
         this.setupUI();
+
+        // Hide control panel by default (only show if user wants it from control.html)
+        const showControlPanel = this.settings.get('showControlPanel') === 'true';
+        const controlPanel = document.querySelector('.control-panel');
+        if (controlPanel) {
+            controlPanel.style.display = showControlPanel ? '' : 'none';
+        }
+
+        // Apply status bar visibility from settings
+        const showStatusBar = this.settings.get('showStatusBar') !== 'false'; // Default: true
+        const statusBar = document.querySelector('.status-bar');
+        if (statusBar) {
+            statusBar.style.display = showStatusBar ? '' : 'none';
+        }
+
+        // Adjust canvas container positioning based on visible UI elements
+        const canvasContainer = document.getElementById('canvas-container');
+        if (canvasContainer) {
+            canvasContainer.style.top = showStatusBar ? '40px' : '0';
+            canvasContainer.style.bottom = showControlPanel ? '80px' : '0';
+            const topOffset = showStatusBar ? 40 : 0;
+            const bottomOffset = showControlPanel ? 80 : 0;
+            canvasContainer.style.height = `calc(100vh - ${topOffset + bottomOffset}px)`;
+        }
+
+        console.log('[Revision] UI visibility - StatusBar:', showStatusBar, 'ControlPanel:', showControlPanel);
 
         // Hide button by default - will show only if needed
         const btn = document.getElementById('permissions-btn');
@@ -293,6 +612,9 @@ class RevisionAppV2 {
         // Setup BroadcastChannel for control.html
         this.setupControlChannel();
 
+        // Setup drag-and-drop for media files on main display
+        this.setupDragAndDrop();
+
         // Hide all canvases initially
         this.builtinCanvas.style.display = 'none';
         this.threejsCanvas.style.display = 'none';
@@ -322,10 +644,28 @@ class RevisionAppV2 {
     }
 
     async initializeInputs() {
-        // Create MIDI source but DON'T initialize yet (requires user permission)
-        // Will be initialized when user clicks PERMISSIONS button
+        // Create and auto-initialize MIDI source (silently fails if permission not granted)
         this.midiSource = new MIDIInputSource();
-        console.log('[Revision] MIDI source created (not initialized - waiting for permissions)');
+        console.log('[Revision] MIDI source created, attempting auto-initialization...');
+
+        try {
+            const enableSysEx = this.settings.get('enableSysEx') !== 'false';
+            const midiSuccess = await this.midiSource.initialize(enableSysEx);
+            if (midiSuccess) {
+                this.inputManager.registerSource('midi', this.midiSource);
+                console.log('[Revision] ✓ MIDI auto-initialized successfully');
+
+                // Auto-connect to last MIDI device
+                const lastMidiId = this.settings.get('midiInputId');
+                if (lastMidiId) {
+                    this.midiSource.connectInput(lastMidiId);
+                    this.midiIndicator.classList.add('connected');
+                    console.log('[Revision] ✓ MIDI reconnected to last device:', lastMidiId);
+                }
+            }
+        } catch (error) {
+            console.log('[Revision] MIDI auto-init failed (user can grant permission later):', error.message);
+        }
 
         // Initialize Audio input (if enabled)
         const audioDeviceId = this.settings.get('audioInputDeviceId');
@@ -608,6 +948,78 @@ class RevisionAppV2 {
                     }
                     this.broadcastState();
                     break;
+                case 'mediaLoad':
+                    console.log('[BroadcastChannel] Media Load:', data);
+                    if (this.mediaRenderer && data.url && data.type) {
+                        this.mediaRenderer.loadMedia(data.url, data.type, {
+                            loop: data.loop,
+                            fitMode: data.fitMode
+                        });
+
+                        // CRITICAL: Apply saved reactive settings after loading media
+                        const audioReactive = this.settings.get('mediaAudioReactive') === 'true';
+                        const beatReactive = this.settings.get('mediaBeatReactive') === 'true';
+                        this.mediaRenderer.audioReactive = audioReactive;
+                        this.mediaRenderer.beatReactive = beatReactive;
+
+                        console.log('[Revision] ✓ Media file loaded - fitMode:', data.fitMode, 'audioReactive:', audioReactive, 'beatReactive:', beatReactive);
+                    } else {
+                        console.error('[Revision] ✗ Invalid media data or renderer not available');
+                    }
+                    this.broadcastState();
+                    break;
+                case 'mediaAudioReactive':
+                    console.log('[BroadcastChannel] Media Audio Reactive:', data);
+                    this.settings.set('mediaAudioReactive', data);
+                    if (this.mediaRenderer) {
+                        this.mediaRenderer.audioReactive = data === 'true';
+                    }
+                    this.broadcastState();
+                    break;
+                case 'mediaBeatReactive':
+                    console.log('[BroadcastChannel] Media Beat Reactive:', data);
+                    this.settings.set('mediaBeatReactive', data);
+                    if (this.mediaRenderer) {
+                        this.mediaRenderer.beatReactive = data === 'true';
+                    }
+                    this.broadcastState();
+                    break;
+                case 'toggleStatusBar':
+                    console.log('[BroadcastChannel] Toggle Status Bar:', data);
+                    this.settings.set('showStatusBar', data);
+                    const statusBar = document.querySelector('.status-bar');
+                    const canvasContainer1 = document.getElementById('canvas-container');
+                    if (statusBar) {
+                        statusBar.style.display = data === 'true' ? '' : 'none';
+                        console.log('[Revision] Status bar:', data === 'true' ? 'SHOWN' : 'HIDDEN');
+                    }
+                    // Adjust canvas container top position
+                    if (canvasContainer1 && !document.fullscreenElement) {
+                        canvasContainer1.style.top = data === 'true' ? '40px' : '0';
+                    }
+                    this.handleResize();
+                    this.broadcastState();
+                    break;
+                case 'toggleControlPanel':
+                    console.log('[BroadcastChannel] Toggle Control Panel:', data);
+                    this.settings.set('showControlPanel', data);
+                    const controlPanel = document.querySelector('.control-panel');
+                    const canvasContainer2 = document.getElementById('canvas-container');
+                    if (controlPanel) {
+                        controlPanel.style.display = data === 'true' ? '' : 'none';
+                        console.log('[Revision] Control panel:', data === 'true' ? 'SHOWN' : 'HIDDEN');
+                    }
+                    // Adjust canvas container bottom position
+                    if (canvasContainer2 && !document.fullscreenElement) {
+                        canvasContainer2.style.bottom = data === 'true' ? '80px' : '0';
+                    }
+                    // Trigger resize since canvas area changed
+                    this.handleResize();
+                    this.broadcastState();
+                    break;
+                // toggleFullscreen removed - fullscreen requires user gesture in main window
+                // User should press F11 to enter/exit fullscreen mode
+                // control.html displays read-only fullscreen status
                 case 'requestState':
                     this.broadcastState();
                     // Also send preset list if available
@@ -620,6 +1032,73 @@ class RevisionAppV2 {
                     break;
             }
         };
+    }
+
+    setupDragAndDrop() {
+        const dropZone = document.getElementById('canvas-container');
+        const dropOverlay = document.getElementById('fullscreen-drop-zone');
+
+        // Prevent default drag behavior
+        document.addEventListener('dragover', (e) => e.preventDefault());
+        document.addEventListener('drop', (e) => e.preventDefault());
+
+        // Show drop overlay when dragging file
+        dropZone.addEventListener('dragenter', (e) => {
+            if (e.dataTransfer.types.includes('Files')) {
+                dropOverlay.style.display = 'flex';
+            }
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            if (e.target === dropZone) {
+                dropOverlay.style.display = 'none';
+            }
+        });
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+
+        // Handle file drop
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropOverlay.style.display = 'none';
+
+            const file = e.dataTransfer.files[0];
+            if (!file) return;
+
+            console.log('[Revision] File dropped:', file.name, file.type);
+
+            // Determine media type
+            let mediaType;
+            if (file.type.startsWith('image/')) {
+                mediaType = 'image';
+            } else if (file.type.startsWith('video/')) {
+                mediaType = 'video';
+            } else {
+                console.error('[Revision] Unsupported file type:', file.type);
+                return;
+            }
+
+            // Create object URL
+            const url = URL.createObjectURL(file);
+
+            // Switch to media mode and load file
+            this.switchPresetType('media');
+            setTimeout(() => {
+                if (this.mediaRenderer) {
+                    this.mediaRenderer.loadMedia(url, mediaType, {
+                        loop: true,
+                        fitMode: 'cover'
+                    });
+                    console.log('[Revision] ✓ Media file loaded from drop:', file.name);
+                }
+            }, 100);
+        });
+
+        console.log('[Revision] ✓ Drag-and-drop enabled for media files');
     }
 
     reconnectAudioToRenderer() {
@@ -710,6 +1189,9 @@ class RevisionAppV2 {
             videoDeviceId: this.settings.get('videoDeviceId') || '',
             videoAudioReactive: this.settings.get('videoAudioReactive') || 'false',
             videoBeatReactive: this.settings.get('videoBeatReactive') || 'false',
+            showStatusBar: this.settings.get('showStatusBar') !== 'false' ? 'true' : 'false',
+            showControlPanel: this.settings.get('showControlPanel') === 'true' ? 'true' : 'false',
+            isFullscreen: document.fullscreenElement ? 'true' : 'false',
             presetName: this.currentPresetType === 'milkdrop' && this.milkdropPresetKeys
                 ? this.milkdropPresetKeys[this.currentMilkdropIndex || 0] || '-'
                 : '-',
@@ -818,6 +1300,15 @@ class RevisionAppV2 {
                 this.threeJSRenderer.handleBeat(data);
             } else if (this.currentPresetType === 'video' && this.videoRenderer) {
                 this.videoRenderer.handleBeat(data);
+            } else if (this.currentPresetType === 'media' && this.mediaRenderer) {
+                // ALWAYS pass beat to media renderer (it decides whether to use it)
+                const now = performance.now();
+                if (now - this.mediaRenderer.lastBeatTime >= 100) {
+                    this.mediaRenderer.lastBeatTime = now;
+                    const intensity = data.intensity || 1.0;
+                    this.mediaRenderer.targetZoom = 1.0 + (intensity * 0.15);
+                    this.mediaRenderer.beatZoom = this.mediaRenderer.targetZoom;
+                }
             }
         });
 
@@ -926,6 +1417,13 @@ class RevisionAppV2 {
                 this.threeJSRenderer.handleFrequency(data);
             } else if (this.currentPresetType === 'video' && this.videoRenderer) {
                 this.videoRenderer.handleFrequency(data);
+            } else if (this.currentPresetType === 'media' && this.mediaRenderer) {
+                // ALWAYS pass frequency data to media renderer (it decides whether to use it)
+                if (data.bands) {
+                    this.mediaRenderer.bassLevel = data.bands.bass || 0;
+                    this.mediaRenderer.midLevel = data.bands.mid || 0;
+                    this.mediaRenderer.highLevel = data.bands.high || 0;
+                }
             }
             // Milkdrop gets audio directly via connectAudioSource
         });
@@ -1093,19 +1591,25 @@ class RevisionAppV2 {
             controlBtn.addEventListener('touchend', openControl);
         }
 
-        // Fullscreen
+        // Fullscreen button
         const fullscreenBtn = document.getElementById('fullscreen-btn');
         if (fullscreenBtn) {
-            const toggleFs = (e) => {
+            const toggleFullscreen = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.toggleFullscreen();
+                if (!document.fullscreenElement) {
+                    document.body.requestFullscreen().catch(err => {
+                        console.error('[Revision] Fullscreen request failed:', err);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
             };
-            fullscreenBtn.addEventListener('click', toggleFs);
-            fullscreenBtn.addEventListener('touchend', toggleFs);
+            fullscreenBtn.addEventListener('click', toggleFullscreen);
+            fullscreenBtn.addEventListener('touchend', toggleFullscreen);
         }
 
-        // Fullscreen change
+        // Fullscreen change (triggered by F11 or fullscreen button)
         document.addEventListener('fullscreenchange', () => {
             if (document.fullscreenElement) {
                 this.handleFullscreenEnter();
@@ -1253,11 +1757,18 @@ class RevisionAppV2 {
             this.videoRenderer.stop();
         }
 
+        // Stop media renderer when switching away from media mode
+        if (this.mediaRenderer && this.currentPresetType === 'media' && type !== 'media') {
+            console.log('[Revision] Switching away from media mode - stopping media');
+            this.mediaRenderer.stop();
+        }
+
         // Hide all canvases
         this.builtinCanvas.style.display = 'none';
         this.threejsCanvas.style.display = 'none';
         this.milkdropCanvas.style.display = 'none';
         this.videoCanvas.style.display = 'none';
+        this.mediaCanvas.style.display = 'none';
 
         // Switch to appropriate preset
         switch (type) {
@@ -1381,10 +1892,30 @@ class RevisionAppV2 {
                 }
                 this.enableSceneButtons(false, 'Video mode - select camera in control.html');
                 break;
+            case 'media':
+                this.mediaCanvas.style.display = 'block';
+                if (this.mediaRenderer) {
+                    // Clear canvas
+                    const ctx = this.mediaCanvas.getContext('2d');
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, this.mediaCanvas.width, this.mediaCanvas.height);
+
+                    // Resize to fit display
+                    const isFullscreen = !!document.fullscreenElement;
+                    const w = window.innerWidth;
+                    const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
+                    this.mediaRenderer.resize(w, h);
+
+                    console.log('[Media] Ready - media will be loaded via control.html');
+                } else {
+                    console.error('[Revision] Media renderer not initialized');
+                }
+                this.enableSceneButtons(false, 'Media mode - load media in control.html');
+                break;
         }
 
         // Update mode display
-        const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video' };
+        const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video', media: 'Media' };
         if (this.modeDisplay) {
             this.modeDisplay.textContent = modeNames[type] || type;
         }
@@ -1499,9 +2030,34 @@ class RevisionAppV2 {
     handleResize() {
         const isFullscreen = !!document.fullscreenElement;
         const w = window.innerWidth;
-        const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
 
-        console.log('[Revision] Window resized:', w, 'x', h, 'fullscreen:', isFullscreen);
+        // Calculate height based on visible UI elements
+        let topOffset = 0;
+        let bottomOffset = 0;
+
+        if (!isFullscreen) {
+            const statusBar = document.querySelector('.status-bar');
+            const controlPanel = document.querySelector('.control-panel');
+
+            if (statusBar && statusBar.style.display !== 'none') {
+                topOffset = 40;
+            }
+            if (controlPanel && controlPanel.style.display !== 'none') {
+                bottomOffset = 80;
+            }
+        }
+
+        const h = window.innerHeight - topOffset - bottomOffset;
+
+        console.log('[Revision] Window resized:', w, 'x', h, 'fullscreen:', isFullscreen, 'top:', topOffset, 'bottom:', bottomOffset);
+
+        // Update canvas container height to match calculated size
+        const canvasContainer = document.getElementById('canvas-container');
+        if (canvasContainer && isFullscreen) {
+            canvasContainer.style.height = '100vh';
+        } else if (canvasContainer) {
+            canvasContainer.style.height = `${h}px`;
+        }
 
         // Resize active renderer
         switch (this.currentPresetType) {
@@ -1526,16 +2082,70 @@ class RevisionAppV2 {
                     console.log('[Video] Resized to:', w, 'x', h);
                 }
                 break;
+            case 'media':
+                if (this.mediaRenderer) {
+                    const mediaHeight = isFullscreen ? window.innerHeight : h;
+                    this.mediaRenderer.resize(w, mediaHeight);
+                    console.log('[Media] Resized to:', w, 'x', mediaHeight, 'fullscreen:', isFullscreen);
+                }
+                break;
         }
     }
 
     handleFullscreenEnter() {
+        // FORCE HIDE status bar and control panel
+        const statusBar = document.querySelector('.status-bar');
+        const controlPanel = document.querySelector('.control-panel');
+
+        if (statusBar) {
+            statusBar.style.display = 'none';
+            console.log('[Revision] Status bar HIDDEN in fullscreen');
+        }
+        if (controlPanel) {
+            controlPanel.style.display = 'none';
+            console.log('[Revision] Control panel HIDDEN in fullscreen');
+        }
+
+        // Adjust canvas container to fill entire screen
+        const canvasContainer = document.getElementById('canvas-container');
+        if (canvasContainer) {
+            canvasContainer.style.top = '0';
+            canvasContainer.style.bottom = '0';
+            canvasContainer.style.height = '100vh';
+        }
+
         const w = window.innerWidth;
         const h = window.innerHeight;
         this.handleResize();
     }
 
     handleFullscreenExit() {
+        // RESTORE status bar and control panel to SAVED state (not always visible!)
+        const showStatusBar = this.settings.get('showStatusBar') !== 'false';
+        const showControlPanel = this.settings.get('showControlPanel') === 'true';
+
+        const statusBar = document.querySelector('.status-bar');
+        const controlPanel = document.querySelector('.control-panel');
+
+        if (statusBar) {
+            statusBar.style.display = showStatusBar ? '' : 'none';
+            console.log('[Revision] Status bar', showStatusBar ? 'RESTORED' : 'KEPT HIDDEN', '- exited fullscreen');
+        }
+        if (controlPanel) {
+            controlPanel.style.display = showControlPanel ? '' : 'none';
+            console.log('[Revision] Control panel', showControlPanel ? 'RESTORED' : 'KEPT HIDDEN', '- exited fullscreen');
+        }
+
+        // Reset canvas container to normal size based on visible UI elements
+        const canvasContainer = document.getElementById('canvas-container');
+        if (canvasContainer) {
+            canvasContainer.style.top = showStatusBar ? '40px' : '0';
+            canvasContainer.style.bottom = showControlPanel ? '80px' : '0';
+            const topOffset = showStatusBar ? 40 : 0;
+            const bottomOffset = showControlPanel ? 80 : 0;
+            canvasContainer.style.height = `calc(100vh - ${topOffset + bottomOffset}px)`;
+        }
+
         this.handleResize();
     }
 }
