@@ -83,23 +83,24 @@ class VideoRenderer {
                 };
             });
 
-            // Try to play regardless of metadata loading (works for most virtual cameras)
+            // Wait a moment for video to start streaming
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Try to play
             try {
                 await this.video.play();
                 console.log('[VideoRenderer] ✓ Video playing');
             } catch (err) {
                 console.warn('[VideoRenderer] Auto-play failed:', err.message);
-                // Continue anyway - it might still work
             }
 
-            console.log('[VideoRenderer] ✓ Video stream active:', this.video.videoWidth, 'x', this.video.videoHeight);
+            // Mark as active immediately - render loop will wait for dimensions
             this.isActive = true;
 
-            // Resize canvas to match video
-            if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-                console.log('[VideoRenderer] Video dimensions:', this.video.videoWidth, 'x', this.video.videoHeight);
-            } else {
-                console.warn('[VideoRenderer] Video dimensions not available yet - may need to wait for first frame');
+            // Log initial dimensions (might be 0x0, render loop will handle it)
+            console.log('[VideoRenderer] ✓ Stream initialized, dimensions:', this.video.videoWidth, 'x', this.video.videoHeight);
+            if (this.video.videoWidth === 0 || this.video.videoHeight === 0) {
+                console.log('[VideoRenderer] Dimensions not ready yet - render loop will start drawing when available');
             }
 
             return true;
@@ -132,7 +133,10 @@ class VideoRenderer {
     async switchCamera(deviceId) {
         console.log('[VideoRenderer] Switching camera to:', deviceId);
 
-        // ALWAYS release old camera completely - user intentionally switched
+        // CRITICAL: Stop render loop first
+        this.stop();
+
+        // Release old camera completely
         if (this.stream) {
             console.log('[VideoRenderer] Releasing old camera (user requested switch)');
             this.stream.getTracks().forEach(track => {
@@ -178,11 +182,22 @@ class VideoRenderer {
     render() {
         if (!this.isActive) return;
 
-        // Resize canvas to match video aspect ratio
+        // Clear canvas first
+        this.ctx.fillStyle = '#000';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Get video dimensions
         const vw = this.video.videoWidth;
         const vh = this.video.videoHeight;
 
-        if (vw && vh) {
+        // Log dimensions once when they change
+        if (!this._lastLoggedDimensions || this._lastLoggedDimensions !== `${vw}x${vh}`) {
+            console.log('[VideoRenderer] Render dimensions:', vw, 'x', vh);
+            this._lastLoggedDimensions = `${vw}x${vh}`;
+        }
+
+        // Draw video if dimensions are available
+        if (vw > 0 && vh > 0) {
             const canvasAspect = this.canvas.width / this.canvas.height;
             const videoAspect = vw / vh;
 
@@ -219,17 +234,17 @@ class VideoRenderer {
                 }
             }
 
-            // Clear canvas
-            this.ctx.fillStyle = '#000';
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
             // Apply audio-reactive effects
             if (this.audioReactive) {
                 this.applyAudioEffects();
             }
 
             // Draw video frame
-            this.ctx.drawImage(this.video, drawX, drawY, drawWidth, drawHeight);
+            try {
+                this.ctx.drawImage(this.video, drawX, drawY, drawWidth, drawHeight);
+            } catch (err) {
+                // Video not ready yet, will try next frame
+            }
 
             // Reset filters
             this.ctx.filter = 'none';
