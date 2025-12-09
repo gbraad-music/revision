@@ -591,16 +591,6 @@ class RevisionAppV2 {
             statusBar.style.display = showStatusBar ? '' : 'none';
         }
 
-        // Adjust canvas container positioning based on visible UI elements
-        const canvasContainer = document.getElementById('canvas-container');
-        if (canvasContainer) {
-            canvasContainer.style.top = showStatusBar ? '40px' : '0';
-            canvasContainer.style.bottom = showControlPanel ? '80px' : '0';
-            const topOffset = showStatusBar ? 40 : 0;
-            const bottomOffset = showControlPanel ? 80 : 0;
-            canvasContainer.style.height = `calc(100vh - ${topOffset + bottomOffset}px)`;
-        }
-
         console.log('[Revision] UI visibility - StatusBar:', showStatusBar, 'ControlPanel:', showControlPanel);
 
         // Hide button by default - will show only if needed
@@ -1092,33 +1082,22 @@ class RevisionAppV2 {
                     console.log('[BroadcastChannel] Toggle Status Bar:', data);
                     this.settings.set('showStatusBar', data);
                     const statusBar = document.querySelector('.status-bar');
-                    const canvasContainer1 = document.getElementById('canvas-container');
                     if (statusBar) {
                         statusBar.style.display = data === 'true' ? '' : 'none';
                         console.log('[Revision] Status bar:', data === 'true' ? 'SHOWN' : 'HIDDEN');
                     }
-                    // Adjust canvas container top position
-                    if (canvasContainer1 && !document.fullscreenElement) {
-                        canvasContainer1.style.top = data === 'true' ? '40px' : '0';
-                    }
-                    this.handleResize();
+                    // No resize needed - status bar is an overlay
                     this.broadcastState();
                     break;
                 case 'toggleControlPanel':
                     console.log('[BroadcastChannel] Toggle Control Panel:', data);
                     this.settings.set('showControlPanel', data);
                     const controlPanel = document.querySelector('.control-panel');
-                    const canvasContainer2 = document.getElementById('canvas-container');
                     if (controlPanel) {
                         controlPanel.style.display = data === 'true' ? '' : 'none';
                         console.log('[Revision] Control panel:', data === 'true' ? 'SHOWN' : 'HIDDEN');
                     }
-                    // Adjust canvas container bottom position
-                    if (canvasContainer2 && !document.fullscreenElement) {
-                        canvasContainer2.style.bottom = data === 'true' ? '80px' : '0';
-                    }
-                    // Trigger resize since canvas area changed
-                    this.handleResize();
+                    // No resize needed - control panel is an overlay
                     this.broadcastState();
                     break;
                 // toggleFullscreen removed - fullscreen requires user gesture in main window
@@ -2546,17 +2525,7 @@ class RevisionAppV2 {
             console.log('[Revision] Control panel', showControlPanel ? 'RESTORED' : 'KEPT HIDDEN', '- exited fullscreen');
         }
 
-        // Reset canvas container to normal size based on visible UI elements
-        const canvasContainer = document.getElementById('canvas-container');
-        if (canvasContainer) {
-            canvasContainer.style.top = showStatusBar ? '40px' : '0';
-            canvasContainer.style.bottom = showControlPanel ? '80px' : '0';
-            const topOffset = showStatusBar ? 40 : 0;
-            const bottomOffset = showControlPanel ? 80 : 0;
-            canvasContainer.style.height = `calc(100vh - ${topOffset + bottomOffset}px)`;
-        }
-
-        this.handleResize();
+        // No need to resize - overlays don't affect canvas size
     }
 }
 
