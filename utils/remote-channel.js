@@ -14,6 +14,7 @@ class RemoteChannel {
         this.fallbackChannel = null;
         this.reconnectInterval = 2000;
         this.reconnectTimer = null;
+        this.hasLoggedFallback = false;
 
         // Auto-detect role from URL
         this.detectRole();
@@ -39,7 +40,13 @@ class RemoteChannel {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}`;
 
-            console.log(`[RemoteChannel] Connecting to WebSocket: ${wsUrl}`);
+            // Skip WebSocket if using file:// protocol
+            if (window.location.protocol === 'file:') {
+                console.log('[RemoteChannel] File protocol detected - using BroadcastChannel only');
+                this.fallbackToBroadcastChannel();
+                return;
+            }
+
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
@@ -77,34 +84,27 @@ class RemoteChannel {
                 }
             };
 
-            this.ws.onerror = (error) => {
-                console.error('[RemoteChannel] WebSocket error:', error);
+            this.ws.onerror = () => {
+                // Silently fail - this is expected when no server is running
                 this.fallbackToBroadcastChannel();
             };
 
             this.ws.onclose = () => {
-                console.log('[RemoteChannel] WebSocket disconnected');
                 this.ws = null;
                 this.fallbackToBroadcastChannel();
-
-                // Attempt reconnection
-                this.scheduleReconnect();
+                // Don't attempt reconnection - if server appears later, page will reload anyway
             };
 
         } catch (error) {
-            console.error('[RemoteChannel] Failed to initialize WebSocket:', error);
+            // Silently fail and use BroadcastChannel
             this.fallbackToBroadcastChannel();
         }
     }
 
     scheduleReconnect() {
-        if (this.reconnectTimer) return; // Already scheduled
-
-        console.log(`[RemoteChannel] Reconnecting in ${this.reconnectInterval}ms...`);
-        this.reconnectTimer = setTimeout(() => {
-            this.reconnectTimer = null;
-            this.initWebSocket();
-        }, this.reconnectInterval);
+        // Disabled - no auto-reconnection
+        // If server becomes available, user will refresh page anyway
+        return;
     }
 
     fallbackToBroadcastChannel() {
@@ -112,7 +112,10 @@ class RemoteChannel {
         if (this.fallbackChannel || this.ws) return;
 
         try {
-            console.log('[RemoteChannel] Falling back to BroadcastChannel (local-only mode)');
+            if (!this.hasLoggedFallback) {
+                console.log('[RemoteChannel] Using BroadcastChannel (local-only mode)');
+                this.hasLoggedFallback = true;
+            }
             this.fallbackChannel = new BroadcastChannel(this.channelName);
 
             // Forward messages from BroadcastChannel to our onmessage handler

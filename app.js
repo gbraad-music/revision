@@ -1317,16 +1317,24 @@ class RevisionAppV2 {
         const beat = Math.floor((this.currentPosition % 16) / 4);
         const sixteenth = Math.floor(this.currentPosition % 4);
 
-        // Check if SPP was received recently (within 100ms) from MIDI source
-        const sppActive = this.midiSource && this.midiSource.lastSPPTime
-            ? (performance.now() - this.midiSource.lastSPPTime) < 100
-            : false;
+        // Check if SPP was received recently from MIDI source
+        const now = performance.now();
+        const timeSinceLastSPP = this.midiSource && this.midiSource.lastSPPTime
+            ? (now - this.midiSource.lastSPPTime)
+            : Infinity;
+
+        // Flash indicator within 100ms of SPP message
+        const sppActive = timeSinceLastSPP < 100;
+
+        // Position is valid within 5 seconds of last SPP
+        const positionValid = timeSinceLastSPP < 5000;
 
         const state = {
             mode: this.currentPresetType,
             scene: this.currentScene,
             bpm: this.currentBPM,
-            position: `${bar}.${beat}.${sixteenth}`,
+            // Only include position when SPP data is recent and valid
+            position: positionValid ? `${bar}.${beat}.${sixteenth}` : undefined,
             audioDeviceId: this.settings.get('audioInputDeviceId') || 'none',
             visualAudioSource: this.currentVisualAudioSource, // ACTUAL state, not saved setting
             midiSynthChannel: this.settings.get('midiSynthChannel') || 'all',

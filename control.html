@@ -323,8 +323,8 @@
 
         <!-- Mode Selector Tabs -->
         <div style="display: flex; gap: 5px; margin-bottom: 15px;">
-            <button onclick="switchPreviewMode('black')" id="preview-tab-black" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Black</button>
-            <button onclick="switchPreviewMode('builtin')" id="preview-tab-builtin" style="flex: 1; padding: 10px; background: #0066FF; border: 1px solid #0088FF; border-radius: 4px; color: white; font-weight: bold; cursor: pointer;">Built-in</button>
+            <button onclick="switchPreviewMode('black')" id="preview-tab-black" style="flex: 1; padding: 10px; background: #0066FF; border: 1px solid #0088FF; border-radius: 4px; color: white; font-weight: bold; cursor: pointer;">Black</button>
+            <button onclick="switchPreviewMode('builtin')" id="preview-tab-builtin" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Built-in</button>
             <button onclick="switchPreviewMode('threejs')" id="preview-tab-threejs" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Three.js</button>
             <button onclick="switchPreviewMode('milkdrop')" id="preview-tab-milkdrop" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Milkdrop</button>
             <button onclick="switchPreviewMode('video')" id="preview-tab-video" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Camera</button>
@@ -338,11 +338,11 @@
             <div id="preview-aspect-wrapper" style="position: relative; background: #000; border: 2px solid #0066FF; border-radius: 4px; overflow: hidden; width: 100%; padding-bottom: 56.25%;">
                 <canvas id="unified-preview-canvas" width="640" height="360" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block;"></canvas>
                 <div style="position: absolute; top: 5px; left: 5px; background: rgba(0,102,255,0.8); color: white; padding: 3px 8px; border-radius: 3px; font-size: 10px; font-weight: bold; z-index: 10;">PREVIEW</div>
-                <div id="preview-mode-label" style="position: absolute; top: 5px; right: 5px; background: rgba(0,102,255,0.8); color: white; padding: 3px 8px; border-radius: 3px; font-size: 10px; font-weight: bold; z-index: 10;">BUILT-IN</div>
+                <div id="preview-mode-label" style="position: absolute; top: 5px; right: 5px; background: rgba(0,102,255,0.8); color: white; padding: 3px 8px; border-radius: 3px; font-size: 10px; font-weight: bold; z-index: 10;">BLACK</div>
             </div>
         </div>
 
-        <div class="info" id="staged-info" style="margin-bottom: 10px;">Staged: <span id="staged-name" style="color: #0066FF; font-weight: bold;">1 - Tunnel</span></div>
+        <div class="info" id="staged-info" style="margin-bottom: 10px;">Staged: <span id="staged-name" style="color: #0066FF; font-weight: bold;">Black Screen</span></div>
 
         <!-- Single GO TO PROGRAM Button -->
         <button onclick="goToProgram()" style="width: 100%; padding: 15px; background: #00aa00; border: 2px solid #00cc00; border-radius: 4px; color: white; font-weight: bold; font-size: 14px; cursor: pointer;">▶ GO TO PROGRAM</button>
@@ -610,7 +610,7 @@
         const controlChannel = new RemoteChannel('revision-control');
 
         // UNIFIED PREVIEW SYSTEM - Single canvas, one renderer at a time
-        let currentPreviewMode = 'builtin'; // Which tab is active: builtin/threejs/milkdrop/video/media
+        let currentPreviewMode = 'black'; // Which tab is active: black/builtin/threejs/milkdrop/video/media
         let unifiedCanvas = null;
         let unifiedPreviewRenderer = null; // VideoRenderer OR VisualRenderer
         let unifiedSceneManager = null; // For built-in scenes
@@ -2032,8 +2032,12 @@
             if (state.bpm !== undefined) {
                 document.getElementById('current-bpm').textContent = state.bpm;
             }
+            // Only update position when SPP is active (position will be undefined when no SPP)
             if (state.position !== undefined) {
                 document.getElementById('current-position').textContent = state.position;
+            } else if (state.sppActive === false) {
+                // Show dash when no SPP data available
+                document.getElementById('current-position').textContent = '-';
             }
 
             // Update audio device selection
@@ -2917,9 +2921,9 @@
         // Set preview aspect ratio to match main program (16:9 standard)
         updatePreviewAspectRatio();
 
-        // Start with built-in preview by default
+        // Start with black screen by default
         setTimeout(() => {
-            switchPreviewMode('builtin');
+            switchPreviewMode('black');
         }, 100);
 
         // Initialize
