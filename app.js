@@ -9,6 +9,7 @@ class RevisionAppV2 {
         this.presetManager = null;
         this.mobileCompat = null;
         this.libraryLoader = new LibraryLoader();
+        this.wakeLock = new WakeLockManager();
 
         // Input sources
         this.midiSource = null;
@@ -657,6 +658,13 @@ class RevisionAppV2 {
 
         // Start beat interpolation
         this.interpolateBeat();
+
+        // Request wake lock to prevent screen from sleeping during performance
+        if (WakeLockManager.isSupported()) {
+            await this.wakeLock.request();
+        } else {
+            console.log('[Revision] Wake Lock API not supported - screen may sleep during performance');
+        }
 
         console.log('[Revision] Initialized - Mode:', this.currentPresetType);
     }

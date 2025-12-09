@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v13';
+const CACHE_NAME = 'revision-v14';
 const ASSETS = [
     './',
     './index.html',
@@ -37,7 +37,9 @@ const ASSETS = [
     './utils/midi-manager.js',
     './utils/mobile-compat.js',
     './utils/osc-client.js',
-    './utils/settings-manager.js'
+    './utils/settings-manager.js',
+    './utils/wake-lock.js',
+    './utils/remote-channel.js'
 ];
 
 // Install event - cache assets
