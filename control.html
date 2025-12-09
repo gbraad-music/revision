@@ -330,6 +330,7 @@
             <button onclick="switchPreviewMode('video')" id="preview-tab-video" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Camera</button>
             <button onclick="switchPreviewMode('media')" id="preview-tab-media" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Media</button>
             <button onclick="switchPreviewMode('stream')" id="preview-tab-stream" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Stream</button>
+            <button onclick="switchPreviewMode('webpage')" id="preview-tab-webpage" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Webpage</button>
         </div>
 
         <!-- Single Unified Preview Canvas -->
@@ -513,6 +514,48 @@
             <button onclick="loadStreamPreview()" style="width: 100%; padding: 10px; background: #0066FF; border: 1px solid #0088FF;">Load Stream to Preview</button>
             <div class="info" style="margin-top: 5px;">Load stream in preview before sending to program</div>
         </div>
+
+        <div style="margin-top: 10px;">
+            <button onclick="releaseStream()" style="width: 100%; padding: 10px;">Release Stream</button>
+            <div class="info" style="margin-top: 5px;">Stop stream and free resources</div>
+        </div>
+    </div>
+
+    <!-- Webpage Controls -->
+    <div class="section" id="webpage-controls" style="display: none;">
+        <h2>Webpage Display (iframe)</h2>
+
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">Preset Webpages</label>
+        <div class="button-grid" style="margin-bottom: 15px;">
+            <button onclick="loadWebpagePreset('https://apps.gbraad.nl/analogue-clock/')" style="padding: 8px;">🕐 Analogue Clock</button>
+            <button onclick="loadWebpagePreset('https://phoboslab.org/wipeout/')" style="padding: 8px;">🏎️ Wipeout</button>
+            <button onclick="loadWebpagePreset('http://mrdoob.com/projects/chromeexperiments/ball/')" style="padding: 8px;">⚽ Ball Pool</button>
+            <button onclick="loadWebpagePreset('https://stars.chromeexperiments.com/')" style="padding: 8px;">⭐ 100,000 Stars</button>
+        </div>
+
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">Custom Webpage URL</label>
+        <input type="text" id="webpage-url" placeholder="https://example.com" style="width: 100%; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px; margin-bottom: 10px;" />
+        <div class="info">Any webpage URL to display in iframe</div>
+
+        <label style="display: block; margin-top: 15px; font-size: 12px;">
+            <input type="checkbox" id="webpage-audio-reactive" style="width: auto; margin-right: 5px;">
+            Audio-reactive effects
+        </label>
+
+        <label style="display: block; margin-top: 10px; font-size: 12px;">
+            <input type="checkbox" id="webpage-beat-reactive" style="width: auto; margin-right: 5px;">
+            Beat-reactive zoom
+        </label>
+
+        <div style="margin-top: 15px;">
+            <button onclick="loadWebpagePreview()" style="width: 100%; padding: 10px; background: #0066FF; border: 1px solid #0088FF;">Load Webpage to Preview</button>
+            <div class="info" style="margin-top: 5px;">Load webpage in preview before sending to program</div>
+        </div>
+
+        <div style="margin-top: 15px; padding: 10px; background: rgba(255,165,0,0.1); border: 1px solid rgba(255,165,0,0.3); border-radius: 4px;">
+            <div style="font-size: 11px; color: #ffaa00; font-weight: bold; margin-bottom: 5px;">⚠️ CORS Limitations</div>
+            <div style="font-size: 10px; color: #888;">Some websites may block iframe embedding (X-Frame-Options). Websites on the same origin work best.</div>
+        </div>
     </div>
 
     <div class="section">
@@ -627,6 +670,9 @@
                 case 'stream':
                     goToProgramStream();
                     break;
+                case 'webpage':
+                    goToProgramWebpage();
+                    break;
             }
         }
 
@@ -715,6 +761,10 @@
             document.getElementById('preview-tab-stream').style.borderColor = mode === 'stream' ? '#0088FF' : '#3a3a3a';
             document.getElementById('preview-tab-stream').style.color = mode === 'stream' ? 'white' : '#888';
 
+            document.getElementById('preview-tab-webpage').style.background = mode === 'webpage' ? '#0066FF' : '#2a2a2a';
+            document.getElementById('preview-tab-webpage').style.borderColor = mode === 'webpage' ? '#0088FF' : '#3a3a3a';
+            document.getElementById('preview-tab-webpage').style.color = mode === 'webpage' ? 'white' : '#888';
+
             // Show/hide control sections
             document.getElementById('builtin-controls').style.display = mode === 'builtin' ? 'block' : 'none';
             document.getElementById('threejs-controls').style.display = mode === 'threejs' ? 'block' : 'none';
@@ -722,9 +772,10 @@
             document.getElementById('video-controls').style.display = mode === 'video' ? 'block' : 'none';
             document.getElementById('media-controls').style.display = mode === 'media' ? 'block' : 'none';
             document.getElementById('stream-controls').style.display = mode === 'stream' ? 'block' : 'none';
+            document.getElementById('webpage-controls').style.display = mode === 'webpage' ? 'block' : 'none';
 
             // Update preview mode label
-            const labels = { black: 'BLACK', builtin: 'BUILT-IN', threejs: 'THREE.JS', milkdrop: 'MILKDROP', video: 'VIDEO', media: 'MEDIA', stream: 'STREAM' };
+            const labels = { black: 'BLACK', builtin: 'BUILT-IN', threejs: 'THREE.JS', milkdrop: 'MILKDROP', video: 'VIDEO', media: 'MEDIA', stream: 'STREAM', webpage: 'WEBPAGE' };
             document.getElementById('preview-mode-label').textContent = labels[mode];
 
             // Stop and cleanup old preview renderer
@@ -752,6 +803,9 @@
                     break;
                 case 'stream':
                     initStreamPreview();
+                    break;
+                case 'webpage':
+                    initWebpagePreview();
                     break;
             }
         }
@@ -792,6 +846,19 @@
             // Stop stream rendering
             if (window.streamPreviewAnimating) {
                 window.streamPreviewAnimating = false;
+            }
+
+            // Clean up stream resources
+            if (streamHls) {
+                console.log('[Control] Destroying HLS instance');
+                streamHls.destroy();
+                streamHls = null;
+            }
+            if (streamVideoElement) {
+                console.log('[Control] Cleaning up stream video element');
+                streamVideoElement.pause();
+                streamVideoElement.src = '';
+                streamVideoElement = null;
             }
 
             unifiedSceneManager = null;
@@ -1565,6 +1632,45 @@
             document.getElementById('staged-name').textContent = 'Error: ' + message;
         }
 
+        // RELEASE STREAM
+        function releaseStream() {
+            console.log('[Control] Releasing stream...');
+
+            // Stop animation
+            window.streamPreviewAnimating = false;
+
+            // Clean up HLS
+            if (streamHls) {
+                streamHls.destroy();
+                streamHls = null;
+            }
+
+            // Clean up video element
+            if (streamVideoElement) {
+                streamVideoElement.pause();
+                streamVideoElement.src = '';
+                streamVideoElement = null;
+            }
+
+            // Clear staged URL
+            stagedStreamURL = '';
+            document.getElementById('stream-url').value = '';
+
+            // Clear canvas
+            const ctx = unifiedCanvas.getContext('2d');
+            if (ctx) {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+                ctx.fillStyle = '#888';
+                ctx.font = '14px Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Stream released', unifiedCanvas.width / 2, unifiedCanvas.height / 2);
+            }
+            document.getElementById('staged-name').textContent = 'No stream loaded';
+
+            console.log('[Control] ✓ Stream released and cleaned up');
+        }
+
         // GO TO PROGRAM - Stream mode
         function goToProgramStream() {
             console.log('[Control] GO TO PROGRAM: Stream');
@@ -1580,6 +1686,104 @@
                 url: stagedStreamURL,
                 streamType: stagedStreamType,
                 fitMode: stagedStreamFitMode
+            });
+        }
+
+        // INIT WEBPAGE PREVIEW
+        let stagedWebpageURL = '';
+
+        function initWebpagePreview() {
+            console.log('[Control] Initializing webpage preview...');
+
+            // Replace canvas to ensure fresh 2D context
+            const oldCanvas = document.getElementById('unified-preview-canvas');
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = 'unified-preview-canvas';
+            newCanvas.width = oldCanvas.clientWidth;
+            newCanvas.height = oldCanvas.clientHeight;
+            newCanvas.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block;';
+
+            oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+            unifiedCanvas = newCanvas;
+            console.log('[Control] Canvas refreshed for webpage mode');
+
+            if (stagedWebpageURL) {
+                // Show message that webpage is staged
+                const ctx = unifiedCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+                    ctx.fillStyle = '#888';
+                    ctx.font = '14px Arial, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Webpage: ' + stagedWebpageURL, unifiedCanvas.width / 2, unifiedCanvas.height / 2);
+                    ctx.font = '12px Arial, sans-serif';
+                    ctx.fillText('(Preview not available for iframes)', unifiedCanvas.width / 2, unifiedCanvas.height / 2 + 20);
+                }
+                document.getElementById('staged-name').textContent = 'Webpage: ' + stagedWebpageURL.substring(0, 50) + '...';
+            } else {
+                // Show placeholder
+                const ctx = unifiedCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+                    ctx.fillStyle = '#888';
+                    ctx.font = '14px Arial, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Enter webpage URL and click Load Webpage', unifiedCanvas.width / 2, unifiedCanvas.height / 2);
+                    ctx.fillText('(Preview not available - will load in program)', unifiedCanvas.width / 2, unifiedCanvas.height / 2 + 20);
+                }
+                document.getElementById('staged-name').textContent = 'No webpage loaded';
+            }
+        }
+
+        // LOAD WEBPAGE PRESET
+        function loadWebpagePreset(url) {
+            document.getElementById('webpage-url').value = url;
+            loadWebpagePreview();
+        }
+
+        // LOAD WEBPAGE TO PREVIEW
+        function loadWebpagePreview() {
+            const url = document.getElementById('webpage-url').value.trim();
+            if (!url) {
+                alert('Please enter a webpage URL');
+                return;
+            }
+
+            stagedWebpageURL = url;
+            console.log('[Control] Webpage staged:', url);
+
+            // Show staged message
+            const ctx = unifiedCanvas.getContext('2d');
+            if (ctx) {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+                ctx.fillStyle = '#0066FF';
+                ctx.font = '14px Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('✓ Webpage Staged', unifiedCanvas.width / 2, unifiedCanvas.height / 2 - 20);
+                ctx.fillStyle = '#888';
+                ctx.font = '12px Arial, sans-serif';
+                ctx.fillText(url, unifiedCanvas.width / 2, unifiedCanvas.height / 2);
+                ctx.fillText('Click "GO TO PROGRAM" to display', unifiedCanvas.width / 2, unifiedCanvas.height / 2 + 20);
+            }
+            document.getElementById('staged-name').textContent = 'Webpage: ' + url.substring(0, 50) + '...';
+        }
+
+        // GO TO PROGRAM - Webpage mode
+        function goToProgramWebpage() {
+            console.log('[Control] GO TO PROGRAM: Webpage');
+
+            if (!stagedWebpageURL) {
+                console.warn('[Control] No webpage URL entered');
+                alert('Please enter a webpage URL and load it to preview first');
+                return;
+            }
+
+            // Send webpage data to main app
+            sendCommand('webpageLoad', {
+                url: stagedWebpageURL
             });
         }
 
@@ -2378,6 +2582,20 @@
             console.log('[Control] Stream fit mode STAGED:', stagedStreamFitMode);
             // If currently in stream preview mode and stream is loaded, re-render
             // (Fit mode will update in real-time via render loop)
+        });
+
+        // Webpage audio reactive toggle
+        document.getElementById('webpage-audio-reactive').addEventListener('change', (e) => {
+            console.log('[Control] Webpage audio reactive:', e.target.checked);
+            // Send to program in real-time
+            sendCommand('webpageAudioReactive', e.target.checked ? 'true' : 'false');
+        });
+
+        // Webpage beat reactive toggle
+        document.getElementById('webpage-beat-reactive').addEventListener('change', (e) => {
+            console.log('[Control] Webpage beat reactive:', e.target.checked);
+            // Send to program in real-time
+            sendCommand('webpageBeatReactive', e.target.checked ? 'true' : 'false');
         });
 
         // Preset drag-drop reload

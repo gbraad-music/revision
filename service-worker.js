@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v12';
+const CACHE_NAME = 'revision-v13';
 const ASSETS = [
     './',
     './index.html',
@@ -27,6 +27,7 @@ const ASSETS = [
     './presets/threejs/Tunnel.js',
     './renderers/video-renderer.js',
     './js/renderers/StreamRenderer.js',
+    './js/renderers/WebpageRenderer.js',
     // Scenes
     './scenes/scene-manager.js',
     // Visuals

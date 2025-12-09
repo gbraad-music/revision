@@ -24,6 +24,7 @@ class RevisionAppV2 {
         this.videoRenderer = null;
         this.mediaRenderer = null;
         this.streamRenderer = null;
+        this.webpageRenderer = null;
 
         // UI elements
         this.builtinCanvas = document.getElementById('builtin-canvas');
@@ -32,6 +33,7 @@ class RevisionAppV2 {
         this.videoCanvas = document.getElementById('video-canvas');
         this.mediaCanvas = document.getElementById('media-canvas');
         this.streamCanvas = document.getElementById('stream-canvas');
+        this.webpageContainer = document.getElementById('webpage-container');
         this.blackScreen = document.getElementById('black-screen');
         this.midiIndicator = document.getElementById('midi-indicator');
         this.audioIndicator = document.getElementById('audio-indicator');
@@ -554,6 +556,14 @@ class RevisionAppV2 {
         this.streamRenderer.setBeatReactive(savedStreamBeatReactive);
         console.log('[Revision] ✓ Stream renderer initialized - audioReactive:', savedStreamAudioReactive, 'beatReactive:', savedStreamBeatReactive);
 
+        // Initialize Webpage renderer (for displaying webpages in iframe)
+        const savedWebpageAudioReactive = this.settings.get('webpageAudioReactive') === 'true';
+        const savedWebpageBeatReactive = this.settings.get('webpageBeatReactive') === 'true';
+        this.webpageRenderer = new WebpageRenderer(this.webpageContainer);
+        this.webpageRenderer.setAudioReactive(savedWebpageAudioReactive);
+        this.webpageRenderer.setBeatReactive(savedWebpageBeatReactive);
+        console.log('[Revision] ✓ Webpage renderer initialized - audioReactive:', savedWebpageAudioReactive, 'beatReactive:', savedWebpageBeatReactive);
+
         // Initialize input sources (MIDI, connect audio if enabled)
         await this.initializeInputs();
 
@@ -632,6 +642,7 @@ class RevisionAppV2 {
         this.videoCanvas.style.display = 'none';
         this.mediaCanvas.style.display = 'none';
         this.streamCanvas.style.display = 'none';
+        this.webpageContainer.style.display = 'none';
 
         // ALWAYS start with BLACK SCREEN for instant startup
         // User switches to desired mode via control.html "GO TO PROGRAM"
@@ -1040,6 +1051,35 @@ class RevisionAppV2 {
                     }
                     this.broadcastState();
                     break;
+                case 'webpageLoad':
+                    console.log('[BroadcastChannel] Webpage Load:', data);
+                    if (this.webpageRenderer && data.url) {
+                        // Switch to webpage mode first
+                        await this.switchPresetType('webpage');
+
+                        // Then load the webpage
+                        this.webpageRenderer.loadWebpage(data.url);
+                        console.log('[Webpage] ✓ Webpage loaded successfully');
+                    } else {
+                        console.error('[Revision] ✗ Invalid webpage data or renderer not available');
+                    }
+                    break;
+                case 'webpageAudioReactive':
+                    console.log('[BroadcastChannel] Webpage Audio Reactive:', data);
+                    this.settings.set('webpageAudioReactive', data);
+                    if (this.webpageRenderer) {
+                        this.webpageRenderer.setAudioReactive(data === 'true');
+                    }
+                    this.broadcastState();
+                    break;
+                case 'webpageBeatReactive':
+                    console.log('[BroadcastChannel] Webpage Beat Reactive:', data);
+                    this.settings.set('webpageBeatReactive', data);
+                    if (this.webpageRenderer) {
+                        this.webpageRenderer.setBeatReactive(data === 'true');
+                    }
+                    this.broadcastState();
+                    break;
                 case 'toggleStatusBar':
                     console.log('[BroadcastChannel] Toggle Status Bar:', data);
                     this.settings.set('showStatusBar', data);
@@ -1413,6 +1453,8 @@ class RevisionAppV2 {
                 }
             } else if (this.currentPresetType === 'stream' && this.streamRenderer) {
                 this.streamRenderer.handleBeat(data);
+            } else if (this.currentPresetType === 'webpage' && this.webpageRenderer) {
+                this.webpageRenderer.handleBeat(data);
             }
         });
 
@@ -1530,6 +1572,8 @@ class RevisionAppV2 {
                 }
             } else if (this.currentPresetType === 'stream' && this.streamRenderer) {
                 this.streamRenderer.handleFrequency(data);
+            } else if (this.currentPresetType === 'webpage' && this.webpageRenderer) {
+                this.webpageRenderer.handleFrequency(data);
             }
             // Milkdrop gets audio directly via connectAudioSource
         });
@@ -1887,6 +1931,12 @@ class RevisionAppV2 {
             this.streamRenderer.stop();
         }
 
+        // Stop webpage renderer when switching away from webpage mode
+        if (this.webpageRenderer && this.currentPresetType === 'webpage' && type !== 'webpage') {
+            console.log('[Revision] Switching away from webpage mode - stopping webpage');
+            this.webpageRenderer.stop();
+        }
+
         // Stop all renderers
         this.renderer.stop();
         if (this.threeJSRenderer) this.threeJSRenderer.stop();
@@ -1918,6 +1968,7 @@ class RevisionAppV2 {
         this.videoCanvas.style.display = 'none';
         this.mediaCanvas.style.display = 'none';
         this.streamCanvas.style.display = 'none';
+        this.webpageContainer.style.display = 'none';
 
         // Manage black-screen visibility
         // Black-screen is only used during transitions to hide builtin canvas
@@ -2142,10 +2193,30 @@ class RevisionAppV2 {
                 }, 50);
                 this.enableSceneButtons(false, 'Stream mode - load stream in control.html');
                 break;
+            case 'webpage':
+                this.webpageContainer.style.display = 'block';
+                this.webpageContainer.style.opacity = '0';
+                if (this.webpageRenderer) {
+                    // Resize to fit display
+                    const isFullscreen = !!document.fullscreenElement;
+                    const w = window.innerWidth;
+                    const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
+                    this.webpageRenderer.resize(w, h);
+
+                    console.log('[Webpage] Ready - waiting for webpage URL');
+                } else {
+                    console.error('[Revision] Webpage renderer not initialized');
+                }
+                // Fade in
+                setTimeout(() => {
+                    this.webpageContainer.style.opacity = '1';
+                }, 50);
+                this.enableSceneButtons(false, 'Webpage mode - load webpage in control.html');
+                break;
         }
 
         // Update mode display
-        const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video', media: 'Media', stream: 'Stream' };
+        const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video', media: 'Media', stream: 'Stream', webpage: 'Webpage' };
         if (this.modeDisplay) {
             this.modeDisplay.textContent = modeNames[type] || type;
         }
@@ -2403,6 +2474,13 @@ class RevisionAppV2 {
                     const streamHeight = isFullscreen ? window.innerHeight : h;
                     this.streamRenderer.resize(w, streamHeight);
                     console.log('[Stream] Resized to:', w, 'x', streamHeight, 'fullscreen:', isFullscreen);
+                }
+                break;
+            case 'webpage':
+                if (this.webpageRenderer) {
+                    const webpageHeight = isFullscreen ? window.innerHeight : h;
+                    this.webpageRenderer.resize(w, webpageHeight);
+                    console.log('[Webpage] Resized to:', w, 'x', webpageHeight, 'fullscreen:', isFullscreen);
                 }
                 break;
         }
