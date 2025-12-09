@@ -218,7 +218,7 @@
 
     <div class="section">
         <h2><span class="status" id="connection-status"></span>Connection <span class="status" id="spp-indicator" title="SPP Activity"></span></h2>
-        <div class="info">Connected to main tab via BroadcastChannel</div>
+        <div class="info">Connected to program (WebSocket or BroadcastChannel)</div>
         <div class="info" style="margin-top: 5px;">Mode: <span id="current-mode" style="color: #0066FF;">-</span></div>
         <div class="info" style="margin-top: 5px;">BPM: <span id="current-bpm" style="color: #0066FF;">-</span> | Position: <span id="current-position" style="color: #0066FF;">-</span></div>
         <div class="info" style="margin-top: 5px;">Audio Source: <span id="current-audio-source" style="color: #0066FF;">-</span></div>
@@ -602,9 +602,12 @@
     <script src="presets/threejs-renderer.js"></script>
     <script src="presets/threejs/BasePreset.js"></script>
 
+    <!-- Remote Channel for WebSocket communication -->
+    <script src="utils/remote-channel.js"></script>
+
     <script>
-        // BroadcastChannel for tab-to-tab communication
-        const controlChannel = new BroadcastChannel('revision-control');
+        // RemoteChannel for tab-to-tab and remote communication (WebSocket + BroadcastChannel fallback)
+        const controlChannel = new RemoteChannel('revision-control');
 
         // UNIFIED PREVIEW SYSTEM - Single canvas, one renderer at a time
         let currentPreviewMode = 'builtin'; // Which tab is active: builtin/threejs/milkdrop/video/media

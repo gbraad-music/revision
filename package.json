@@ -5,7 +5,9 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --enable-logging"
+    "dev": "electron . --enable-logging",
+    "server": "node server.js",
+    "server:dev": "node server.js 2005"
   },
   "keywords": [
     "vj",
@@ -16,6 +18,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "ws": "^8.14.0"
+  },
   "devDependencies": {
     "electron": "^28.0.0"
   }

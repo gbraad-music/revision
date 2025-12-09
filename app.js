@@ -41,8 +41,8 @@ class RevisionAppV2 {
         this.positionDisplay = document.getElementById('position-display');
         this.modeDisplay = document.getElementById('mode-display');
 
-        // BroadcastChannel for control.html communication
-        this.controlChannel = new BroadcastChannel('revision-control');
+        // RemoteChannel for control.html communication (WebSocket + BroadcastChannel fallback)
+        this.controlChannel = new RemoteChannel('revision-control');
 
         // Broadcast state periodically
         this.lastBroadcastTime = 0;

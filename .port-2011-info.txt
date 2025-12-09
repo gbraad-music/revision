@@ -1,0 +1,74 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                            PORT 2011                                     ║
+║                      Tribute to the Demoscene                            ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+🎨 REVISION DEMOPARTY
+─────────────────────────────────────────────────────────────────────────────
+
+Revision is one of the world's largest and most significant demoparty events,
+celebrating digital art, music, and code.
+
+First held in 2011 in Saarbrücken, Germany, Revision brings together the
+demoscene community for competitions in:
+  - Demos (real-time audio-visual presentations)
+  - Intros (size-limited demos)
+  - Music (tracked and streamed)
+  - Graphics (pixel art, raytraced, ASCII)
+  - Wild (anything goes!)
+
+Website: https://www.revision-party.net/
+
+
+🎯 PORT 2011
+─────────────────────────────────────────────────────────────────────────────
+
+This VJ tool uses port 2011 as a tribute to the demoscene.
+
+The port number serves as a constant reminder of the demoparty's legacy
+and the creative spirit of the demoscene community.
+
+
+
+🏆 DEMOSCENE UNESCO RECOGNITION
+─────────────────────────────────────────────────────────────────────────────
+
+In 2020, the demoscene was added to UNESCO's list of intangible cultural
+heritage in Germany, recognizing its unique blend of art, technology, and
+community.
+
+Revision demoparty played a crucial role in preserving and promoting this
+cultural heritage.
+
+
+🎪 WHY THIS MATTERS FOR A VJ TOOL
+─────────────────────────────────────────────────────────────────────────────
+
+The demoscene pioneered many techniques used in modern VJ performances:
+
+  ✓ Real-time graphics generation
+  ✓ Beat-synced visuals
+  ✓ Procedural effects
+  ✓ Size-optimized code
+  ✓ Live performance culture
+
+This VJ tool carries forward that legacy, bringing demoscene techniques
+to live music performances and DJ sets.
+
+
+🌐 RELATED LINKS
+─────────────────────────────────────────────────────────────────────────────
+
+Revision Party:     https://www.revision-party.net/
+Pouët (Demo DB):    https://www.pouet.net/
+Scene.org:          https://www.scene.org/
+Demoscene UNESCO:   https://en.unesco.org/countries/germany
+
+Demoscene Archives:
+  - https://archive.org/details/demoparty
+  - https://www.pouet.net/prodlist.php
+
+
+═══════════════════════════════════════════════════════════════════════════
+         Long live the demoscene! Greetings to all sceners! 🎨🎵💾
+═══════════════════════════════════════════════════════════════════════════
