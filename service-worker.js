@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v10';
+const CACHE_NAME = 'revision-v12';
 const ASSETS = [
     './',
     './index.html',
@@ -10,6 +10,7 @@ const ASSETS = [
     './external/butterchurnPresets.min.js',
     './external/three.min.js',
     './external/three.module.js',
+    './external/hls.min.js',
     // Input sources
     './inputs/audio-input-source.js',
     './inputs/input-manager.js',
@@ -25,6 +26,7 @@ const ASSETS = [
     './presets/threejs/Particles.js',
     './presets/threejs/Tunnel.js',
     './renderers/video-renderer.js',
+    './js/renderers/StreamRenderer.js',
     // Scenes
     './scenes/scene-manager.js',
     // Visuals
