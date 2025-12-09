@@ -23,6 +23,7 @@ class RevisionAppV2 {
         this.milkdropRenderer = null;
         this.videoRenderer = null;
         this.mediaRenderer = null;
+        this.streamRenderer = null;
 
         // UI elements
         this.builtinCanvas = document.getElementById('builtin-canvas');
@@ -30,6 +31,7 @@ class RevisionAppV2 {
         this.milkdropCanvas = document.getElementById('milkdrop-canvas');
         this.videoCanvas = document.getElementById('video-canvas');
         this.mediaCanvas = document.getElementById('media-canvas');
+        this.streamCanvas = document.getElementById('stream-canvas');
         this.blackScreen = document.getElementById('black-screen');
         this.midiIndicator = document.getElementById('midi-indicator');
         this.audioIndicator = document.getElementById('audio-indicator');
@@ -544,6 +546,14 @@ class RevisionAppV2 {
         };
         console.log('[Revision] ✓ Media renderer initialized - audioReactive:', savedAudioReactive, 'beatReactive:', savedBeatReactive);
 
+        // Initialize Stream renderer (for HLS, WebRTC, etc.)
+        const savedStreamAudioReactive = this.settings.get('streamAudioReactive') === 'true';
+        const savedStreamBeatReactive = this.settings.get('streamBeatReactive') === 'true';
+        this.streamRenderer = new StreamRenderer(this.streamCanvas);
+        this.streamRenderer.setAudioReactive(savedStreamAudioReactive);
+        this.streamRenderer.setBeatReactive(savedStreamBeatReactive);
+        console.log('[Revision] ✓ Stream renderer initialized - audioReactive:', savedStreamAudioReactive, 'beatReactive:', savedStreamBeatReactive);
+
         // Initialize input sources (MIDI, connect audio if enabled)
         await this.initializeInputs();
 
@@ -620,6 +630,8 @@ class RevisionAppV2 {
         this.threejsCanvas.style.display = 'none';
         this.milkdropCanvas.style.display = 'none';
         this.videoCanvas.style.display = 'none';
+        this.mediaCanvas.style.display = 'none';
+        this.streamCanvas.style.display = 'none';
 
         // ALWAYS start with BLACK SCREEN for instant startup
         // User switches to desired mode via control.html "GO TO PROGRAM"
@@ -990,6 +1002,41 @@ class RevisionAppV2 {
                     this.settings.set('mediaBeatReactive', data);
                     if (this.mediaRenderer) {
                         this.mediaRenderer.beatReactive = data === 'true';
+                    }
+                    this.broadcastState();
+                    break;
+                case 'streamLoad':
+                    console.log('[BroadcastChannel] Stream Load:', data);
+                    if (this.streamRenderer && data.url) {
+                        // Switch to stream mode first
+                        await this.switchPresetType('stream');
+
+                        // Then load the stream
+                        try {
+                            await this.streamRenderer.loadStream(data.url, data.streamType || 'auto', {
+                                fitMode: data.fitMode || 'cover'
+                            });
+                            console.log('[Stream] ✓ Stream loaded successfully');
+                        } catch (error) {
+                            console.error('[Stream] ✗ Failed to load stream:', error);
+                        }
+                    } else {
+                        console.error('[Revision] ✗ Invalid stream data or renderer not available');
+                    }
+                    break;
+                case 'streamAudioReactive':
+                    console.log('[BroadcastChannel] Stream Audio Reactive:', data);
+                    this.settings.set('streamAudioReactive', data);
+                    if (this.streamRenderer) {
+                        this.streamRenderer.setAudioReactive(data === 'true');
+                    }
+                    this.broadcastState();
+                    break;
+                case 'streamBeatReactive':
+                    console.log('[BroadcastChannel] Stream Beat Reactive:', data);
+                    this.settings.set('streamBeatReactive', data);
+                    if (this.streamRenderer) {
+                        this.streamRenderer.setBeatReactive(data === 'true');
                     }
                     this.broadcastState();
                     break;
@@ -1364,6 +1411,8 @@ class RevisionAppV2 {
                     this.mediaRenderer.targetZoom = 1.0 + (intensity * 0.15);
                     this.mediaRenderer.beatZoom = this.mediaRenderer.targetZoom;
                 }
+            } else if (this.currentPresetType === 'stream' && this.streamRenderer) {
+                this.streamRenderer.handleBeat(data);
             }
         });
 
@@ -1479,6 +1528,8 @@ class RevisionAppV2 {
                     this.mediaRenderer.midLevel = data.bands.mid || 0;
                     this.mediaRenderer.highLevel = data.bands.high || 0;
                 }
+            } else if (this.currentPresetType === 'stream' && this.streamRenderer) {
+                this.streamRenderer.handleFrequency(data);
             }
             // Milkdrop gets audio directly via connectAudioSource
         });
@@ -1830,6 +1881,12 @@ class RevisionAppV2 {
             this.mediaRenderer.stop();
         }
 
+        // Stop stream renderer when switching away from stream mode
+        if (this.streamRenderer && this.currentPresetType === 'stream' && type !== 'stream') {
+            console.log('[Revision] Switching away from stream mode - stopping stream');
+            this.streamRenderer.stop();
+        }
+
         // Stop all renderers
         this.renderer.stop();
         if (this.threeJSRenderer) this.threeJSRenderer.stop();
@@ -1860,6 +1917,7 @@ class RevisionAppV2 {
         this.milkdropCanvas.style.display = 'none';
         this.videoCanvas.style.display = 'none';
         this.mediaCanvas.style.display = 'none';
+        this.streamCanvas.style.display = 'none';
 
         // Manage black-screen visibility
         // Black-screen is only used during transitions to hide builtin canvas
@@ -2064,10 +2122,30 @@ class RevisionAppV2 {
                 }, 50);
                 this.enableSceneButtons(false, 'Media mode - load media in control.html');
                 break;
+            case 'stream':
+                this.streamCanvas.style.display = 'block';
+                this.streamCanvas.style.opacity = '0';
+                if (this.streamRenderer) {
+                    // Resize to fit display
+                    const isFullscreen = !!document.fullscreenElement;
+                    const w = window.innerWidth;
+                    const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
+                    this.streamRenderer.resize(w, h);
+
+                    console.log('[Stream] Ready - waiting for stream URL');
+                } else {
+                    console.error('[Revision] Stream renderer not initialized');
+                }
+                // Fade in
+                setTimeout(() => {
+                    this.streamCanvas.style.opacity = '1';
+                }, 50);
+                this.enableSceneButtons(false, 'Stream mode - load stream in control.html');
+                break;
         }
 
         // Update mode display
-        const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video', media: 'Media' };
+        const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video', media: 'Media', stream: 'Stream' };
         if (this.modeDisplay) {
             this.modeDisplay.textContent = modeNames[type] || type;
         }
@@ -2318,6 +2396,13 @@ class RevisionAppV2 {
                     const mediaHeight = isFullscreen ? window.innerHeight : h;
                     this.mediaRenderer.resize(w, mediaHeight);
                     console.log('[Media] Resized to:', w, 'x', mediaHeight, 'fullscreen:', isFullscreen);
+                }
+                break;
+            case 'stream':
+                if (this.streamRenderer) {
+                    const streamHeight = isFullscreen ? window.innerHeight : h;
+                    this.streamRenderer.resize(w, streamHeight);
+                    console.log('[Stream] Resized to:', w, 'x', streamHeight, 'fullscreen:', isFullscreen);
                 }
                 break;
         }

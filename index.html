@@ -262,6 +262,7 @@
         <canvas id="milkdrop-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; z-index: 3;"></canvas>
         <canvas id="video-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; z-index: 3;"></canvas>
         <canvas id="media-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; z-index: 3;"></canvas>
+        <canvas id="stream-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; z-index: 3;"></canvas>
 
         <!-- Fullscreen drop zone overlay (only visible when dragging) -->
         <div id="fullscreen-drop-zone" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 102, 255, 0.1); border: 4px dashed #0066FF; display: none; pointer-events: none; z-index: 9999; align-items: center; justify-content: center;">
@@ -324,6 +325,12 @@
     <script src="presets/threejs/BasePreset.js"></script>
 
     <script src="renderers/video-renderer.js"></script>
+
+    <!-- HLS.js for live streaming (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+    <!-- Stream Renderer -->
+    <script src="js/renderers/StreamRenderer.js"></script>
 
     <!-- Legacy MIDI Manager (for backwards compatibility) -->
     <script src="utils/midi-manager.js"></script>

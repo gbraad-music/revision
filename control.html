@@ -329,6 +329,7 @@
             <button onclick="switchPreviewMode('milkdrop')" id="preview-tab-milkdrop" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Milkdrop</button>
             <button onclick="switchPreviewMode('video')" id="preview-tab-video" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Camera</button>
             <button onclick="switchPreviewMode('media')" id="preview-tab-media" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Media</button>
+            <button onclick="switchPreviewMode('stream')" id="preview-tab-stream" style="flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer;">Stream</button>
         </div>
 
         <!-- Single Unified Preview Canvas -->
@@ -473,6 +474,47 @@
         </div>
     </div>
 
+    <!-- Stream Controls (HLS, WebRTC, RTMP) -->
+    <div class="section" id="stream-controls" style="display: none;">
+        <h2>Stream Sources (HLS, WebRTC, RTMP)</h2>
+
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">Stream URL</label>
+        <input type="text" id="stream-url" placeholder="https://example.com/stream.m3u8" style="width: 100%; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px; margin-bottom: 10px;" />
+        <div class="info">HLS (.m3u8), WebRTC, or direct stream URL</div>
+
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Stream Type</label>
+        <select id="stream-type" style="width: 100%; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px; margin-bottom: 5px;">
+            <option value="auto">Auto-detect</option>
+            <option value="hls">HLS (HTTP Live Streaming)</option>
+            <option value="webrtc">WebRTC (Real-time)</option>
+            <option value="direct">Direct Video Stream</option>
+        </select>
+        <div class="info" style="margin-bottom: 10px;">Stream protocol to use</div>
+
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Fit Mode</label>
+        <select id="stream-fit-mode" style="width: 100%; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px; margin-bottom: 5px;">
+            <option value="cover">Cover (Fill, may crop)</option>
+            <option value="contain">Contain (Fit all, may letterbox)</option>
+            <option value="fill">Stretch (Fill, may distort)</option>
+        </select>
+        <div class="info" style="margin-bottom: 10px;">How stream should fit in the canvas</div>
+
+        <label style="display: block; margin-top: 15px; font-size: 12px;">
+            <input type="checkbox" id="stream-audio-reactive" style="width: auto; margin-right: 5px;">
+            Audio-reactive effects
+        </label>
+
+        <label style="display: block; margin-top: 10px; font-size: 12px;">
+            <input type="checkbox" id="stream-beat-reactive" style="width: auto; margin-right: 5px;">
+            Beat-reactive zoom
+        </label>
+
+        <div style="margin-top: 15px;">
+            <button onclick="loadStreamPreview()" style="width: 100%; padding: 10px; background: #0066FF; border: 1px solid #0088FF;">Load Stream to Preview</button>
+            <div class="info" style="margin-top: 5px;">Load stream in preview before sending to program</div>
+        </div>
+    </div>
+
     <div class="section">
         <h2>Display Settings</h2>
 
@@ -506,6 +548,9 @@
 
     <!-- Three.js for 3D preview (global build) -->
     <script src="external/three.min.js"></script>
+
+    <!-- HLS.js for live streaming (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 
     <!-- Renderers for preview -->
     <script src="renderers/video-renderer.js"></script>
@@ -578,6 +623,9 @@
                     break;
                 case 'media':
                     goToProgramMedia();
+                    break;
+                case 'stream':
+                    goToProgramStream();
                     break;
             }
         }
@@ -663,15 +711,20 @@
             document.getElementById('preview-tab-media').style.borderColor = mode === 'media' ? '#0088FF' : '#3a3a3a';
             document.getElementById('preview-tab-media').style.color = mode === 'media' ? 'white' : '#888';
 
+            document.getElementById('preview-tab-stream').style.background = mode === 'stream' ? '#0066FF' : '#2a2a2a';
+            document.getElementById('preview-tab-stream').style.borderColor = mode === 'stream' ? '#0088FF' : '#3a3a3a';
+            document.getElementById('preview-tab-stream').style.color = mode === 'stream' ? 'white' : '#888';
+
             // Show/hide control sections
             document.getElementById('builtin-controls').style.display = mode === 'builtin' ? 'block' : 'none';
             document.getElementById('threejs-controls').style.display = mode === 'threejs' ? 'block' : 'none';
             document.getElementById('milkdrop-controls').style.display = mode === 'milkdrop' ? 'block' : 'none';
             document.getElementById('video-controls').style.display = mode === 'video' ? 'block' : 'none';
             document.getElementById('media-controls').style.display = mode === 'media' ? 'block' : 'none';
+            document.getElementById('stream-controls').style.display = mode === 'stream' ? 'block' : 'none';
 
             // Update preview mode label
-            const labels = { black: 'BLACK', builtin: 'BUILT-IN', threejs: 'THREE.JS', milkdrop: 'MILKDROP', video: 'VIDEO', media: 'MEDIA' };
+            const labels = { black: 'BLACK', builtin: 'BUILT-IN', threejs: 'THREE.JS', milkdrop: 'MILKDROP', video: 'VIDEO', media: 'MEDIA', stream: 'STREAM' };
             document.getElementById('preview-mode-label').textContent = labels[mode];
 
             // Stop and cleanup old preview renderer
@@ -696,6 +749,9 @@
                     break;
                 case 'media':
                     initMediaPreview();
+                    break;
+                case 'stream':
+                    initStreamPreview();
                     break;
             }
         }
@@ -731,6 +787,11 @@
             // Stop media rendering
             if (window.mediaPreviewAnimating) {
                 window.mediaPreviewAnimating = false;
+            }
+
+            // Stop stream rendering
+            if (window.streamPreviewAnimating) {
+                window.streamPreviewAnimating = false;
             }
 
             unifiedSceneManager = null;
@@ -1298,6 +1359,228 @@
             }
 
             console.log('[Control] ✓ Media file cleared');
+        }
+
+        // INIT STREAM PREVIEW
+        let stagedStreamURL = '';
+        let stagedStreamType = 'auto';
+        let stagedStreamFitMode = 'cover';
+        let streamVideoElement = null;
+        let streamHls = null;
+
+        function initStreamPreview() {
+            console.log('[Control] Initializing stream preview...');
+
+            // Replace canvas to ensure fresh 2D context
+            const oldCanvas = document.getElementById('unified-preview-canvas');
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = 'unified-preview-canvas';
+            newCanvas.width = oldCanvas.clientWidth;
+            newCanvas.height = oldCanvas.clientHeight;
+            newCanvas.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block;';
+
+            oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+            unifiedCanvas = newCanvas;
+            console.log('[Control] Canvas refreshed for stream mode');
+
+            if (stagedStreamURL) {
+                // Render the staged stream
+                renderStreamPreview();
+            } else {
+                // Show placeholder
+                const ctx = unifiedCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+                    ctx.fillStyle = '#888';
+                    ctx.font = '14px Arial, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Enter stream URL and click Load Stream', unifiedCanvas.width / 2, unifiedCanvas.height / 2);
+                }
+                document.getElementById('staged-name').textContent = 'No stream loaded';
+            }
+        }
+
+        // LOAD STREAM TO PREVIEW
+        async function loadStreamPreview() {
+            const url = document.getElementById('stream-url').value.trim();
+            if (!url) {
+                alert('Please enter a stream URL');
+                return;
+            }
+
+            stagedStreamURL = url;
+            stagedStreamType = document.getElementById('stream-type').value;
+            stagedStreamFitMode = document.getElementById('stream-fit-mode').value;
+
+            console.log('[Control] Loading stream:', url, 'Type:', stagedStreamType);
+
+            // If currently in stream preview mode, load it
+            if (currentPreviewMode === 'stream') {
+                await renderStreamPreview();
+            } else {
+                console.log('[Control] Stream staged - switch to Stream tab to preview');
+            }
+        }
+
+        // RENDER STREAM PREVIEW
+        async function renderStreamPreview() {
+            if (!stagedStreamURL) return;
+
+            const ctx = unifiedCanvas.getContext('2d');
+            if (!ctx) {
+                console.error('[Control] Failed to get 2D context for stream preview');
+                return;
+            }
+
+            // Clean up old stream
+            if (streamHls) {
+                streamHls.destroy();
+                streamHls = null;
+            }
+            if (streamVideoElement) {
+                streamVideoElement.pause();
+                streamVideoElement.src = '';
+                streamVideoElement = null;
+            }
+
+            // Create video element
+            streamVideoElement = document.createElement('video');
+            streamVideoElement.muted = true;
+            streamVideoElement.playsInline = true;
+            streamVideoElement.autoplay = true;
+
+            // Detect stream type if auto
+            let type = stagedStreamType;
+            if (type === 'auto') {
+                if (stagedStreamURL.includes('.m3u8')) {
+                    type = 'hls';
+                } else if (stagedStreamURL.startsWith('webrtc://') || stagedStreamURL.startsWith('rtc://')) {
+                    type = 'webrtc';
+                } else {
+                    type = 'direct';
+                }
+            }
+
+            try {
+                if (type === 'hls') {
+                    // Load HLS stream
+                    if (typeof Hls === 'undefined') {
+                        throw new Error('HLS.js library not loaded');
+                    }
+
+                    if (Hls.isSupported()) {
+                        streamHls = new Hls({
+                            enableWorker: true,
+                            lowLatencyMode: true,
+                            backBufferLength: 90
+                        });
+
+                        streamHls.loadSource(stagedStreamURL);
+                        streamHls.attachMedia(streamVideoElement);
+
+                        streamHls.on(Hls.Events.MANIFEST_PARSED, () => {
+                            console.log('[Control] HLS manifest parsed');
+                            streamVideoElement.play().catch(err => {
+                                console.warn('[Control] Video autoplay failed:', err);
+                            });
+                            startStreamRender();
+                        });
+
+                        streamHls.on(Hls.Events.ERROR, (event, data) => {
+                            if (data.fatal) {
+                                console.error('[Control] HLS fatal error:', data);
+                                showStreamError('HLS error: ' + data.type);
+                            }
+                        });
+                    } else if (streamVideoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                        // Native HLS support (Safari)
+                        streamVideoElement.src = stagedStreamURL;
+                        await streamVideoElement.play();
+                        startStreamRender();
+                    } else {
+                        throw new Error('HLS is not supported in this browser');
+                    }
+                } else if (type === 'webrtc') {
+                    throw new Error('WebRTC streaming not yet implemented. Use HLS or direct stream.');
+                } else {
+                    // Direct video stream
+                    streamVideoElement.src = stagedStreamURL;
+                    await streamVideoElement.play();
+                    startStreamRender();
+                }
+
+                document.getElementById('staged-name').textContent = 'Stream: ' + stagedStreamURL.substring(0, 50) + '...';
+                console.log('[Control] ✓ Stream loaded to preview');
+
+            } catch (error) {
+                console.error('[Control] Failed to load stream:', error);
+                showStreamError(error.message);
+            }
+        }
+
+        // START STREAM RENDER LOOP
+        function startStreamRender() {
+            if (window.streamPreviewAnimating) return;
+
+            window.streamPreviewAnimating = true;
+            function renderFrame() {
+                if (!window.streamPreviewAnimating) return;
+
+                if (streamVideoElement && streamVideoElement.readyState >= 2) {
+                    const ctx = unifiedCanvas.getContext('2d');
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+
+                    const { drawWidth, drawHeight, drawX, drawY } = calculateFitDimensions(
+                        streamVideoElement.videoWidth,
+                        streamVideoElement.videoHeight,
+                        unifiedCanvas.width,
+                        unifiedCanvas.height,
+                        stagedStreamFitMode
+                    );
+
+                    ctx.drawImage(streamVideoElement, drawX, drawY, drawWidth, drawHeight);
+                }
+
+                requestAnimationFrame(renderFrame);
+            }
+            renderFrame();
+        }
+
+        // SHOW STREAM ERROR
+        function showStreamError(message) {
+            const ctx = unifiedCanvas.getContext('2d');
+            if (ctx) {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, unifiedCanvas.width, unifiedCanvas.height);
+                ctx.fillStyle = '#ff0000';
+                ctx.font = '14px Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Stream failed to load', unifiedCanvas.width / 2, unifiedCanvas.height / 2 - 20);
+                ctx.fillStyle = '#888';
+                ctx.font = '12px sans-serif';
+                ctx.fillText(message, unifiedCanvas.width / 2, unifiedCanvas.height / 2);
+            }
+            document.getElementById('staged-name').textContent = 'Error: ' + message;
+        }
+
+        // GO TO PROGRAM - Stream mode
+        function goToProgramStream() {
+            console.log('[Control] GO TO PROGRAM: Stream');
+
+            if (!stagedStreamURL) {
+                console.warn('[Control] No stream URL entered');
+                alert('Please enter a stream URL and load it to preview first');
+                return;
+            }
+
+            // Send stream data to main app
+            sendCommand('streamLoad', {
+                url: stagedStreamURL,
+                streamType: stagedStreamType,
+                fitMode: stagedStreamFitMode
+            });
         }
 
         // MILKDROP NAVIGATION
@@ -2073,6 +2356,28 @@
             console.log('[Control] Media beat reactive:', e.target.checked);
             // Send to program in real-time
             sendCommand('mediaBeatReactive', e.target.checked ? 'true' : 'false');
+        });
+
+        // Stream audio reactive toggle
+        document.getElementById('stream-audio-reactive').addEventListener('change', (e) => {
+            console.log('[Control] Stream audio reactive:', e.target.checked);
+            // Send to program in real-time
+            sendCommand('streamAudioReactive', e.target.checked ? 'true' : 'false');
+        });
+
+        // Stream beat reactive toggle
+        document.getElementById('stream-beat-reactive').addEventListener('change', (e) => {
+            console.log('[Control] Stream beat reactive:', e.target.checked);
+            // Send to program in real-time
+            sendCommand('streamBeatReactive', e.target.checked ? 'true' : 'false');
+        });
+
+        // Stream fit mode selector
+        document.getElementById('stream-fit-mode').addEventListener('change', (e) => {
+            stagedStreamFitMode = e.target.value;
+            console.log('[Control] Stream fit mode STAGED:', stagedStreamFitMode);
+            // If currently in stream preview mode and stream is loaded, re-render
+            // (Fit mode will update in real-time via render loop)
         });
 
         // Preset drag-drop reload
