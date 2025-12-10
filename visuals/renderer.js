@@ -35,8 +35,8 @@ class VisualRenderer {
         this.lastFrameTime = performance.now();
         this.isAnimating = false;
 
-        this.resize();
-        window.addEventListener('resize', () => this.resize());
+        // Don't auto-resize - app.js handles resolution management
+        // Initial size is set by app.js resizeAllCanvases()
     }
 
     initialize(mode = 'webgl') {
@@ -52,10 +52,17 @@ class VisualRenderer {
         const newCanvas = document.createElement('canvas');
         newCanvas.id = oldCanvas.id;
         newCanvas.style.cssText = oldCanvas.style.cssText;
+
+        // CRITICAL: Copy canvas dimensions (width/height attributes AND CSS)
+        newCanvas.width = oldCanvas.width;
+        newCanvas.height = oldCanvas.height;
+        newCanvas.style.width = oldCanvas.style.width;
+        newCanvas.style.height = oldCanvas.style.height;
+
         parent.replaceChild(newCanvas, oldCanvas);
         this.canvas = newCanvas;
 
-        console.log('[Renderer] Canvas recreated for mode:', mode);
+        console.log('[Renderer] Canvas recreated for mode:', mode, 'dimensions:', newCanvas.width, 'x', newCanvas.height);
 
         if (mode === 'webgl') {
             return this.initializeWebGL();
@@ -78,6 +85,10 @@ class VisualRenderer {
             // Set up WebGL
             this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
             this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+
+            // CRITICAL: Set viewport to match canvas dimensions
+            this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+            console.log('[Renderer] WebGL viewport set to:', this.canvas.width, 'x', this.canvas.height);
 
             // Create shaders
             this.createShaders();
@@ -773,12 +784,10 @@ class VisualRenderer {
         // Detect beat trigger (phase crossed 0)
         if (beatPhase < this.lastBeatPhase) {
             this.beatFlash = 1.0;
-            console.log('[Renderer] 🥁 BEAT!', 'Phase:', beatPhase.toFixed(3), 'BPM:', this.bpm, 'Flash:', this.beatFlash);
 
             // Detect bar (every 4 beats)
             if (barPhase < 0.25 && barPhase >= 0) {
                 this.barFlash = 1.5;
-                console.log('[Renderer] 🎵 BAR!', 'BarPhase:', barPhase.toFixed(3));
             }
         }
 
@@ -901,6 +910,12 @@ class VisualRenderer {
     start() {
         if (this.isAnimating) return;
         this.isAnimating = true;
+        console.log('[Renderer] 🚀 Starting - canvas dimensions:', this.canvas.width, 'x', this.canvas.height);
+        console.log('[Renderer] 🚀 Starting - client dimensions:', this.canvas.clientWidth, 'x', this.canvas.clientHeight);
+        if (this.gl) {
+            const viewport = this.gl.getParameter(this.gl.VIEWPORT);
+            console.log('[Renderer] 🚀 Starting - WebGL viewport:', viewport);
+        }
         this.animate();
     }
 

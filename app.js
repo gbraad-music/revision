@@ -1302,7 +1302,18 @@ class RevisionAppV2 {
                     // Now reinitialize the renderer with the new type
                     this.renderer.stop();
                     this.renderer.initialize(data);
-                    this.renderer.resize();
+
+                    // CRITICAL: renderer.initialize() recreates the canvas element!
+                    // Update our reference to point to the NEW canvas
+                    this.builtinCanvas = document.getElementById('builtin-canvas');
+                    console.log('[Revision] Updated canvas reference after renderer.initialize()');
+
+                    // DON'T call resize() - it overrides the resolution settings!
+                    // Instead, re-apply the saved resolution to the new canvas
+                    const resolutionPreset = this.settings.get('programResolution') || 'auto';
+                    const customWidth = this.settings.get('customResolutionWidth');
+                    const customHeight = this.settings.get('customResolutionHeight');
+                    this.applyProgramResolution(resolutionPreset, customWidth, customHeight);
                     this.renderer.start();
                     console.log('[Revision] Renderer switched to:', data);
                     this.broadcastState();
@@ -1415,6 +1426,16 @@ class RevisionAppV2 {
                     if (this.webpageRenderer) {
                         this.webpageRenderer.setBeatReactive(data === 'true');
                     }
+                    this.broadcastState();
+                    break;
+                case 'programResolution':
+                    console.log('[BroadcastChannel] Program Resolution:', data);
+                    this.settings.set('programResolution', data.preset);
+                    if (data.preset === 'custom') {
+                        this.settings.set('customResolutionWidth', data.width);
+                        this.settings.set('customResolutionHeight', data.height);
+                    }
+                    this.applyProgramResolution(data.preset, data.width, data.height);
                     this.broadcastState();
                     break;
                 case 'toggleStatusBar':
@@ -1644,6 +1665,134 @@ class RevisionAppV2 {
         }
     }
 
+    // Get resolution dimensions from preset or custom
+    getResolutionDimensions(preset, customWidth, customHeight) {
+        const resolutions = {
+            'auto': null, // Will use window size
+            '100%': 'container', // Will use container size
+            '1080p': { width: 1920, height: 1080 },
+            '720p': { width: 1280, height: 720 },
+            '4k': { width: 3840, height: 2160 },
+            'square': { width: 1080, height: 1080 },
+            'vertical': { width: 1080, height: 1920 },
+            'custom': {
+                width: parseInt(customWidth) || 1920,
+                height: parseInt(customHeight) || 1080
+            }
+        };
+        return resolutions[preset];
+    }
+
+    // Apply program resolution to all canvases
+    applyProgramResolution(preset, customWidth, customHeight) {
+        const dimensions = this.getResolutionDimensions(preset, customWidth, customHeight);
+
+        if (!dimensions) {
+            // Auto mode - use window dimensions
+            console.log('[Revision] Program resolution set to AUTO (match window)');
+            this.resizeAllCanvases(window.innerWidth, window.innerHeight);
+        } else if (dimensions === 'container') {
+            // 100% mode - use full window dimensions
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            console.log(`[Revision] Program resolution set to 100% (Fill Window: ${w}x${h})`);
+            this.resizeAllCanvases(w, h);
+        } else {
+            console.log(`[Revision] Program resolution set to ${dimensions.width}x${dimensions.height}`);
+            this.resizeAllCanvases(dimensions.width, dimensions.height);
+        }
+    }
+
+    // Resize all canvases to specific dimensions
+    resizeAllCanvases(width, height) {
+        console.log(`[Revision] Resizing all canvases to ${width}x${height} (FORCED - may exceed viewport)`);
+
+        // FORCE canvas to exact dimensions - don't fit to viewport
+        // The centering transform will handle positioning
+        // max-width/max-height in index.html will scale if needed
+
+        // Resize builtin canvas
+        if (this.builtinCanvas) {
+            console.log('[Revision] 🔧 Resizing builtin canvas to:', width, 'x', height);
+            console.log('[Revision] 🔧 Before - canvas.width:', this.builtinCanvas.width, 'canvas.height:', this.builtinCanvas.height);
+            console.log('[Revision] 🔧 Before - clientWidth:', this.builtinCanvas.clientWidth, 'clientHeight:', this.builtinCanvas.clientHeight);
+
+            this.builtinCanvas.width = width;
+            this.builtinCanvas.height = height;
+            this.builtinCanvas.style.width = `${width}px`;
+            this.builtinCanvas.style.height = `${height}px`;
+
+            console.log('[Revision] 🔧 After - canvas.width:', this.builtinCanvas.width, 'canvas.height:', this.builtinCanvas.height);
+            console.log('[Revision] 🔧 After - clientWidth:', this.builtinCanvas.clientWidth, 'clientHeight:', this.builtinCanvas.clientHeight);
+
+            // Update WebGL viewport to match internal resolution
+            if (this.renderer && this.renderer.gl) {
+                this.renderer.gl.viewport(0, 0, width, height);
+                console.log('[Revision] 🔧 WebGL viewport set to:', width, 'x', height);
+            }
+        }
+
+        // Resize threejs canvas
+        if (this.threejsCanvas) {
+            this.threejsCanvas.width = width;
+            this.threejsCanvas.height = height;
+            this.threejsCanvas.style.width = `${width}px`;
+            this.threejsCanvas.style.height = `${height}px`;
+            // Update Three.js renderer and camera
+            if (this.threeJSRenderer && this.threeJSRenderer.renderer) {
+                this.threeJSRenderer.renderer.setSize(width, height, false);
+                this.threeJSRenderer.camera.aspect = width / height;
+                this.threeJSRenderer.camera.updateProjectionMatrix();
+            }
+        }
+
+        // Resize milkdrop canvas
+        if (this.milkdropCanvas) {
+            this.milkdropCanvas.width = width;
+            this.milkdropCanvas.height = height;
+            this.milkdropCanvas.style.width = `${width}px`;
+            this.milkdropCanvas.style.height = `${height}px`;
+            // Update Butterchurn visualizer
+            if (this.milkdropRenderer && this.milkdropRenderer.visualizer) {
+                this.milkdropRenderer.visualizer.setRendererSize(width, height);
+            }
+        }
+
+        // Resize video canvas
+        if (this.videoCanvas) {
+            this.videoCanvas.width = width;
+            this.videoCanvas.height = height;
+            this.videoCanvas.style.width = `${width}px`;
+            this.videoCanvas.style.height = `${height}px`;
+        }
+
+        // Resize media canvas
+        if (this.mediaCanvas) {
+            this.mediaCanvas.width = width;
+            this.mediaCanvas.height = height;
+            this.mediaCanvas.style.width = `${width}px`;
+            this.mediaCanvas.style.height = `${height}px`;
+        }
+
+        // Resize stream canvas
+        if (this.streamCanvas) {
+            this.streamCanvas.width = width;
+            this.streamCanvas.height = height;
+            this.streamCanvas.style.width = `${width}px`;
+            this.streamCanvas.style.height = `${height}px`;
+        }
+
+        // Resize webpage container
+        if (this.webpageContainer) {
+            console.log('[Revision] 🌐 Resizing webpage container to:', width, 'x', height);
+            this.webpageContainer.style.width = `${width}px`;
+            this.webpageContainer.style.height = `${height}px`;
+            console.log('[Revision] 🌐 Webpage container - clientWidth:', this.webpageContainer.clientWidth, 'clientHeight:', this.webpageContainer.clientHeight);
+        }
+
+        console.log('[Revision] ✓ All canvases FORCED to exact dimensions');
+    }
+
     broadcastState() {
         const bar = Math.floor(this.currentPosition / 16);
         const beat = Math.floor((this.currentPosition % 16) / 4);
@@ -1660,6 +1809,23 @@ class RevisionAppV2 {
 
         // Position is valid within 5 seconds of last SPP
         const positionValid = timeSinceLastSPP < 5000;
+
+        // Get actual program dimensions
+        // For 100% mode: use full window dimensions (ignore UI overlays)
+        // For other modes: use canvas-container dimensions (adjusted for UI)
+        const resolutionPreset = this.settings.get('programResolution') || 'auto';
+        let programWidth, programHeight;
+
+        if (resolutionPreset === '100%') {
+            // 100% mode - use full window dimensions
+            programWidth = window.innerWidth;
+            programHeight = window.innerHeight;
+        } else {
+            // Other modes - use container dimensions (adjusted for status bar/control panel)
+            const canvasContainer = document.getElementById('canvas-container');
+            programWidth = canvasContainer ? canvasContainer.clientWidth : window.innerWidth;
+            programHeight = canvasContainer ? canvasContainer.clientHeight : window.innerHeight;
+        }
 
         const state = {
             mode: this.currentPresetType,
@@ -1693,7 +1859,10 @@ class RevisionAppV2 {
                 ? this.milkdropPresetKeys[this.currentMilkdropIndex || 0] || '-'
                 : '-',
             frequency: this.lastFrequencyData,
-            sppActive: sppActive
+            sppActive: sppActive,
+            // Program canvas dimensions (for preview aspect ratio in control.html)
+            programWidth: programWidth,
+            programHeight: programHeight
         };
 
         this.controlChannel.postMessage({
@@ -2492,9 +2661,16 @@ class RevisionAppV2 {
                     // CRITICAL: Update reference to the new canvas element (renderer replaces it)
                     this.builtinCanvas = document.getElementById('builtin-canvas');
                     console.log('[Revision] ✓ Renderer reinitialized with fresh WebGL context and canvas replaced');
+
+                    // Re-apply resolution to the new canvas element
+                    const resolutionPreset = this.settings.get('programResolution') || 'auto';
+                    const customWidth = this.settings.get('customResolutionWidth');
+                    const customHeight = this.settings.get('customResolutionHeight');
+                    this.applyProgramResolution(resolutionPreset, customWidth, customHeight);
                 }
 
-                this.renderer.resize(); // Force canvas to proper dimensions
+                // Don't call resize() - dimensions already set by resizeAllCanvases()
+                // Calling resize() here overrides the fixed resolution settings
                 this.renderer.start();
                 this.presetManager.switchPreset('builtin-tunnel');
                 this.enableSceneButtons(true);
@@ -2515,13 +2691,13 @@ class RevisionAppV2 {
                     // Force reflow
                     this.threejsCanvas.offsetHeight;
 
-                    // Use canvas container's actual dimensions for perfect fit
-                    const container = document.getElementById('canvas-container');
-                    const w = container.clientWidth;
-                    const h = container.clientHeight;
+                    // Apply saved resolution setting to ensure correct dimensions
+                    const resolutionPreset = this.settings.get('programResolution') || 'auto';
+                    const customWidth = this.settings.get('customResolutionWidth');
+                    const customHeight = this.settings.get('customResolutionHeight');
+                    this.applyProgramResolution(resolutionPreset, customWidth, customHeight);
 
-                    console.log('[ThreeJS] Resizing to container dimensions:', w, 'x', h);
-                    this.threeJSRenderer.resize(w, h);
+                    console.log('[ThreeJS] Applied saved resolution:', resolutionPreset);
                     this.threeJSRenderer.start();
 
                     // Check if audio input is enabled
@@ -2547,10 +2723,14 @@ class RevisionAppV2 {
 
                     // Force reflow
                     this.milkdropCanvas.offsetHeight;
-                    const w = this.milkdropCanvas.clientWidth || window.innerWidth;
-                    const h = this.milkdropCanvas.clientHeight || window.innerHeight - 120;
 
-                    this.milkdropRenderer.resize(w, h);
+                    // Apply saved resolution setting to ensure correct dimensions
+                    const resolutionPreset = this.settings.get('programResolution') || 'auto';
+                    const customWidth = this.settings.get('customResolutionWidth');
+                    const customHeight = this.settings.get('customResolutionHeight');
+                    this.applyProgramResolution(resolutionPreset, customWidth, customHeight);
+
+                    console.log('[Milkdrop] Applied saved resolution:', resolutionPreset);
 
                     // Connect audio source to Milkdrop
                     // Priority: MIDI synth (if enabled) > Microphone (if enabled)
@@ -2621,14 +2801,16 @@ class RevisionAppV2 {
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, this.videoCanvas.width, this.videoCanvas.height);
 
+                    // Apply saved resolution setting to ensure correct dimensions
+                    const resolutionPreset = this.settings.get('programResolution') || 'auto';
+                    const customWidth = this.settings.get('customResolutionWidth');
+                    const customHeight = this.settings.get('customResolutionHeight');
+                    this.applyProgramResolution(resolutionPreset, customWidth, customHeight);
+
                     // Don't auto-initialize camera - let user select from dropdown
                     // This avoids permission errors and camera conflicts
                     if (this.videoRenderer.isActive) {
-                        // If already active, resize and start
-                        const isFullscreen = !!document.fullscreenElement;
-                        const w = window.innerWidth;
-                        const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
-                        this.videoRenderer.resize(w, h);
+                        // If already active, start rendering
                         this.videoRenderer.start();
                         console.log('[Video] Renderer started - webcam feed active');
                     } else {
@@ -2652,11 +2834,11 @@ class RevisionAppV2 {
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, this.mediaCanvas.width, this.mediaCanvas.height);
 
-                    // Resize to fit display
-                    const isFullscreen = !!document.fullscreenElement;
-                    const w = window.innerWidth;
-                    const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
-                    this.mediaRenderer.resize(w, h);
+                    // Apply saved resolution setting to ensure correct dimensions
+                    const resolutionPreset = this.settings.get('programResolution') || 'auto';
+                    const customWidth = this.settings.get('customResolutionWidth');
+                    const customHeight = this.settings.get('customResolutionHeight');
+                    this.applyProgramResolution(resolutionPreset, customWidth, customHeight);
 
                     // Load pending media AFTER fade-out completes (if any)
                     if (this.pendingMediaLoad) {
@@ -2690,11 +2872,11 @@ class RevisionAppV2 {
                 this.streamCanvas.style.display = 'block';
                 this.streamCanvas.style.opacity = '0';
                 if (this.streamRenderer) {
-                    // Resize to fit display
-                    const isFullscreen = !!document.fullscreenElement;
-                    const w = window.innerWidth;
-                    const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
-                    this.streamRenderer.resize(w, h);
+                    // Apply saved resolution setting to ensure correct dimensions
+                    const resolutionPreset = this.settings.get('programResolution') || 'auto';
+                    const customWidth = this.settings.get('customResolutionWidth');
+                    const customHeight = this.settings.get('customResolutionHeight');
+                    this.applyProgramResolution(resolutionPreset, customWidth, customHeight);
 
                     console.log('[Stream] Ready - waiting for stream URL');
                 } else {
@@ -2710,11 +2892,11 @@ class RevisionAppV2 {
                 this.webpageContainer.style.display = 'block';
                 this.webpageContainer.style.opacity = '0';
                 if (this.webpageRenderer) {
-                    // Resize to fit display
-                    const isFullscreen = !!document.fullscreenElement;
-                    const w = window.innerWidth;
-                    const h = isFullscreen ? window.innerHeight : (window.innerHeight - 120);
-                    this.webpageRenderer.resize(w, h);
+                    // Apply saved resolution setting to ensure correct dimensions
+                    const resolutionPreset = this.settings.get('programResolution') || 'auto';
+                    const customWidth = this.settings.get('customResolutionWidth');
+                    const customHeight = this.settings.get('customResolutionHeight');
+                    this.applyProgramResolution(resolutionPreset, customWidth, customHeight);
 
                     console.log('[Webpage] Ready - waiting for webpage URL');
                 } else {
@@ -2959,13 +3141,39 @@ class RevisionAppV2 {
             canvasContainer.style.height = `${calcHeight}px`;
         }
 
-        // Use container's actual dimensions after CSS update
-        const w = canvasContainer ? canvasContainer.clientWidth : window.innerWidth;
-        const h = canvasContainer ? canvasContainer.clientHeight : calcHeight;
+        // Check if user has set a specific resolution (not auto)
+        const resolutionPreset = this.settings.get('programResolution') || 'auto';
 
-        console.log('[Revision] Window resized - container:', w, 'x', h, 'fullscreen:', isFullscreen);
+        // Only resize for responsive modes (auto and 100%)
+        const isResponsive = (resolutionPreset === 'auto' || resolutionPreset === '100%');
 
-        // Resize active renderer
+        if (!isResponsive) {
+            // Fixed resolution - don't resize, dimensions are already set
+            console.log(`[Revision] Window resized - FIXED mode (${resolutionPreset}) - keeping original dimensions (no resize)`);
+            return;
+        }
+
+        // Responsive mode - calculate new dimensions
+        let w, h;
+
+        if (resolutionPreset === 'auto') {
+            // Auto mode - use window dimensions
+            w = canvasContainer ? canvasContainer.clientWidth : window.innerWidth;
+            h = canvasContainer ? canvasContainer.clientHeight : calcHeight;
+            console.log('[Revision] Window resized - AUTO mode - container:', w, 'x', h, 'fullscreen:', isFullscreen);
+        } else {
+            // 100% mode - use container dimensions (responsive)
+            w = canvasContainer ? canvasContainer.clientWidth : window.innerWidth;
+            h = canvasContainer ? canvasContainer.clientHeight : calcHeight;
+            console.log(`[Revision] Window resized - 100% mode - container:`, w, 'x', h, 'fullscreen:', isFullscreen);
+        }
+
+        // Resize all canvases to responsive dimensions
+        this.resizeAllCanvases(w, h);
+        console.log('[Revision] ✓ Resized all canvases for responsive mode');
+        return; // Exit early - don't call individual renderer resize methods below
+
+        // Resize active renderer (UNREACHABLE - kept for reference)
         switch (this.currentPresetType) {
             case 'builtin':
                 this.renderer.resize();
