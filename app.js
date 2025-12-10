@@ -322,11 +322,13 @@ class RevisionAppV2 {
                     this.mediaElement.src = url;
                 } else if (type === 'video') {
                     this.mediaElement = document.createElement('video');
-                    // Check if audio output is enabled (default: muted)
-                    const audioOutputEnabled = localStorage.getItem('videoAudioOutput') === 'true';
+                    // Use passed option if available, otherwise read from localStorage
+                    const audioOutputEnabled = options.audioOutput !== undefined
+                        ? options.audioOutput
+                        : localStorage.getItem('videoAudioOutput') === 'true';
                     this.mediaElement.muted = !audioOutputEnabled;
                     this.mediaElement.loop = options.loop !== false;
-                    console.log('[MediaRenderer] Video audio output:', audioOutputEnabled);
+                    console.log('[MediaRenderer] Video audio output (from options):', audioOutputEnabled);
                     this.mediaElement.onloadedmetadata = () => {
                         console.log('[MediaRenderer] Video loaded, duration:', this.mediaElement.duration);
                         this.mediaElement.play().catch(err => {
@@ -1370,12 +1372,17 @@ class RevisionAppV2 {
                         // Switch to stream mode first
                         await this.switchPresetType('stream');
 
+                        // Get audio output setting BEFORE loading
+                        const audioOutputEnabled = this.settings.get('videoAudioOutput') === 'true';
+
                         // Then load the stream
                         try {
                             await this.streamRenderer.loadStream(data.url, data.streamType || 'auto', {
-                                fitMode: data.fitMode || 'cover'
+                                fitMode: data.fitMode || 'cover',
+                                audioOutput: audioOutputEnabled // Pass audio setting directly
                             });
-                            console.log('[Stream] ✓ Stream loaded successfully');
+
+                            console.log('[Stream] ✓ Stream loaded successfully - audioOutput:', audioOutputEnabled);
                         } catch (error) {
                             console.error('[Stream] ✗ Failed to load stream:', error);
                         }
@@ -1772,6 +1779,10 @@ class RevisionAppV2 {
             this.mediaCanvas.height = height;
             this.mediaCanvas.style.width = `${width}px`;
             this.mediaCanvas.style.height = `${height}px`;
+            // Trigger media renderer to recalculate fit and re-render
+            if (this.mediaRenderer && this.mediaRenderer.resize) {
+                this.mediaRenderer.resize(width, height);
+            }
         }
 
         // Resize stream canvas
@@ -1780,6 +1791,10 @@ class RevisionAppV2 {
             this.streamCanvas.height = height;
             this.streamCanvas.style.width = `${width}px`;
             this.streamCanvas.style.height = `${height}px`;
+            // Trigger stream renderer to recalculate fit and re-render
+            if (this.streamRenderer && this.streamRenderer.resize) {
+                this.streamRenderer.resize(width, height);
+            }
         }
 
         // Resize webpage container
@@ -2573,7 +2588,7 @@ class RevisionAppV2 {
         if (this.milkdropRenderer) this.milkdropRenderer.stop();
 
         // CRITICAL: Release camera when switching away from video mode
-        if (this.videoRenderer && this.currentPresetType === 'video' && type !== 'video') {
+        if (this.videoRenderer && previousType === 'video' && type !== 'video') {
             console.log('[Revision] Switching away from video mode - releasing camera');
             this.videoRenderer.release();
         } else if (this.videoRenderer && type !== 'video') {
@@ -2581,19 +2596,19 @@ class RevisionAppV2 {
         }
 
         // Stop media renderer when switching away from media mode
-        if (this.mediaRenderer && this.currentPresetType === 'media' && type !== 'media') {
+        if (this.mediaRenderer && previousType === 'media' && type !== 'media') {
             console.log('[Revision] Switching away from media mode - stopping media');
             this.mediaRenderer.stop();
         }
 
         // Stop stream renderer when switching away from stream mode
-        if (this.streamRenderer && this.currentPresetType === 'stream' && type !== 'stream') {
+        if (this.streamRenderer && previousType === 'stream' && type !== 'stream') {
             console.log('[Revision] Switching away from stream mode - stopping stream');
             this.streamRenderer.stop();
         }
 
         // Stop webpage renderer when switching away from webpage mode
-        if (this.webpageRenderer && this.currentPresetType === 'webpage' && type !== 'webpage') {
+        if (this.webpageRenderer && previousType === 'webpage' && type !== 'webpage') {
             console.log('[Revision] Switching away from webpage mode - stopping webpage');
             this.webpageRenderer.stop();
         }
@@ -2843,9 +2858,14 @@ class RevisionAppV2 {
                     // Load pending media AFTER fade-out completes (if any)
                     if (this.pendingMediaLoad) {
                         console.log('[Media] Loading pending media:', this.pendingMediaLoad.url);
+
+                        // Get audio output setting BEFORE loading
+                        const audioOutputEnabled = this.settings.get('videoAudioOutput') === 'true';
+
                         this.mediaRenderer.loadMedia(this.pendingMediaLoad.url, this.pendingMediaLoad.type, {
                             loop: this.pendingMediaLoad.loop,
-                            fitMode: this.pendingMediaLoad.fitMode
+                            fitMode: this.pendingMediaLoad.fitMode,
+                            audioOutput: audioOutputEnabled // Pass audio setting directly
                         });
 
                         // Apply saved reactive settings
@@ -2854,7 +2874,7 @@ class RevisionAppV2 {
                         this.mediaRenderer.audioReactive = audioReactive;
                         this.mediaRenderer.beatReactive = beatReactive;
 
-                        console.log('[Media] ✓ Loaded - fitMode:', this.pendingMediaLoad.fitMode, 'audioReactive:', audioReactive, 'beatReactive:', beatReactive);
+                        console.log('[Media] ✓ Loaded - fitMode:', this.pendingMediaLoad.fitMode, 'audioOutput:', audioOutputEnabled, 'audioReactive:', audioReactive, 'beatReactive:', beatReactive);
                         this.pendingMediaLoad = null; // Clear pending
                     } else {
                         console.log('[Media] Ready - waiting for media file');

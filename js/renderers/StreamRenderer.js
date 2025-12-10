@@ -35,12 +35,14 @@ class StreamRenderer {
 
         // Create video element
         this.videoElement = document.createElement('video');
-        // Check if audio output is enabled (default: muted)
-        const audioOutputEnabled = localStorage.getItem('videoAudioOutput') === 'true';
+        // Use passed option if available, otherwise read from localStorage
+        const audioOutputEnabled = options.audioOutput !== undefined
+            ? options.audioOutput
+            : localStorage.getItem('videoAudioOutput') === 'true';
         this.videoElement.muted = !audioOutputEnabled;
         this.videoElement.playsInline = true;
         this.videoElement.autoplay = true;
-        console.log('[StreamRenderer] Stream audio output:', audioOutputEnabled);
+        console.log('[StreamRenderer] Stream audio output (from options):', audioOutputEnabled);
 
         // Detect stream type if auto
         if (type === 'auto') {
