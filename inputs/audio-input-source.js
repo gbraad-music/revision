@@ -61,17 +61,23 @@ class AudioInputSource {
         }
 
         try {
+            // Get sample rate from settings
+            const sampleRate = parseInt(localStorage.getItem('audioSampleRate') || '48000');
+
             // Build audio constraints
             const audioConstraints = {
                 echoCancellation: false,
                 noiseSuppression: false,
-                autoGainControl: false
+                autoGainControl: false,
+                sampleRate: { ideal: sampleRate }
             };
 
             // Add device ID if specified
             if (deviceId) {
                 audioConstraints.deviceId = { exact: deviceId };
             }
+
+            console.log('[AudioInput] Requesting sample rate:', sampleRate, 'Hz');
 
             // Request microphone access
             const stream = await navigator.mediaDevices.getUserMedia({

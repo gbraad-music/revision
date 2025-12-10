@@ -839,6 +839,27 @@ class RevisionAppV2 {
                     }
                     this.broadcastState();
                     break;
+                case 'videoResolution':
+                    console.log('[BroadcastChannel] Video Resolution:', data);
+                    this.settings.set('videoResolution', data);
+                    break;
+                case 'videoFramerate':
+                    console.log('[BroadcastChannel] Video Framerate:', data);
+                    this.settings.set('videoFramerate', data);
+                    break;
+                case 'videoAudioOutput':
+                    console.log('[BroadcastChannel] Video Audio Output:', data);
+                    this.settings.set('videoAudioOutput', data);
+                    if (this.videoRenderer) {
+                        this.videoRenderer.setAudioOutput(data === 'true');
+                    }
+                    this.broadcastState();
+                    break;
+                case 'audioSampleRate':
+                    console.log('[BroadcastChannel] Audio Sample Rate:', data);
+                    this.settings.set('audioSampleRate', data);
+                    // Audio source would need to be reconnected to apply new sample rate
+                    break;
                 case 'midiSynthEnable':
                     console.log('[BroadcastChannel] MIDI Synth Enable:', data);
                     this.settings.set('midiSynthEnable', data);
@@ -1781,6 +1802,21 @@ class RevisionAppV2 {
             });
         }
 
+        // CRITICAL: Release camera on page unload/close
+        window.addEventListener('beforeunload', () => {
+            if (this.videoRenderer && this.videoRenderer.isActive) {
+                console.log('[Revision] Page unloading - releasing camera');
+                this.videoRenderer.release();
+            }
+        });
+
+        // Also release on visibility change (tab switch)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && this.videoRenderer && this.videoRenderer.isActive) {
+                console.log('[Revision] Tab hidden - releasing camera to prevent lock');
+                this.videoRenderer.release();
+            }
+        });
     }
 
     loadMilkdropPreset(index) {

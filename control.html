@@ -270,6 +270,14 @@
             <option value="none">No Audio Input</option>
         </select>
         <div class="info">Select microphone or audio input device</div>
+
+        <select id="audio-samplerate-select" style="margin-top: 10px;">
+            <option value="48000" selected>48 kHz (studio quality)</option>
+            <option value="44100">44.1 kHz (CD quality)</option>
+            <option value="22050">22 kHz (voice quality)</option>
+            <option value="16000">16 kHz (low bandwidth)</option>
+        </select>
+        <div class="info" style="margin-top: 5px;">Sample rate (higher = better audio, more bandwidth)</div>
     </div>
 
     <div class="section">
@@ -411,6 +419,24 @@
         </select>
         <div class="info" style="margin-top: 5px;">Select camera for preview</div>
 
+        <select id="video-resolution-select" style="margin-top: 10px;">
+            <option value="4k">4K (3840x2160)</option>
+            <option value="1080p" selected>1080p (1920x1080)</option>
+            <option value="720p">720p (1280x720)</option>
+            <option value="480p">480p (640x480)</option>
+        </select>
+        <div class="info" style="margin-top: 5px;">Video resolution (higher = better quality, more bandwidth)</div>
+
+        <select id="video-framerate-select" style="margin-top: 10px;">
+            <option value="60">60 FPS (smooth, high bandwidth)</option>
+            <option value="50">50 FPS (PAL, Europe)</option>
+            <option value="30" selected>30 FPS (balanced)</option>
+            <option value="25">25 FPS (PAL standard)</option>
+            <option value="24">24 FPS (cinematic)</option>
+            <option value="15">15 FPS (low bandwidth)</option>
+        </select>
+        <div class="info" style="margin-top: 5px;">Frame rate (60fps recommended for NDI)</div>
+
         <label style="display: block; margin-top: 15px; font-size: 12px;">
             <input type="checkbox" id="video-audio-reactive" style="width: auto; margin-right: 5px;">
             Audio-reactive color effects (hue, saturation, brightness)
@@ -419,6 +445,11 @@
         <label style="display: block; margin-top: 10px; font-size: 12px;">
             <input type="checkbox" id="video-beat-reactive" style="width: auto; margin-right: 5px;">
             Beat-reactive zoom pulse (4-on-the-floor)
+        </label>
+
+        <label style="display: block; margin-top: 10px; font-size: 12px;">
+            <input type="checkbox" id="video-audio-output" style="width: auto; margin-right: 5px;">
+            Enable audio output (unmute camera/stream audio)
         </label>
 
         <div style="margin-top: 15px;">
@@ -2305,6 +2336,11 @@
             sendCommand('audioDeviceSelect', e.target.value);
         });
 
+        // Audio sample rate selection
+        document.getElementById('audio-samplerate-select').addEventListener('change', (e) => {
+            sendCommand('audioSampleRate', e.target.value);
+        });
+
         // Milkdrop audio source selection
         document.getElementById('milkdrop-audio-source').addEventListener('change', (e) => {
             const source = e.target.value;
@@ -2430,6 +2466,45 @@
         // Video beat reactive toggle
         document.getElementById('video-beat-reactive').addEventListener('change', (e) => {
             sendCommand('videoBeatReactive', e.target.checked ? 'true' : 'false');
+        });
+
+        // Video audio output toggle
+        document.getElementById('video-audio-output').addEventListener('change', (e) => {
+            sendCommand('videoAudioOutput', e.target.checked ? 'true' : 'false');
+        });
+
+        // Video resolution change - save and reload if in preview
+        document.getElementById('video-resolution-select').addEventListener('change', async (e) => {
+            const resolution = e.target.value;
+            sendCommand('videoResolution', resolution);
+
+            // If currently previewing video, reload with new resolution
+            if (currentPreviewMode === 'video' && stagedVideoDeviceId) {
+                console.log('[Control] Resolution changed to', resolution, '- reloading preview');
+                if (unifiedPreviewRenderer) {
+                    unifiedPreviewRenderer.release();
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    unifiedPreviewRenderer = null;
+                }
+                await initVideoPreview();
+            }
+        });
+
+        // Video framerate change - save and reload if in preview
+        document.getElementById('video-framerate-select').addEventListener('change', async (e) => {
+            const framerate = e.target.value;
+            sendCommand('videoFramerate', framerate);
+
+            // If currently previewing video, reload with new framerate
+            if (currentPreviewMode === 'video' && stagedVideoDeviceId) {
+                console.log('[Control] Framerate changed to', framerate, 'fps - reloading preview');
+                if (unifiedPreviewRenderer) {
+                    unifiedPreviewRenderer.release();
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    unifiedPreviewRenderer = null;
+                }
+                await initVideoPreview();
+            }
         });
 
         // Drag-and-drop for media files

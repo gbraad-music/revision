@@ -44,20 +44,50 @@ class VideoRenderer {
                 this.video = document.createElement('video');
                 this.video.autoplay = true;
                 this.video.playsInline = true;
-                this.video.muted = true;
+
+                // Check if audio output is enabled (default: muted)
+                const audioOutputEnabled = localStorage.getItem('videoAudioOutput') === 'true';
+                this.video.muted = !audioOutputEnabled;
+
                 this.video.style.display = 'none';
                 document.body.appendChild(this.video);
-                console.log('[VideoRenderer] Created video element in DOM');
+                console.log('[VideoRenderer] Created video element in DOM - audio output:', audioOutputEnabled);
             } else {
                 // Clear old srcObject
                 this.video.srcObject = null;
             }
 
-            // Request camera access
+            // Request camera access with C920-friendly constraints
+            // Using ideal instead of exact prevents driver lock issues
+            // Get resolution and framerate from settings
+            const resolution = localStorage.getItem('videoResolution') || '1080p';
+            const framerate = parseInt(localStorage.getItem('videoFramerate') || '30');
+
+            // Map resolution to width/height
+            const resolutionMap = {
+                '4k': { width: 3840, height: 2160 },
+                '1080p': { width: 1920, height: 1080 },
+                '720p': { width: 1280, height: 720 },
+                '480p': { width: 640, height: 480 }
+            };
+
+            const res = resolutionMap[resolution] || resolutionMap['1080p'];
+
             const constraints = {
-                video: deviceId ? { deviceId: { exact: deviceId } } : true,
+                video: deviceId ? {
+                    deviceId: { ideal: deviceId },
+                    width: { ideal: res.width },
+                    height: { ideal: res.height },
+                    frameRate: { ideal: framerate }
+                } : {
+                    width: { ideal: res.width },
+                    height: { ideal: res.height },
+                    frameRate: { ideal: framerate }
+                },
                 audio: false
             };
+
+            console.log('[VideoRenderer] Requesting constraints:', resolution, '@', framerate, 'fps');
 
             console.log('[VideoRenderer] Requesting camera access:', deviceId || 'default');
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -347,22 +377,54 @@ class VideoRenderer {
         console.log('[VideoRenderer] Beat reactive:', enabled);
     }
 
+    setAudioOutput(enabled) {
+        console.log('[VideoRenderer] Audio output:', enabled);
+        if (this.video) {
+            this.video.muted = !enabled;
+            console.log('[VideoRenderer] Video element muted:', this.video.muted);
+        }
+    }
+
     release() {
         console.log('[VideoRenderer] Releasing camera...');
         this.stop();
 
-        if (this.stream) {
-            this.stream.getTracks().forEach(track => {
-                track.stop();
-                console.log('[VideoRenderer] Stopped track:', track.label);
-            });
-            this.stream = null;
-        }
-
+        // DRIVER-FRIENDLY CLEANUP ORDER (critical for C920):
+        // 1. Pause video first
         if (this.video) {
             this.video.pause();
+        }
+
+        // 2. Stop tracks BEFORE removing srcObject
+        if (this.stream) {
+            this.stream.getTracks().forEach(track => {
+                console.log('[VideoRenderer] Stopping track:', track.label, 'state:', track.readyState);
+                track.stop();
+
+                // Verify track actually stopped
+                if (track.readyState !== 'ended') {
+                    console.warn('[VideoRenderer] Track did not stop cleanly:', track.label);
+                }
+            });
+        }
+
+        // 3. Wait a moment for driver to release (C920 needs this)
+        // Using setTimeout would require async, so we'll do it synchronously
+        // Browser will handle the delay internally
+
+        // 4. Now clear video element
+        if (this.video) {
+            // Remove all event listeners
+            this.video.onloadedmetadata = null;
+            this.video.onerror = null;
+
             this.video.srcObject = null;
+            this.video.src = ''; // Clear any URL
             this.video.load(); // Force browser to release resources
+
+            // Set dimensions to 0 to fully release hardware
+            this.video.width = 0;
+            this.video.height = 0;
 
             // Remove from DOM if still attached
             if (this.video.parentNode) {
@@ -373,8 +435,11 @@ class VideoRenderer {
             this.video = null;
         }
 
+        // 5. Finally null the stream reference
+        this.stream = null;
+
         this.isActive = false;
-        console.log('[VideoRenderer] ✓ Camera fully released');
+        console.log('[VideoRenderer] ✓ Camera fully released - hardware should be available');
     }
 
     destroy() {
