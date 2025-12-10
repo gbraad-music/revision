@@ -740,6 +740,18 @@ class RevisionAppV2 {
 
             console.log('[BroadcastChannel] Received command:', command, 'data:', data);
 
+            // Flash remote indicator when receiving command from control.html
+            const remoteIndicator = document.getElementById('remote-indicator');
+            if (remoteIndicator) {
+                remoteIndicator.style.backgroundColor = '#0066FF';
+                remoteIndicator.style.boxShadow = '0 0 8px #0066FF';
+                // Reset to grey after 2 seconds
+                setTimeout(() => {
+                    remoteIndicator.style.backgroundColor = '#444444';
+                    remoteIndicator.style.boxShadow = 'none';
+                }, 2000);
+            }
+
             switch (command) {
                 case 'switchMode':
                     this.switchPresetType(data);
@@ -1368,6 +1380,15 @@ class RevisionAppV2 {
             audioSourceDisplay.textContent = state.audioSourceDisplay;
         }
 
+        // Update SPP indicator (flash yellow when SPP received)
+        const sppIndicator = document.getElementById('spp-indicator');
+        if (sppIndicator && sppActive) {
+            sppIndicator.classList.add('spp');
+            setTimeout(() => {
+                sppIndicator.classList.remove('spp');
+            }, 300);
+        }
+
         // DON'T send preset list on every broadcast (causes flicker)
         // It's sent once when switching to milkdrop mode and when requestState is called
     }
@@ -1393,8 +1414,8 @@ class RevisionAppV2 {
                 console.log('[Revision] ⚠️ Audio input device connected but NOT registered (visual source is', visualAudioSource + ')');
             }
             this.audioIndicator.classList.add('connected');
-            this.audioIndicator.style.backgroundColor = '#0066FF';
-            this.audioIndicator.style.boxShadow = '0 0 8px #0066FF';
+            this.audioIndicator.style.backgroundColor = '#ff3333';
+            this.audioIndicator.style.boxShadow = '0 0 8px #ff3333';
 
             // Connect to Milkdrop ONLY if Milkdrop is the active mode
             if (this.currentPresetType === 'milkdrop' &&
