@@ -225,7 +225,7 @@
     </div>
 
     <div class="section">
-        <h2>Audio Information</h2>
+        <h2>Reactive Audio Information</h2>
         <div class="eq-container">
             <div class="eq-bar">
                 <div class="eq-bar-container">
@@ -250,11 +250,11 @@
     </div>
 
     <div class="section">
-        <h2>MIDI Device <span id="midi-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
+        <h2>MIDI Control Device <span id="midi-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
         <select id="midi-input-select">
             <option value="">No MIDI devices found</option>
         </select>
-        <div class="info">MIDI input device for clock, SPP, and notes</div>
+        <div class="info">MIDI input for clock/SPP timing and scene control</div>
 
         <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Enable SysEx</label>
         <select id="sysex-enable">
@@ -326,9 +326,47 @@
             <option value="microphone" selected>Audio Input Device</option>
             <option value="midi">MIDI Synthesizer</option>
         </select>
+        <div class="info" style="margin-top: 5px;">Reactive input source</div>
 
         <div id="midi-synth-options" style="margin-top: 10px;">
-            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">MIDI Channel Filter</label>
+            <label style="display: block; margin-top: 10px; font-size: 12px;">
+                <input type="checkbox" id="midi-synth-audible" style="width: auto; margin-right: 5px;">
+                Make MIDI synth audible (hear the notes)
+            </label>
+
+            <label style="display: block; margin-top: 10px; font-size: 12px;">
+                <input type="checkbox" id="midi-synth-beat-kick" style="width: auto; margin-right: 5px;">
+                Generate kick drum from beat events
+            </label>
+            <div class="info" style="margin-top: 5px;">
+                Triggers a kick drum on each beat (from MIDI clock OR audio beat detection)
+            </div>
+
+            <label style="display: block; margin-top: 10px; font-size: 12px;">
+                <input type="checkbox" id="midi-synth-auto-feed" style="width: auto; margin-right: 5px;">
+                Auto-feed audio-frequency notes to MIDI synth
+            </label>
+            <div class="info" style="margin-top: 5px;">
+                Converts microphone FFT analysis into synthesized notes (Sub, Bass, Low-Mid, Mid, High-Mid, High)
+            </div>
+
+            <label style="display: block; margin-top: 10px; font-size: 12px;">
+                <input type="checkbox" id="midi-synth-feed-input" style="width: auto; margin-right: 5px;">
+                Feed MIDI input notes to synth
+            </label>
+            <div class="info" style="margin-top: 5px;">
+                Routes notes from MIDI input device(s) to the synthesizer
+            </div>
+
+            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">MIDI Input for Synth Notes</label>
+            <select id="midi-synth-input-select">
+                <option value="">No MIDI devices found</option>
+            </select>
+            <div class="info" style="margin-top: 5px;">
+                Separate from clock/SPP input. Can loop audio-reactive output back via virtual MIDI cable.
+            </div>
+
+            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">MIDI Channel Filter</label>
             <select id="midi-synth-channel">
                 <option value="all">Omni (All Channels)</option>
                 <option value="0">MIDI Channel 1</option>
@@ -348,14 +386,7 @@
                 <option value="14">MIDI Channel 15</option>
                 <option value="15">MIDI Channel 16</option>
             </select>
-
-            <label style="display: block; margin-top: 10px; font-size: 12px;">
-                <input type="checkbox" id="midi-synth-audible" style="width: auto; margin-right: 5px;">
-                Make MIDI synth audible (hear the notes)
-            </label>
         </div>
-
-        <div class="info">Audio source for ALL visual renderers (Three.js, Milkdrop, Waveform)</div>
     </div>
 
     <div class="section">
@@ -372,7 +403,7 @@
 
         <label style="display: block; margin-top: 10px; font-size: 12px;">
             <input type="checkbox" id="global-audio-beat-reactive" style="width: auto; margin-right: 5px;">
-            Audio input beat-reactive (kick detection)
+            Audio input monitoring (make microphone audible)
         </label>
     </div>
 
@@ -2166,6 +2197,15 @@
             if (state.midiSynthAudible !== undefined) {
                 document.getElementById('midi-synth-audible').checked = state.midiSynthAudible === 'true';
             }
+            if (state.midiSynthAutoFeed !== undefined) {
+                document.getElementById('midi-synth-auto-feed').checked = state.midiSynthAutoFeed === 'true';
+            }
+            if (state.midiSynthFeedInput !== undefined) {
+                document.getElementById('midi-synth-feed-input').checked = state.midiSynthFeedInput === 'true';
+            }
+            if (state.midiSynthBeatKick !== undefined) {
+                document.getElementById('midi-synth-beat-kick').checked = state.midiSynthBeatKick === 'true';
+            }
 
             // Update current mode display and track program mode
             if (state.mode) {
@@ -2430,6 +2470,26 @@
         // MIDI synth audible toggle
         document.getElementById('midi-synth-audible').addEventListener('change', (e) => {
             sendCommand('midiSynthAudible', e.target.checked ? 'true' : 'false');
+        });
+
+        // MIDI synth auto-feed audio-frequency notes toggle
+        document.getElementById('midi-synth-auto-feed').addEventListener('change', (e) => {
+            sendCommand('midiSynthAutoFeed', e.target.checked ? 'true' : 'false');
+        });
+
+        // MIDI synth feed MIDI input notes toggle
+        document.getElementById('midi-synth-feed-input').addEventListener('change', (e) => {
+            sendCommand('midiSynthFeedInput', e.target.checked ? 'true' : 'false');
+        });
+
+        // MIDI synth beat kick toggle
+        document.getElementById('midi-synth-beat-kick').addEventListener('change', (e) => {
+            sendCommand('midiSynthBeatKick', e.target.checked ? 'true' : 'false');
+        });
+
+        // MIDI synth input device selection (separate from clock/SPP)
+        document.getElementById('midi-synth-input-select').addEventListener('change', (e) => {
+            sendCommand('midiSynthInputSelect', e.target.value);
         });
 
         // MIDI input device selection
@@ -2988,12 +3048,14 @@
         // NOTE: MIDI is OPTIONAL - browser may not support it or it may require HTTPS
         async function loadMIDIDevices() {
             const select = document.getElementById('midi-input-select');
+            const synthSelect = document.getElementById('midi-synth-input-select');
             const warning = document.getElementById('midi-perm-warning');
 
             try {
                 // Only request if not already available (won't trigger new prompt if granted)
                 const access = await navigator.requestMIDIAccess();
                 select.innerHTML = '';
+                synthSelect.innerHTML = '';
 
                 // Hide warning - MIDI is available
                 warning.style.display = 'none';
@@ -3002,15 +3064,24 @@
 
                 if (inputs.length === 0) {
                     select.innerHTML = '<option value="">No MIDI devices found</option>';
+                    synthSelect.innerHTML = '<option value="">No MIDI devices found</option>';
                     console.log('[Control] MIDI access granted but no devices connected');
                     return;
                 }
 
+                // Populate both dropdowns with same devices
                 inputs.forEach(input => {
+                    // Clock/SPP input
                     const option = document.createElement('option');
                     option.value = input.id;
                     option.textContent = input.name;
                     select.appendChild(option);
+
+                    // Synth input
+                    const synthOption = document.createElement('option');
+                    synthOption.value = input.id;
+                    synthOption.textContent = input.name;
+                    synthSelect.appendChild(synthOption);
                 });
 
                 console.log('[Control] Found', inputs.length, 'MIDI devices');
@@ -3023,6 +3094,7 @@
                 warning.style.display = 'none';
 
                 select.innerHTML = '<option value="">MIDI not available (browser may not support it)</option>';
+                synthSelect.innerHTML = '<option value="">MIDI not available (browser may not support it)</option>';
             }
         }
 
@@ -3166,7 +3238,7 @@
         console.log('[Control] Defaulted to Audio Input Device');
 
         // CRITICAL: Force main app to microphone mode on control.html load
-        // This ensures MIDI synth is never auto-started
+        // This ensures MIDI synth is never auto-started (requires user gesture)
         console.log('[Control] Forcing Visual Reactive Input to microphone...');
         sendCommand('milkdropAudioSource', 'microphone');
 

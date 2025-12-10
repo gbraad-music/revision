@@ -15,6 +15,7 @@ class MIDIAudioSynth {
         this.beatOscillator = null;
         this.beatGain = null;
         this.beatEnvelope = null;
+        this.beatOscillatorStopped = false;
 
         // Output
         this.isActive = false;
@@ -93,12 +94,15 @@ class MIDIAudioSynth {
         this.beatGain.gain.value = 0;
 
         this.beatOscillator.connect(this.beatGain);
+
+        // Connect beat kick ONLY to masterGain (respects "Make MIDI synth audible" setting)
+        // This goes through speakerGain, so it's only audible when user wants to hear the synth
         this.beatGain.connect(this.masterGain);
 
         // Start oscillator (may fail if AudioContext is suspended - will work after resume)
         try {
             this.beatOscillator.start();
-            console.log('[MIDIAudioSynth] Beat oscillator started');
+            console.log('[MIDIAudioSynth] Beat oscillator started (direct output + analysis)');
         } catch (e) {
             console.warn('[MIDIAudioSynth] Beat oscillator failed to start (AudioContext suspended):', e.message);
         }
@@ -166,49 +170,11 @@ class MIDIAudioSynth {
 
         const now = this.audioContext.currentTime;
 
-        // ADSR Envelope with automatic release after 2 seconds
+        // ADSR Envelope - sustain indefinitely until Note OFF
         gain.gain.setValueAtTime(0, now);
         gain.gain.linearRampToValueAtTime(velocityGain, now + 0.01); // Attack
         gain.gain.exponentialRampToValueAtTime(velocityGain * 0.7, now + 0.1); // Decay to sustain
-        gain.gain.exponentialRampToValueAtTime(velocityGain * 0.5, now + 2.0); // Hold sustain
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 2.3); // Auto release after 2.3 seconds
-
-        // Auto-stop oscillator after envelope completes
-        // Store note name for logging
-        const noteNameForLog = noteName + octave;
-        setTimeout(() => {
-            try {
-                // Stop these specific oscillator instances regardless of voice state
-                // (voice may have been stolen and reassigned to a new note)
-                oscillator.stop();
-                osc2.stop();
-                subOsc.stop();
-                oscillator.disconnect();
-                osc2.disconnect();
-                subOsc.disconnect();
-                osc1Gain.disconnect();
-                osc2Gain.disconnect();
-                subGain.disconnect();
-                gain.disconnect();
-
-                // Only clear voice if it still references these oscillators
-                if (voice.oscillator === oscillator) {
-                    voice.oscillator = null;
-                    voice.osc2 = null;
-                    voice.subOsc = null;
-                    voice.osc1Gain = null;
-                    voice.osc2Gain = null;
-                    voice.subGain = null;
-                    voice.gain = null;
-                    voice.note = null;
-                    voice.active = false;
-                }
-                console.log('[MIDIAudioSynth] Auto-stopped:', noteNameForLog);
-            } catch (e) {
-                // Oscillator may have already been stopped by note-off
-                console.log('[MIDIAudioSynth] Auto-stop error (already stopped):', e.message);
-            }
-        }, 2400);
+        gain.gain.setValueAtTime(velocityGain * 0.6, now + 0.1); // Sustain level (hold until note off)
 
         // Store voice with all oscillators for cleanup
         voice.oscillator = oscillator;
@@ -307,20 +273,44 @@ class MIDIAudioSynth {
     handleBeat(intensity = 1.0) {
         if (!this.isActive || !this.beatGain) return;
 
+        // CRITICAL: Check if beatOscillator is still running (might have stopped if AudioContext was suspended)
+        if (!this.beatOscillator || this.beatOscillatorStopped) {
+            console.warn('[MIDIAudioSynth] Beat oscillator not running - restarting...');
+            try {
+                // Recreate oscillator
+                if (this.beatOscillator) {
+                    try { this.beatOscillator.disconnect(); } catch (e) {}
+                }
+
+                this.beatOscillator = this.audioContext.createOscillator();
+                this.beatOscillator.type = 'sine';
+                this.beatOscillator.frequency.value = 60;
+                this.beatOscillator.connect(this.beatGain);
+                this.beatOscillator.start();
+                this.beatOscillatorStopped = false;
+                console.log('[MIDIAudioSynth] ✓ Beat oscillator restarted');
+            } catch (e) {
+                console.error('[MIDIAudioSynth] Failed to restart beat oscillator:', e.message);
+                return;
+            }
+        }
+
         const now = this.audioContext.currentTime;
 
         // Pitch envelope (high to low for kick drum effect)
         this.beatOscillator.frequency.cancelScheduledValues(now);
-        this.beatOscillator.frequency.setValueAtTime(150, now);
-        this.beatOscillator.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+        this.beatOscillator.frequency.setValueAtTime(200, now); // Start higher
+        this.beatOscillator.frequency.exponentialRampToValueAtTime(50, now + 0.05); // Drop faster
+        this.beatOscillator.frequency.exponentialRampToValueAtTime(40, now + 0.15); // Settle lower
 
-        // Amplitude envelope - BOOSTED for strong visuals
-        const kickGain = intensity * 2.0; // BOOSTED (was 0.8)
+        // Amplitude envelope - VERY LOUD and LONGER for strong visuals and audibility
+        const kickGain = intensity * 5.0; // MUCH LOUDER (was 3.0)
         this.beatGain.gain.cancelScheduledValues(now);
         this.beatGain.gain.setValueAtTime(kickGain, now);
-        this.beatGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        this.beatGain.gain.exponentialRampToValueAtTime(kickGain * 0.3, now + 0.05); // Quick decay
+        this.beatGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4); // Longer tail (was 0.2)
 
-        console.log('[MIDIAudioSynth] BEAT - Kick triggered, intensity:', intensity.toFixed(2));
+        console.log('[MIDIAudioSynth] 🥁 KICK! Intensity:', intensity.toFixed(2), 'Gain:', kickGain.toFixed(2), 'AudioContext:', this.audioContext.state);
     }
 
     // Handle control changes - could modulate synth parameters
@@ -353,16 +343,29 @@ class MIDIAudioSynth {
     }
 
     // Toggle audible output
-    setAudible(enabled) {
+    async setAudible(enabled) {
         if (!this.speakerGain) return;
 
         this.isAudible = enabled;
-        const now = this.audioContext.currentTime;
 
         if (enabled) {
+            // CRITICAL: Resume AudioContext if suspended (requires user gesture)
+            if (this.audioContext.state === 'suspended') {
+                console.log('[MIDIAudioSynth] ⚠️ AudioContext suspended, resuming...');
+                try {
+                    await this.audioContext.resume();
+                    console.log('[MIDIAudioSynth] ✓ AudioContext resumed:', this.audioContext.state);
+                } catch (e) {
+                    console.error('[MIDIAudioSynth] ✗ Failed to resume AudioContext:', e.message);
+                    return;
+                }
+            }
+
+            const now = this.audioContext.currentTime;
             this.speakerGain.gain.setValueAtTime(1.0, now);
-            console.log('[MIDIAudioSynth] 🔊 Audible - you will HEAR the MIDI notes!');
+            console.log('[MIDIAudioSynth] 🔊 Audible - you will HEAR the MIDI notes! (AudioContext state:', this.audioContext.state + ')');
         } else {
+            const now = this.audioContext.currentTime;
             this.speakerGain.gain.setValueAtTime(0, now);
             console.log('[MIDIAudioSynth] 🔇 Muted - visuals only, no sound');
         }
@@ -468,8 +471,13 @@ class MIDIAudioSynth {
         this.stopAll();
 
         if (this.beatOscillator) {
-            this.beatOscillator.stop();
-            this.beatOscillator.disconnect();
+            try {
+                this.beatOscillator.stop();
+                this.beatOscillator.disconnect();
+            } catch (e) {
+                console.log('[MIDIAudioSynth] Beat oscillator already stopped');
+            }
+            this.beatOscillatorStopped = true;
         }
 
         if (this.beatGain) {

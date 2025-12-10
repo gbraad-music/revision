@@ -413,6 +413,16 @@ class MIDIInputSource {
         }
     }
 
+    removeAllListeners(event = null) {
+        if (event) {
+            // Remove listeners for specific event
+            this.listeners.delete(event);
+        } else {
+            // Remove all listeners for all events
+            this.listeners.clear();
+        }
+    }
+
     emit(event, data) {
         if (!this.listeners.has(event)) return;
         this.listeners.get(event).forEach(callback => callback(data));

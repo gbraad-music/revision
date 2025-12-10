@@ -31,6 +31,9 @@ class AudioInputSource {
             highMid: { low: 2000, high: 4000 }, // High mids
             high: { low: 4000, high: 20000 } // Highs
         };
+
+        // Frequency note state tracking (for Note ON/OFF)
+        this.activeFrequencyNotes = new Set();
     }
 
     async initialize(options = {}) {
@@ -243,11 +246,36 @@ class AudioInputSource {
     }
 
     disconnect() {
+        // Stop analysis loop
+        this.isActive = false;
+
+        // Send Note OFF for all active frequency notes
+        for (const note of this.activeFrequencyNotes) {
+            this.emit('*', {
+                type: 'note',
+                data: {
+                    note,
+                    velocity: 0,
+                    source: 'audio-frequency'
+                }
+            });
+        }
+        this.activeFrequencyNotes.clear();
+
         if (this.microphone) {
+            // Stop all tracks on the media stream
+            if (this.microphone.mediaStream) {
+                this.microphone.mediaStream.getTracks().forEach(track => {
+                    track.stop();
+                    console.log('[AudioInput] Stopped track:', track.label);
+                });
+            }
+
+            // Disconnect audio node
             this.microphone.disconnect();
             this.microphone = null;
         }
-        this.isActive = false;
+
         console.log('[AudioInput] Disconnected');
         this.emit('disconnected', {});
     }
@@ -380,18 +408,35 @@ class AudioInputSource {
 
         for (const [band, note] of Object.entries(bandNoteMap)) {
             const level = bandLevels[band];
+            const isActive = this.activeFrequencyNotes.has(note);
 
-            // Emit note if band exceeds threshold
             if (level > 0.6) {
-                const velocity = Math.floor(level * 127);
-                this.emit('*', {
-                    type: 'note',
-                    data: {
-                        note,
-                        velocity,
-                        source: 'audio-frequency'
-                    }
-                });
+                // Band is loud - send Note ON (only if not already active)
+                if (!isActive) {
+                    const velocity = Math.floor(level * 127);
+                    this.emit('*', {
+                        type: 'note',
+                        data: {
+                            note,
+                            velocity,
+                            source: 'audio-frequency'
+                        }
+                    });
+                    this.activeFrequencyNotes.add(note);
+                }
+            } else {
+                // Band is quiet - send Note OFF (only if currently active)
+                if (isActive) {
+                    this.emit('*', {
+                        type: 'note',
+                        data: {
+                            note,
+                            velocity: 0, // Note OFF
+                            source: 'audio-frequency'
+                        }
+                    });
+                    this.activeFrequencyNotes.delete(note);
+                }
             }
         }
     }
@@ -456,13 +501,26 @@ class AudioInputSource {
             return;
         }
 
-        console.log('[AudioInput] Audio monitoring:', enabled ? 'ENABLED' : 'DISABLED');
+        console.log('[AudioInput] Audio monitoring:', enabled ? 'ENABLED' : 'DISABLED', '| AudioContext state:', this.audioContext.state);
 
         if (enabled && !this.monitoringEnabled) {
-            // Connect gain to speakers
-            this.monitorGain.connect(this.audioContext.destination);
-            this.monitoringEnabled = true;
-            console.log('[AudioInput] ✓ Microphone now AUDIBLE through speakers');
+            // CRITICAL: Check AudioContext state before connecting
+            if (this.audioContext.state === 'suspended') {
+                console.warn('[AudioInput] ⚠️ AudioContext is SUSPENDED - cannot enable monitoring! Trying to resume...');
+                this.audioContext.resume().then(() => {
+                    console.log('[AudioInput] ✓ AudioContext resumed - state:', this.audioContext.state);
+                    this.monitorGain.connect(this.audioContext.destination);
+                    this.monitoringEnabled = true;
+                    console.log('[AudioInput] ✓ Microphone now AUDIBLE through speakers');
+                }).catch(err => {
+                    console.error('[AudioInput] ✗ Failed to resume AudioContext:', err);
+                });
+            } else {
+                // Connect gain to speakers
+                this.monitorGain.connect(this.audioContext.destination);
+                this.monitoringEnabled = true;
+                console.log('[AudioInput] ✓ Microphone now AUDIBLE through speakers (AudioContext state:', this.audioContext.state + ')');
+            }
         } else if (!enabled && this.monitoringEnabled) {
             // Disconnect from speakers
             this.monitorGain.disconnect(this.audioContext.destination);
