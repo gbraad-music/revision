@@ -35,9 +35,12 @@ class StreamRenderer {
 
         // Create video element
         this.videoElement = document.createElement('video');
-        this.videoElement.muted = true; // ALWAYS muted - this is visual only!
+        // Check if audio output is enabled (default: muted)
+        const audioOutputEnabled = localStorage.getItem('videoAudioOutput') === 'true';
+        this.videoElement.muted = !audioOutputEnabled;
         this.videoElement.playsInline = true;
         this.videoElement.autoplay = true;
+        console.log('[StreamRenderer] Stream audio output:', audioOutputEnabled);
 
         // Detect stream type if auto
         if (type === 'auto') {
@@ -274,6 +277,14 @@ class StreamRenderer {
     setBeatReactive(enabled) {
         this.beatReactive = enabled;
         console.log('[StreamRenderer] Beat reactive:', enabled);
+    }
+
+    setAudioOutput(enabled) {
+        console.log('[StreamRenderer] Audio output:', enabled);
+        if (this.videoElement) {
+            this.videoElement.muted = !enabled;
+            console.log('[StreamRenderer] Video element muted:', this.videoElement.muted);
+        }
     }
 
     handleBeat(data) {

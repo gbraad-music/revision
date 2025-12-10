@@ -320,8 +320,11 @@ class RevisionAppV2 {
                     this.mediaElement.src = url;
                 } else if (type === 'video') {
                     this.mediaElement = document.createElement('video');
-                    this.mediaElement.muted = true; // ALWAYS muted - this is visual only!
+                    // Check if audio output is enabled (default: muted)
+                    const audioOutputEnabled = localStorage.getItem('videoAudioOutput') === 'true';
+                    this.mediaElement.muted = !audioOutputEnabled;
                     this.mediaElement.loop = options.loop !== false;
+                    console.log('[MediaRenderer] Video audio output:', audioOutputEnabled);
                     this.mediaElement.onloadedmetadata = () => {
                         console.log('[MediaRenderer] Video loaded, duration:', this.mediaElement.duration);
                         this.mediaElement.play().catch(err => {
@@ -545,6 +548,14 @@ class RevisionAppV2 {
                     this.renderImage();
                 }
                 // Video will automatically update in its render loop
+            },
+
+            setAudioOutput: function(enabled) {
+                console.log('[MediaRenderer] Audio output:', enabled);
+                if (this.mediaElement && this.mediaElement.tagName === 'VIDEO') {
+                    this.mediaElement.muted = !enabled;
+                    console.log('[MediaRenderer] Video element muted:', this.mediaElement.muted);
+                }
             }
         };
         console.log('[Revision] ✓ Media renderer initialized - audioReactive:', savedAudioReactive, 'beatReactive:', savedBeatReactive);
@@ -891,20 +902,46 @@ class RevisionAppV2 {
                 case 'videoAudioOutput':
                     console.log('[BroadcastChannel] Video Audio Output:', data);
                     this.settings.set('videoAudioOutput', data);
+                    // Apply to video camera renderer
                     if (this.videoRenderer) {
                         this.videoRenderer.setAudioOutput(data === 'true');
+                    }
+                    // Apply to media file renderer
+                    if (this.mediaRenderer && this.mediaRenderer.setAudioOutput) {
+                        this.mediaRenderer.setAudioOutput(data === 'true');
+                    }
+                    // Apply to stream renderer
+                    if (this.streamRenderer && this.streamRenderer.setAudioOutput) {
+                        this.streamRenderer.setAudioOutput(data === 'true');
                     }
                     this.broadcastState();
                     break;
                 case 'audioSampleRate':
                     console.log('[BroadcastChannel] Audio Sample Rate:', data);
                     this.settings.set('audioSampleRate', data);
-                    // Audio source would need to be reconnected to apply new sample rate
+
+                    // Auto-reconnect microphone with new sample rate
+                    const currentDeviceId = this.settings.get('audioInputDeviceId');
+                    if (currentDeviceId && this.audioSource && this.audioSource.isActive) {
+                        console.log('[Revision] Sample rate changed - reconnecting microphone...');
+                        await this.disableAudioInput();
+                        await new Promise(resolve => setTimeout(resolve, 200)); // Wait for cleanup
+                        await this.enableAudioInput(currentDeviceId);
+                        console.log('[Revision] ✓ Microphone reconnected with new sample rate:', data, 'Hz');
+                    } else {
+                        console.warn('[Revision] Cannot reconnect - no active microphone');
+                    }
                     break;
                 case 'audioBeatReactive':
-                    console.log('[BroadcastChannel] Audio Beat Reactive:', data);
+                    console.log('[BroadcastChannel] Audio Beat Reactive (Monitoring):', data);
                     this.settings.set('audioBeatReactive', data);
-                    // Beat detection is always active in audio input, this setting is for UI feedback
+                    // Enable/disable audio monitoring (hearing the microphone)
+                    if (this.audioSource && this.audioSource.setMonitoring) {
+                        this.audioSource.setMonitoring(data === 'true');
+                        console.log('[Revision] Audio monitoring set to:', data);
+                    } else {
+                        console.warn('[Revision] audioSource not available or setMonitoring not found');
+                    }
                     this.broadcastState();
                     break;
                 case 'midiSynthEnable':
@@ -1355,7 +1392,9 @@ class RevisionAppV2 {
                 return `MIDI Ch.${channelNum}`;
             }
         } else {
-            return 'Audio Input';
+            // Check if audio monitoring is enabled (audible)
+            const monitoringEnabled = this.settings.get('audioBeatReactive') === 'true';
+            return monitoringEnabled ? 'Audio Input (Audible)' : 'Audio Input (Silent)';
         }
     }
 
@@ -1440,6 +1479,13 @@ class RevisionAppV2 {
 
         const success = await this.audioSource.connectMicrophone(deviceId);
         if (success) {
+            // Apply audio monitoring setting (must be done AFTER microphone connects)
+            const monitoringEnabled = this.settings.get('audioBeatReactive') === 'true';
+            if (this.audioSource.setMonitoring) {
+                this.audioSource.setMonitoring(monitoringEnabled);
+                console.log('[Revision] Applied audio monitoring setting:', monitoringEnabled);
+            }
+
             // Only register audio source if visual reactive input is set to 'microphone' (audio input device)
             // Note: 'microphone' setting includes ALL audio input devices (microphones, virtual cables, NDI, etc.)
             const visualAudioSource = this.settings.get('visualAudioSource') || 'microphone';

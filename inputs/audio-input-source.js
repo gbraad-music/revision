@@ -9,6 +9,8 @@ class AudioInputSource {
         this.timeDomainData = null;
         this.isActive = false;
         this.listeners = new Map();
+        this.monitorGain = null; // For audio monitoring (hearing the input)
+        this.monitoringEnabled = false;
 
         // Beat detection
         this.beatDetector = {
@@ -41,6 +43,11 @@ class AudioInputSource {
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = options.fftSize || 2048;
             this.analyser.smoothingTimeConstant = options.smoothing || 0.8;
+
+            // Create gain node for audio monitoring
+            this.monitorGain = this.audioContext.createGain();
+            this.monitorGain.gain.value = 1.0; // Full volume
+            console.log('[AudioInput] Created monitor gain node');
 
             // Allocate buffers
             const bufferLength = this.analyser.frequencyBinCount;
@@ -88,12 +95,20 @@ class AudioInputSource {
             const tracks = stream.getAudioTracks();
             if (tracks.length > 0) {
                 const track = tracks[0];
+                const actualSettings = track.getSettings();
+                const actualSampleRate = actualSettings.sampleRate || 'unknown';
+
                 console.log('[AudioInput] ═══════════════════════════════════════');
                 console.log('[AudioInput] Using audio device:', track.label);
+                console.log('[AudioInput] REQUESTED sample rate:', sampleRate, 'Hz');
+                console.log('[AudioInput] ACTUAL sample rate:', actualSampleRate, 'Hz');
+                if (actualSampleRate !== sampleRate) {
+                    console.warn('[AudioInput] ⚠️ Browser ignored sample rate request! Got', actualSampleRate, 'instead of', sampleRate);
+                }
                 console.log('[AudioInput] Track enabled:', track.enabled);
                 console.log('[AudioInput] Track muted:', track.muted);
                 console.log('[AudioInput] Track readyState:', track.readyState);
-                console.log('[AudioInput] Device settings:', track.getSettings());
+                console.log('[AudioInput] Full device settings:', actualSettings);
                 console.log('[AudioInput] ═══════════════════════════════════════');
             }
 
@@ -126,8 +141,17 @@ class AudioInputSource {
             console.log('[AudioInput] MediaStreamSource mediaStream:', this.microphone.mediaStream);
             console.log('[AudioInput] MediaStreamSource active:', this.microphone.mediaStream.active);
 
+            // Connect to analyser for beat detection (always connected)
             this.microphone.connect(this.analyser);
             console.log('[AudioInput] ✓ Connected to analyser');
+
+            // Connect to monitor gain for audio output (controlled by toggle)
+            this.microphone.connect(this.monitorGain);
+            console.log('[AudioInput] ✓ Connected to monitor gain');
+
+            // Check if audio monitoring is enabled
+            const monitoringEnabled = localStorage.getItem('audioBeatReactive') === 'true';
+            this.setMonitoring(monitoringEnabled);
 
             this.isActive = true;
             this.startAnalysis();
@@ -424,6 +448,27 @@ class AudioInputSource {
 
     getIsActive() {
         return this.isActive;
+    }
+
+    setMonitoring(enabled) {
+        if (!this.monitorGain || !this.audioContext) {
+            console.warn('[AudioInput] Cannot set monitoring - audio not initialized');
+            return;
+        }
+
+        console.log('[AudioInput] Audio monitoring:', enabled ? 'ENABLED' : 'DISABLED');
+
+        if (enabled && !this.monitoringEnabled) {
+            // Connect gain to speakers
+            this.monitorGain.connect(this.audioContext.destination);
+            this.monitoringEnabled = true;
+            console.log('[AudioInput] ✓ Microphone now AUDIBLE through speakers');
+        } else if (!enabled && this.monitoringEnabled) {
+            // Disconnect from speakers
+            this.monitorGain.disconnect(this.audioContext.destination);
+            this.monitoringEnabled = false;
+            console.log('[AudioInput] ✓ Microphone monitoring DISABLED (silent)');
+        }
     }
 }
 

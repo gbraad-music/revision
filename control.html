@@ -277,7 +277,7 @@
             <option value="22050">22 kHz (voice quality)</option>
             <option value="16000">16 kHz (low bandwidth)</option>
         </select>
-        <div class="info" style="margin-top: 5px;">Sample rate (higher = better audio, more bandwidth)</div>
+        <div class="info" style="margin-top: 5px;">Preferred sample rate (browser may use system default instead)</div>
     </div>
 
     <div class="section">
@@ -2490,14 +2490,24 @@
         });
 
         // Video audio reactive toggle
-        document.getElementById('video-audio-reactive').addEventListener('change', (e) => {
-            sendCommand('videoAudioReactive', e.target.checked ? 'true' : 'false');
-        });
+        const videoAudioReactiveCheckbox = document.getElementById('video-audio-reactive');
+        if (videoAudioReactiveCheckbox) {
+            videoAudioReactiveCheckbox.addEventListener('change', (e) => {
+                sendCommand('videoAudioReactive', e.target.checked ? 'true' : 'false');
+            });
+        } else {
+            console.warn('[Control] video-audio-reactive element not found');
+        }
 
         // Video beat reactive toggle
-        document.getElementById('video-beat-reactive').addEventListener('change', (e) => {
-            sendCommand('videoBeatReactive', e.target.checked ? 'true' : 'false');
-        });
+        const videoBeatReactiveCheckbox = document.getElementById('video-beat-reactive');
+        if (videoBeatReactiveCheckbox) {
+            videoBeatReactiveCheckbox.addEventListener('change', (e) => {
+                sendCommand('videoBeatReactive', e.target.checked ? 'true' : 'false');
+            });
+        } else {
+            console.warn('[Control] video-beat-reactive element not found');
+        }
 
         // Video resolution change - save and reload if in preview
         const videoResolutionSelect = document.getElementById('video-resolution-select');
@@ -2666,44 +2676,74 @@
         });
 
         // Media audio reactive toggle
-        document.getElementById('media-audio-reactive').addEventListener('change', (e) => {
-            console.log('[Control] Media audio reactive:', e.target.checked);
-            // Send to program in real-time
-            sendCommand('mediaAudioReactive', e.target.checked ? 'true' : 'false');
-        });
+        const mediaAudioReactiveCheckbox = document.getElementById('media-audio-reactive');
+        if (mediaAudioReactiveCheckbox) {
+            mediaAudioReactiveCheckbox.addEventListener('change', (e) => {
+                console.log('[Control] Media audio reactive:', e.target.checked);
+                // Send to program in real-time
+                sendCommand('mediaAudioReactive', e.target.checked ? 'true' : 'false');
+            });
+        } else {
+            console.warn('[Control] media-audio-reactive element not found');
+        }
 
         // Media beat reactive toggle
-        document.getElementById('media-beat-reactive').addEventListener('change', (e) => {
-            console.log('[Control] Media beat reactive:', e.target.checked);
-            // Send to program in real-time
-            sendCommand('mediaBeatReactive', e.target.checked ? 'true' : 'false');
-        });
+        const mediaBeatReactiveCheckbox = document.getElementById('media-beat-reactive');
+        if (mediaBeatReactiveCheckbox) {
+            mediaBeatReactiveCheckbox.addEventListener('change', (e) => {
+                console.log('[Control] Media beat reactive:', e.target.checked);
+                // Send to program in real-time
+                sendCommand('mediaBeatReactive', e.target.checked ? 'true' : 'false');
+            });
+        } else {
+            console.warn('[Control] media-beat-reactive element not found');
+        }
 
         // Global audio output toggle
-        document.getElementById('global-audio-output').addEventListener('change', (e) => {
-            console.log('[Control] Global audio output:', e.target.checked);
-            sendCommand('videoAudioOutput', e.target.checked ? 'true' : 'false');
-        });
+        const globalAudioOutputCheckbox = document.getElementById('global-audio-output');
+        if (globalAudioOutputCheckbox) {
+            globalAudioOutputCheckbox.addEventListener('change', (e) => {
+                console.log('[Control] Global audio output:', e.target.checked);
+                sendCommand('videoAudioOutput', e.target.checked ? 'true' : 'false');
+            });
+        } else {
+            console.warn('[Control] global-audio-output element not found');
+        }
 
         // Global audio beat-reactive toggle
-        document.getElementById('global-audio-beat-reactive').addEventListener('change', (e) => {
-            console.log('[Control] Global audio beat-reactive:', e.target.checked);
-            sendCommand('audioBeatReactive', e.target.checked ? 'true' : 'false');
-        });
+        const globalAudioBeatReactiveCheckbox = document.getElementById('global-audio-beat-reactive');
+        if (globalAudioBeatReactiveCheckbox) {
+            globalAudioBeatReactiveCheckbox.addEventListener('change', (e) => {
+                console.log('[Control] Global audio beat-reactive:', e.target.checked);
+                sendCommand('audioBeatReactive', e.target.checked ? 'true' : 'false');
+            });
+        } else {
+            console.warn('[Control] global-audio-beat-reactive element not found');
+        }
 
         // Stream audio reactive toggle
-        document.getElementById('stream-audio-reactive').addEventListener('change', (e) => {
-            console.log('[Control] Stream audio reactive:', e.target.checked);
-            // Send to program in real-time
-            sendCommand('streamAudioReactive', e.target.checked ? 'true' : 'false');
-        });
+        const streamAudioReactiveCheckbox = document.getElementById('stream-audio-reactive');
+        if (streamAudioReactiveCheckbox) {
+            streamAudioReactiveCheckbox.addEventListener('change', (e) => {
+                console.log('[Control] Stream audio reactive:', e.target.checked);
+                // Send to program in real-time
+                sendCommand('streamAudioReactive', e.target.checked ? 'true' : 'false');
+            });
+        } else {
+            console.warn('[Control] stream-audio-reactive element not found');
+        }
 
         // Stream beat reactive toggle
-        document.getElementById('stream-beat-reactive').addEventListener('change', (e) => {
-            console.log('[Control] Stream beat reactive:', e.target.checked);
-            // Send to program in real-time
-            sendCommand('streamBeatReactive', e.target.checked ? 'true' : 'false');
-        });
+        const streamBeatReactiveCheckbox = document.getElementById('stream-beat-reactive');
+        if (streamBeatReactiveCheckbox) {
+            streamBeatReactiveCheckbox.addEventListener('change', (e) => {
+                console.log('[Control] Stream beat reactive:', e.target.checked);
+                // Send to program in real-time
+                sendCommand('streamBeatReactive', e.target.checked ? 'true' : 'false');
+            });
+        } else {
+            console.warn('[Control] stream-beat-reactive element not found');
+        }
 
         // Stream fit mode selector
         document.getElementById('stream-fit-mode').addEventListener('change', (e) => {
@@ -2714,18 +2754,28 @@
         });
 
         // Webpage audio reactive toggle
-        document.getElementById('webpage-audio-reactive').addEventListener('change', (e) => {
-            console.log('[Control] Webpage audio reactive:', e.target.checked);
-            // Send to program in real-time
-            sendCommand('webpageAudioReactive', e.target.checked ? 'true' : 'false');
-        });
+        const webpageAudioReactiveCheckbox = document.getElementById('webpage-audio-reactive');
+        if (webpageAudioReactiveCheckbox) {
+            webpageAudioReactiveCheckbox.addEventListener('change', (e) => {
+                console.log('[Control] Webpage audio reactive:', e.target.checked);
+                // Send to program in real-time
+                sendCommand('webpageAudioReactive', e.target.checked ? 'true' : 'false');
+            });
+        } else {
+            console.warn('[Control] webpage-audio-reactive element not found');
+        }
 
         // Webpage beat reactive toggle
-        document.getElementById('webpage-beat-reactive').addEventListener('change', (e) => {
-            console.log('[Control] Webpage beat reactive:', e.target.checked);
-            // Send to program in real-time
-            sendCommand('webpageBeatReactive', e.target.checked ? 'true' : 'false');
-        });
+        const webpageBeatReactiveCheckbox = document.getElementById('webpage-beat-reactive');
+        if (webpageBeatReactiveCheckbox) {
+            webpageBeatReactiveCheckbox.addEventListener('change', (e) => {
+                console.log('[Control] Webpage beat reactive:', e.target.checked);
+                // Send to program in real-time
+                sendCommand('webpageBeatReactive', e.target.checked ? 'true' : 'false');
+            });
+        } else {
+            console.warn('[Control] webpage-beat-reactive element not found');
+        }
 
         // Preset drag-drop reload
         const presetDropZone = document.getElementById('preset-drop-zone');
