@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v108';
+const CACHE_NAME = 'revision-v109';
 const ASSETS = [
     './',
     './index.html',
@@ -18,17 +18,18 @@ const ASSETS = [
     './inputs/midi-input-source.js',
     './inputs/midi-output-source.js',
     // Presets and renderers
-    './presets/milkdrop-renderer.js',
     './presets/preset-manager.js',
-    './presets/threejs-renderer.js',
     // Three.js Presets
     './presets/threejs/BasePreset.js',
     './presets/threejs/GeometricShapes.js',
     './presets/threejs/Particles.js',
     './presets/threejs/Tunnel.js',
+    // Renderers
+    './renderers/milkdrop-renderer.js',
+    './renderers/threejs-renderer.js',
     './renderers/video-renderer.js',
-    './js/renderers/StreamRenderer.js',
-    './js/renderers/WebpageRenderer.js',
+    './renderers/stream-renderer.js',
+    './renderers/webpage-renderer.js',
     // Scenes
     './scenes/scene-manager.js',
     // Visuals
