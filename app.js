@@ -2846,19 +2846,18 @@ class RevisionAppV2 {
         try {
             console.log(`[Revision] Loading Three.js preset on-demand: ${presetName}${cacheBust ? ' (fresh)' : ''}`);
 
+            // CRITICAL: ALWAYS delete old class first to prevent "already declared" errors
+            // This must happen regardless of cacheBust to handle reload scenarios
+            if (window[presetInfo.className]) {
+                delete window[presetInfo.className];
+                console.log(`[Revision] Deleted old class: ${presetInfo.className}`);
+            }
+
             if (cacheBust) {
-                // CRITICAL: Remove ALL old script tags for this preset first
-                // This prevents "Identifier already declared" errors from duplicate class declarations
+                // Remove ALL old script tags for this preset first
                 const oldScripts = document.querySelectorAll(`script[data-preset-src="${presetInfo.file}"]`);
                 console.log(`[Revision] Removing ${oldScripts.length} old script tag(s) for ${presetName}`);
                 oldScripts.forEach(s => s.remove());
-
-                // Force garbage collection of the old class by deleting it
-                // This works because class declarations create deletable window properties
-                if (window[presetInfo.className]) {
-                    delete window[presetInfo.className];
-                    console.log(`[Revision] Deleted old class: ${presetInfo.className}`);
-                }
 
                 // Wait a tick to ensure scripts are fully removed from DOM
                 await new Promise(resolve => setTimeout(resolve, 10));

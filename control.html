@@ -3226,6 +3226,12 @@
             }
 
             try {
+                // CRITICAL: Delete old class from window to avoid "already declared" error
+                if (window[presetInfo.className]) {
+                    delete window[presetInfo.className];
+                    console.log(`[Control] Deleted old class: ${presetInfo.className}`);
+                }
+
                 console.log(`[Control] Loading Three.js preset on-demand: ${presetName}${cacheBust ? ' (fresh)' : ''}`);
                 await loadScript(presetInfo.file, cacheBust);
 
