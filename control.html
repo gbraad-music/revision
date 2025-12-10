@@ -265,6 +265,46 @@
     </div>
 
     <div class="section">
+        <h2>Reactive MIDI Output</h2>
+        <label style="display: block; margin-bottom: 10px; font-size: 12px;">
+            <input type="checkbox" id="midi-output-enable" style="width: auto; margin-right: 5px;">
+            Enable audio-reactive MIDI output (FFT → MIDI notes)
+        </label>
+        <div class="info" style="margin-top: -5px; margin-bottom: 10px;">Generate MIDI notes from audio frequency analysis</div>
+
+        <div id="midi-output-settings" style="display: none;">
+            <select id="midi-output-select">
+                <option value="">No MIDI outputs found</option>
+            </select>
+            <div class="info">MIDI output device</div>
+
+            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Output Channel</label>
+            <select id="midi-output-channel">
+                <option value="all">Omni (All Channels)</option>
+                <option value="0">MIDI Channel 1</option>
+                <option value="1">MIDI Channel 2</option>
+                <option value="2">MIDI Channel 3</option>
+                <option value="3">MIDI Channel 4</option>
+                <option value="4">MIDI Channel 5</option>
+                <option value="5">MIDI Channel 6</option>
+                <option value="6">MIDI Channel 7</option>
+                <option value="7">MIDI Channel 8</option>
+                <option value="8">MIDI Channel 9</option>
+                <option value="9">MIDI Channel 10 (Drums)</option>
+                <option value="10">MIDI Channel 11</option>
+                <option value="11">MIDI Channel 12</option>
+                <option value="12">MIDI Channel 13</option>
+                <option value="13">MIDI Channel 14</option>
+                <option value="14">MIDI Channel 15</option>
+                <option value="15">MIDI Channel 16</option>
+            </select>
+            <div class="info" style="margin-top: 5px;">
+                Frequency bands → Notes: Sub(C1) Bass(C2) LowMid(C3) Mid(C4) HighMid(C5) High(C6)
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
         <h2>Audio Input <span id="audio-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
         <select id="audio-device-select">
             <option value="none">No Audio Input</option>
@@ -290,7 +330,7 @@
         <div id="midi-synth-options" style="margin-top: 10px;">
             <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">MIDI Channel Filter</label>
             <select id="midi-synth-channel">
-                <option value="all">All MIDI Channels</option>
+                <option value="all">Omni (All Channels)</option>
                 <option value="0">MIDI Channel 1</option>
                 <option value="1">MIDI Channel 2</option>
                 <option value="2">MIDI Channel 3</option>
@@ -2402,6 +2442,36 @@
             sendCommand('sysexEnable', e.target.value);
         });
 
+        // MIDI Output enable
+        const midiOutputEnable = document.getElementById('midi-output-enable');
+        const midiOutputSettings = document.getElementById('midi-output-settings');
+        if (midiOutputEnable) {
+            midiOutputEnable.addEventListener('change', (e) => {
+                const enabled = e.target.checked;
+                sendCommand('midiOutputEnabled', enabled ? 'true' : 'false');
+                midiOutputSettings.style.display = enabled ? 'block' : 'none';
+                if (enabled) {
+                    loadMIDIOutputDevices();
+                }
+            });
+        }
+
+        // MIDI Output device selection
+        const midiOutputSelect = document.getElementById('midi-output-select');
+        if (midiOutputSelect) {
+            midiOutputSelect.addEventListener('change', (e) => {
+                sendCommand('midiOutputSelect', e.target.value);
+            });
+        }
+
+        // MIDI Output channel
+        const midiOutputChannel = document.getElementById('midi-output-channel');
+        if (midiOutputChannel) {
+            midiOutputChannel.addEventListener('change', (e) => {
+                sendCommand('midiOutputChannel', e.target.value);
+            });
+        }
+
         // Renderer selection - STAGE ONLY (don't send to program immediately)
         document.getElementById('renderer-select').addEventListener('change', (e) => {
             const newMode = e.target.value;
@@ -2953,6 +3023,36 @@
                 warning.style.display = 'none';
 
                 select.innerHTML = '<option value="">MIDI not available (browser may not support it)</option>';
+            }
+        }
+
+        // Populate MIDI output devices
+        async function loadMIDIOutputDevices() {
+            const select = document.getElementById('midi-output-select');
+
+            try {
+                const access = await navigator.requestMIDIAccess();
+                select.innerHTML = '';
+
+                const outputs = Array.from(access.outputs.values());
+
+                if (outputs.length === 0) {
+                    select.innerHTML = '<option value="">No MIDI outputs found</option>';
+                    console.log('[Control] MIDI access granted but no output devices connected');
+                    return;
+                }
+
+                outputs.forEach(output => {
+                    const option = document.createElement('option');
+                    option.value = output.id;
+                    option.textContent = output.name;
+                    select.appendChild(option);
+                });
+
+                console.log('[Control] Found', outputs.length, 'MIDI output devices');
+            } catch (error) {
+                console.log('[Control] MIDI output not available:', error.message);
+                select.innerHTML = '<option value="">MIDI not available</option>';
             }
         }
 

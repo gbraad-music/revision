@@ -13,6 +13,7 @@ class RevisionAppV2 {
 
         // Input sources
         this.midiSource = null;
+        this.midiOutputSource = null; // MIDI output for audio-reactive MIDI generation
         this.audioSource = null;
         this.midiAudioSynth = null; // MIDI-to-audio synthesizer for Milkdrop
         this.oscClient = new OSCClient();
@@ -694,6 +695,30 @@ class RevisionAppV2 {
             console.log('[Revision] MIDI auto-init failed (user can grant permission later):', error.message);
         }
 
+        // Initialize MIDI output (for audio-reactive MIDI generation)
+        this.midiOutputSource = new MIDIOutputSource();
+        try {
+            const outputSuccess = await this.midiOutputSource.initialize();
+            if (outputSuccess) {
+                console.log('[Revision] ✓ MIDI output initialized');
+
+                // Auto-connect to last output device (if enabled)
+                const midiOutputEnabled = this.settings.get('midiOutputEnabled') === 'true';
+                const lastOutputId = this.settings.get('midiOutputId');
+                const outputChannel = this.settings.get('midiOutputChannel') || 'all';
+
+                if (midiOutputEnabled && lastOutputId) {
+                    const connected = this.midiOutputSource.connectOutput(lastOutputId);
+                    if (connected) {
+                        this.midiOutputSource.setChannel(outputChannel);
+                        console.log('[Revision] ✓ MIDI output reconnected:', lastOutputId, 'Channel:', outputChannel);
+                    }
+                }
+            }
+        } catch (error) {
+            console.log('[Revision] MIDI output init failed:', error.message);
+        }
+
         // Initialize Audio input (if enabled)
         const audioDeviceId = this.settings.get('audioInputDeviceId');
         if (audioDeviceId) {
@@ -1061,6 +1086,36 @@ class RevisionAppV2 {
                     console.log('[BroadcastChannel] SysEx Enable:', data);
                     this.settings.set('enableSysEx', data);
                     console.log('[Revision] SysEx setting changed to:', data, '- Reload required');
+                    this.broadcastState();
+                    break;
+                case 'midiOutputEnabled':
+                    console.log('[BroadcastChannel] MIDI Output Enabled:', data);
+                    this.settings.set('midiOutputEnabled', data);
+                    if (data === 'true' && this.midiOutputSource) {
+                        // Re-connect if we have a saved device
+                        const lastOutputId = this.settings.get('midiOutputId');
+                        if (lastOutputId) {
+                            this.midiOutputSource.connectOutput(lastOutputId);
+                        }
+                    } else if (data === 'false' && this.midiOutputSource) {
+                        this.midiOutputSource.disconnect();
+                    }
+                    this.broadcastState();
+                    break;
+                case 'midiOutputSelect':
+                    console.log('[BroadcastChannel] MIDI Output Select:', data);
+                    this.settings.set('midiOutputId', data);
+                    if (this.midiOutputSource && data) {
+                        this.midiOutputSource.connectOutput(data);
+                    }
+                    this.broadcastState();
+                    break;
+                case 'midiOutputChannel':
+                    console.log('[BroadcastChannel] MIDI Output Channel:', data);
+                    this.settings.set('midiOutputChannel', data);
+                    if (this.midiOutputSource) {
+                        this.midiOutputSource.setChannel(data === 'all' ? 'all' : parseInt(data));
+                    }
                     this.broadcastState();
                     break;
                 case 'rendererSelect':
@@ -1584,6 +1639,15 @@ class RevisionAppV2 {
 
         // Note events
         this.inputManager.on('note', (data) => {
+            // Send audio-frequency notes to MIDI output (audio-reactive MIDI generation)
+            if (this.midiOutputSource && this.midiOutputSource.isActive && data.source === 'audio-frequency') {
+                if (data.velocity > 0) {
+                    this.midiOutputSource.sendNoteOn(data.note, data.velocity);
+                } else {
+                    this.midiOutputSource.sendNoteOff(data.note);
+                }
+            }
+
             // Feed MIDI notes to synthesizer (if enabled and on correct channel)
             if (this.midiAudioSynth && data.source === 'midi') {
                 const synthChannel = this.settings.get('midiSynthChannel') || 'all';

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v43';
+const CACHE_NAME = 'revision-v44';
 const ASSETS = [
     './',
     './index.html',
@@ -16,6 +16,7 @@ const ASSETS = [
     './inputs/input-manager.js',
     './inputs/midi-audio-synth.js',
     './inputs/midi-input-source.js',
+    './inputs/midi-output-source.js',
     // Presets and renderers
     './presets/milkdrop-renderer.js',
     './presets/preset-manager.js',
