@@ -1066,6 +1066,10 @@ class RevisionAppV2 {
                 case 'rendererSelect':
                     console.log('[BroadcastChannel] Renderer Select:', data);
                     this.settings.set('renderer', data);
+                    // CRITICAL: Switching renderer should also switch to builtin mode
+                    // Otherwise the builtin canvas stays hidden and nothing is visible
+                    await this.switchPresetType('builtin');
+                    // Now reinitialize the renderer with the new type
                     this.renderer.stop();
                     this.renderer.initialize(data);
                     this.renderer.resize();
@@ -2489,6 +2493,24 @@ class RevisionAppV2 {
         try {
             console.log(`[Revision] Loading Three.js preset on-demand: ${presetName}${cacheBust ? ' (fresh)' : ''}`);
 
+            if (cacheBust) {
+                // CRITICAL: Remove ALL old script tags for this preset first
+                // This prevents "Identifier already declared" errors from duplicate class declarations
+                const oldScripts = document.querySelectorAll(`script[data-preset-src="${presetInfo.file}"]`);
+                console.log(`[Revision] Removing ${oldScripts.length} old script tag(s) for ${presetName}`);
+                oldScripts.forEach(s => s.remove());
+
+                // Force garbage collection of the old class by deleting it
+                // This works because class declarations create deletable window properties
+                if (window[presetInfo.className]) {
+                    delete window[presetInfo.className];
+                    console.log(`[Revision] Deleted old class: ${presetInfo.className}`);
+                }
+
+                // Wait a tick to ensure scripts are fully removed from DOM
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+
             // Dynamically load the script with cache busting
             await this.loadScript(presetInfo.file, cacheBust);
 
@@ -2524,10 +2546,6 @@ class RevisionAppV2 {
 
     loadScript(src, cacheBust = false) {
         return new Promise((resolve, reject) => {
-            // Remove old script with same src if it exists
-            const oldScripts = document.querySelectorAll(`script[data-preset-src="${src}"]`);
-            oldScripts.forEach(s => s.remove());
-
             const script = document.createElement('script');
             script.setAttribute('data-preset-src', src);
 

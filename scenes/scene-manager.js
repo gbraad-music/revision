@@ -45,7 +45,8 @@ class SceneManager {
                 const intensityBurst = 2.0 + velocityAmount * 3.0;
                 this.renderer.setParameter('intensity', intensityBurst);
 
-                console.log(`[Scene] Tunnel Note: ${note}, Vel: ${velocity}, Hue: ${hue.toFixed(0)}, Zoom: ${zoomBurst.toFixed(2)}`);
+                // Removed verbose logging to reduce console spam
+                // console.log(`[Scene] Tunnel Note: ${note}, Vel: ${velocity}, Hue: ${hue.toFixed(0)}, Zoom: ${zoomBurst.toFixed(2)}`);
             }
         });
 
