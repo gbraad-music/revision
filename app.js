@@ -1614,23 +1614,33 @@ class RevisionAppV2 {
         console.log('[Revision] ═══ END RECONNECT ═══');
     }
 
+    // Get the actual audio input device name
     getFormattedAudioSource() {
+        const deviceId = this.settings.get('audioInputDeviceId');
+
+        if (!deviceId || deviceId === 'none') {
+            return 'None';
+        }
+
+        // Get the device name from the audio source if available
+        if (this.audioSource && this.audioSource.deviceName) {
+            return this.audioSource.deviceName;
+        }
+
+        // Fallback to deviceId (truncated if too long)
+        return deviceId.length > 20 ? deviceId.substring(0, 20) + '...' : deviceId;
+    }
+
+    // Get what drives the visual reactivity (microphone or MIDI synth)
+    getFormattedReactiveInput() {
         // Use ACTUAL running state, not saved setting
         // (MIDI synth is never auto-started, requires user gesture)
         const visualSource = this.currentVisualAudioSource || 'microphone';
 
         if (visualSource === 'midi') {
-            const channel = this.settings.get('midiSynthChannel') || 'all';
-            if (channel === 'all') {
-                return 'MIDI All';
-            } else {
-                const channelNum = parseInt(channel) + 1;
-                return `MIDI Ch.${channelNum}`;
-            }
+            return 'MIDI Synthesizer';
         } else {
-            // Check if audio monitoring is enabled (audible)
-            const monitoringEnabled = this.settings.get('audioBeatReactive') === 'true';
-            return monitoringEnabled ? 'Audio Input (Audible)' : 'Audio Input (Silent)';
+            return 'Audio Input Device';
         }
     }
 
@@ -1666,6 +1676,7 @@ class RevisionAppV2 {
             midiSynthFeedInput: this.settings.get('midiSynthFeedInput') === 'true' ? 'true' : 'false',
             midiSynthBeatKick: this.settings.get('midiSynthBeatKick') === 'true' ? 'true' : 'false',
             audioSourceDisplay: this.getFormattedAudioSource(),
+            reactiveInputDisplay: this.getFormattedReactiveInput(),
             midiInputId: this.settings.get('midiInputId') || '',
             enableSysEx: this.settings.get('enableSysEx') || 'true',
             renderer: this.settings.get('renderer') || 'webgl',
@@ -1694,6 +1705,11 @@ class RevisionAppV2 {
         const audioSourceDisplay = document.getElementById('audio-source-display');
         if (audioSourceDisplay) {
             audioSourceDisplay.textContent = state.audioSourceDisplay;
+        }
+
+        const reactiveInputDisplay = document.getElementById('reactive-input-display');
+        if (reactiveInputDisplay) {
+            reactiveInputDisplay.textContent = state.reactiveInputDisplay;
         }
 
         // Update SPP indicator (flash yellow when SPP received)

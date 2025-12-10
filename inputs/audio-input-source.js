@@ -11,6 +11,7 @@ class AudioInputSource {
         this.listeners = new Map();
         this.monitorGain = null; // For audio monitoring (hearing the input)
         this.monitoringEnabled = false;
+        this.deviceName = null; // Friendly device name
 
         // Beat detection
         this.beatDetector = {
@@ -101,6 +102,9 @@ class AudioInputSource {
                 const actualSettings = track.getSettings();
                 const actualSampleRate = actualSettings.sampleRate || 'unknown';
 
+                // Store friendly device name
+                this.deviceName = track.label || 'Unknown Device';
+
                 console.log('[AudioInput] ═══════════════════════════════════════');
                 console.log('[AudioInput] Using audio device:', track.label);
                 console.log('[AudioInput] REQUESTED sample rate:', sampleRate, 'Hz');
@@ -159,8 +163,7 @@ class AudioInputSource {
             this.isActive = true;
             this.startAnalysis();
 
-            const deviceName = deviceId ? `device ${deviceId.substring(0, 8)}...` : 'default';
-            console.log('[AudioInput] Microphone connected:', deviceName);
+            console.log('[AudioInput] Microphone connected:', this.deviceName);
             console.log('[AudioInput] AudioContext state:', this.audioContext.state, 'Sample rate:', this.audioContext.sampleRate);
             console.log('[AudioInput] Analyser FFT size:', this.analyser.fftSize);
             console.log('[AudioInput] Analyser smoothing:', this.analyser.smoothingTimeConstant);
