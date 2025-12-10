@@ -1834,17 +1834,25 @@
         function goToProgramStream() {
             console.log('[Control] GO TO PROGRAM: Stream');
 
-            if (!stagedStreamURL) {
+            // Read stream URL directly from input field (no preview required)
+            const streamURL = document.getElementById('stream-url').value.trim();
+            if (!streamURL) {
                 console.warn('[Control] No stream URL entered');
-                alert('Please enter a stream URL and load it to preview first');
+                alert('Please enter a stream URL first');
                 return;
             }
 
+            // Use staged values if available, otherwise use defaults
+            const streamType = stagedStreamType || document.getElementById('stream-type').value;
+            const fitMode = stagedStreamFitMode || document.getElementById('stream-fit').value;
+
+            console.log('[Control] Sending stream to program:', streamURL, 'Type:', streamType, 'Fit:', fitMode);
+
             // Send stream data to main app
             sendCommand('streamLoad', {
-                url: stagedStreamURL,
-                streamType: stagedStreamType,
-                fitMode: stagedStreamFitMode
+                url: streamURL,
+                streamType: streamType,
+                fitMode: fitMode
             });
         }
 
@@ -1934,15 +1942,19 @@
         function goToProgramWebpage() {
             console.log('[Control] GO TO PROGRAM: Webpage');
 
-            if (!stagedWebpageURL) {
+            // Read webpage URL directly from input field (no preview required)
+            const webpageURL = document.getElementById('webpage-url').value.trim();
+            if (!webpageURL) {
                 console.warn('[Control] No webpage URL entered');
-                alert('Please enter a webpage URL and load it to preview first');
+                alert('Please enter a webpage URL first');
                 return;
             }
 
+            console.log('[Control] Sending webpage to program:', webpageURL);
+
             // Send webpage data to main app
             sendCommand('webpageLoad', {
-                url: stagedWebpageURL
+                url: webpageURL
             });
         }
 
