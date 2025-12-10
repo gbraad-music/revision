@@ -753,6 +753,35 @@ class RevisionAppV2 {
             }
 
             switch (command) {
+                case 'blackScreen':
+                    console.log('[BroadcastChannel] Black Screen - static black screen');
+                    // Stop all renderers
+                    this.renderer.stop();
+                    if (this.threeJSRenderer) this.threeJSRenderer.stop();
+                    if (this.milkdropRenderer) this.milkdropRenderer.stop();
+                    if (this.videoRenderer) this.videoRenderer.stop();
+                    if (this.mediaRenderer) this.mediaRenderer.stop();
+                    if (this.streamRenderer) this.streamRenderer.stop();
+                    if (this.webpageRenderer) this.webpageRenderer.stop();
+
+                    // Hide ALL canvases including builtin (can't mix WebGL and 2D context)
+                    this.builtinCanvas.style.display = 'none';
+                    this.threejsCanvas.style.display = 'none';
+                    this.milkdropCanvas.style.display = 'none';
+                    this.videoCanvas.style.display = 'none';
+                    this.mediaCanvas.style.display = 'none';
+                    this.streamCanvas.style.display = 'none';
+                    this.webpageContainer.style.display = 'none';
+
+                    // Show black-screen div (z-index 2, solid black background)
+                    this.blackScreen.style.display = 'block';
+
+                    // Update mode
+                    this.currentPresetType = 'black';
+                    this.settings.set('presetType', 'black');
+                    this.broadcastState();
+                    console.log('[Revision] ✓ Black screen active (static div)');
+                    break;
                 case 'switchMode':
                     this.switchPresetType(data);
                     break;
@@ -871,6 +900,12 @@ class RevisionAppV2 {
                     console.log('[BroadcastChannel] Audio Sample Rate:', data);
                     this.settings.set('audioSampleRate', data);
                     // Audio source would need to be reconnected to apply new sample rate
+                    break;
+                case 'audioBeatReactive':
+                    console.log('[BroadcastChannel] Audio Beat Reactive:', data);
+                    this.settings.set('audioBeatReactive', data);
+                    // Beat detection is always active in audio input, this setting is for UI feedback
+                    this.broadcastState();
                     break;
                 case 'midiSynthEnable':
                     console.log('[BroadcastChannel] MIDI Synth Enable:', data);
@@ -1359,6 +1394,8 @@ class RevisionAppV2 {
             videoDeviceId: this.settings.get('videoDeviceId') || '',
             videoAudioReactive: this.settings.get('videoAudioReactive') || 'false',
             videoBeatReactive: this.settings.get('videoBeatReactive') || 'false',
+            videoAudioOutput: this.settings.get('videoAudioOutput') || 'false',
+            audioBeatReactive: this.settings.get('audioBeatReactive') || 'false',
             showStatusBar: this.settings.get('showStatusBar') !== 'false' ? 'true' : 'false',
             showControlPanel: this.settings.get('showControlPanel') === 'true' ? 'true' : 'false',
             isFullscreen: document.fullscreenElement ? 'true' : 'false',
@@ -2033,6 +2070,27 @@ class RevisionAppV2 {
             case 'builtin':
                 this.builtinCanvas.style.display = 'block';
                 this.builtinCanvas.style.opacity = '0';
+
+                // CRITICAL: Check if WebGL context is lost and reinitialize if needed
+                const testContext = this.builtinCanvas.getContext('webgl2', { failIfMajorPerformanceCaveat: false }) ||
+                                   this.builtinCanvas.getContext('webgl', { failIfMajorPerformanceCaveat: false });
+                if (!testContext) {
+                    console.warn('[Revision] WebGL context destroyed (2D context was used) - reinitializing renderer...');
+                    // Destroy and recreate renderer
+                    if (this.renderer) {
+                        this.renderer.stop();
+                    }
+                    this.renderer = new VisualRenderer('builtin-canvas');
+                    const renderMode = this.settings.get('renderer') || 'webgl';
+                    this.renderer.initialize(renderMode);
+                    this.sceneManager = new SceneManager(this.renderer);
+                    this.presetManager.setRenderer('builtin', this.renderer);
+
+                    // CRITICAL: Update reference to the new canvas element (renderer replaces it)
+                    this.builtinCanvas = document.getElementById('builtin-canvas');
+                    console.log('[Revision] ✓ Renderer reinitialized with fresh WebGL context and canvas replaced');
+                }
+
                 this.renderer.resize(); // Force canvas to proper dimensions
                 this.renderer.start();
                 this.presetManager.switchPreset('builtin-tunnel');

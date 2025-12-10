@@ -396,6 +396,13 @@ class VisualRenderer {
         const gl = this.gl;
         if (!gl || !this.program) return;
 
+        // Handle blank/black screen mode - just clear to black
+        if (this.visualMode === 'blank') {
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            return;
+        }
+
         gl.useProgram(this.program);
 
         // Map visualMode to integer for shader

@@ -324,6 +324,16 @@
         <div class="info" id="program-builtin-display" style="margin-top: 5px; display: none;">Scene: <span id="program-builtin-name" style="color: #00ff00; font-weight: bold;">-</span></div>
         <div class="info" id="program-preset-display" style="margin-top: 5px; display: none;">Preset: <span id="program-preset-name" style="color: #00ff00; font-weight: bold;">-</span></div>
         <div class="info" id="program-renderer-display" style="margin-top: 5px; display: none;">Renderer: <span id="program-renderer-name" style="color: #00ff00; font-weight: bold;">-</span></div>
+
+        <label style="display: block; margin-top: 15px; font-size: 12px; border-top: 1px solid #2a2a2a; padding-top: 10px;">
+            <input type="checkbox" id="global-audio-output" style="width: auto; margin-right: 5px;">
+            Enable audio output (unmute video/stream/camera)
+        </label>
+
+        <label style="display: block; margin-top: 10px; font-size: 12px;">
+            <input type="checkbox" id="global-audio-beat-reactive" style="width: auto; margin-right: 5px;">
+            Audio input beat-reactive (kick detection)
+        </label>
     </div>
 
     <div class="section">
@@ -445,11 +455,6 @@
         <label style="display: block; margin-top: 10px; font-size: 12px;">
             <input type="checkbox" id="video-beat-reactive" style="width: auto; margin-right: 5px;">
             Beat-reactive zoom pulse (4-on-the-floor)
-        </label>
-
-        <label style="display: block; margin-top: 10px; font-size: 12px;">
-            <input type="checkbox" id="video-audio-output" style="width: auto; margin-right: 5px;">
-            Enable audio output (unmute camera/stream audio)
         </label>
 
         <div style="margin-top: 15px;">
@@ -675,11 +680,9 @@
             switch (currentPreviewMode) {
                 case 'black':
                     console.log('[Control] GO TO PROGRAM: Black Screen');
-                    sendCommand('switchMode', 'builtin');
-                    setTimeout(() => {
-                        sendCommand('switchScene', 4); // Scene 4 is black screen
-                        sendCommand('rendererSelect', 'webgl');
-                    }, 100);
+                    // Black screen is NOT a scene - it's achieved by hiding all canvases
+                    // Send custom command to show only black-screen div
+                    sendCommand('blackScreen');
                     break;
                 case 'builtin':
                     goToProgramBuiltin();
@@ -896,6 +899,18 @@
         // INIT BLACK PREVIEW
         function initBlackPreview() {
             console.log('[Control] Initializing black screen preview...');
+
+            // CRITICAL: Replace canvas to ensure fresh 2D context and clear any WebGL content
+            const oldCanvas = document.getElementById('unified-preview-canvas');
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = 'unified-preview-canvas';
+            newCanvas.width = 640;
+            newCanvas.height = 360;
+            newCanvas.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block;';
+
+            oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+            unifiedCanvas = newCanvas;
+            console.log('[Control] Canvas refreshed for black screen mode');
 
             // Clear canvas to black
             const ctx = unifiedCanvas.getContext('2d');
@@ -2115,7 +2130,7 @@
             // Update current mode display and track program mode
             if (state.mode) {
                 currentProgramMode = state.mode; // Track current program mode
-                const modeNames = { builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video' };
+                const modeNames = { black: 'Black', builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video', media: 'Media', stream: 'Stream', webpage: 'Webpage' };
                 document.getElementById('current-mode-display').textContent = modeNames[state.mode] || state.mode;
 
                 // Show/hide scene display based on mode
@@ -2248,6 +2263,22 @@
                 const videoBeatReactiveElement = document.getElementById('video-beat-reactive');
                 if (videoBeatReactiveElement) {
                     videoBeatReactiveElement.checked = state.videoBeatReactive === 'true';
+                }
+            }
+
+            // Update global audio output toggle (PROGRAM Output section)
+            if (state.videoAudioOutput !== undefined) {
+                const globalAudioOutputElement = document.getElementById('global-audio-output');
+                if (globalAudioOutputElement) {
+                    globalAudioOutputElement.checked = state.videoAudioOutput === 'true';
+                }
+            }
+
+            // Update global audio beat-reactive toggle (PROGRAM Output section)
+            if (state.audioBeatReactive !== undefined) {
+                const globalBeatReactiveElement = document.getElementById('global-audio-beat-reactive');
+                if (globalBeatReactiveElement) {
+                    globalBeatReactiveElement.checked = state.audioBeatReactive === 'true';
                 }
             }
 
@@ -2468,86 +2499,95 @@
             sendCommand('videoBeatReactive', e.target.checked ? 'true' : 'false');
         });
 
-        // Video audio output toggle
-        document.getElementById('video-audio-output').addEventListener('change', (e) => {
-            sendCommand('videoAudioOutput', e.target.checked ? 'true' : 'false');
-        });
-
         // Video resolution change - save and reload if in preview
-        document.getElementById('video-resolution-select').addEventListener('change', async (e) => {
-            const resolution = e.target.value;
-            sendCommand('videoResolution', resolution);
+        const videoResolutionSelect = document.getElementById('video-resolution-select');
+        if (videoResolutionSelect) {
+            videoResolutionSelect.addEventListener('change', async (e) => {
+                const resolution = e.target.value;
+                sendCommand('videoResolution', resolution);
 
-            // If currently previewing video, reload with new resolution
-            if (currentPreviewMode === 'video' && stagedVideoDeviceId) {
-                console.log('[Control] Resolution changed to', resolution, '- reloading preview');
-                if (unifiedPreviewRenderer) {
-                    unifiedPreviewRenderer.release();
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                    unifiedPreviewRenderer = null;
+                // If currently previewing video, reload with new resolution
+                if (currentPreviewMode === 'video' && stagedVideoDeviceId) {
+                    console.log('[Control] Resolution changed to', resolution, '- reloading preview');
+                    if (unifiedPreviewRenderer) {
+                        unifiedPreviewRenderer.release();
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                        unifiedPreviewRenderer = null;
+                    }
+                    await initVideoPreview();
                 }
-                await initVideoPreview();
-            }
-        });
+            });
+        } else {
+            console.warn('[Control] video-resolution-select element not found');
+        }
 
         // Video framerate change - save and reload if in preview
-        document.getElementById('video-framerate-select').addEventListener('change', async (e) => {
-            const framerate = e.target.value;
-            sendCommand('videoFramerate', framerate);
+        const videoFramerateSelect = document.getElementById('video-framerate-select');
+        if (videoFramerateSelect) {
+            videoFramerateSelect.addEventListener('change', async (e) => {
+                const framerate = e.target.value;
+                sendCommand('videoFramerate', framerate);
 
-            // If currently previewing video, reload with new framerate
-            if (currentPreviewMode === 'video' && stagedVideoDeviceId) {
-                console.log('[Control] Framerate changed to', framerate, 'fps - reloading preview');
-                if (unifiedPreviewRenderer) {
-                    unifiedPreviewRenderer.release();
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                    unifiedPreviewRenderer = null;
+                // If currently previewing video, reload with new framerate
+                if (currentPreviewMode === 'video' && stagedVideoDeviceId) {
+                    console.log('[Control] Framerate changed to', framerate, 'fps - reloading preview');
+                    if (unifiedPreviewRenderer) {
+                        unifiedPreviewRenderer.release();
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                        unifiedPreviewRenderer = null;
+                    }
+                    await initVideoPreview();
                 }
-                await initVideoPreview();
-            }
-        });
+            });
+        } else {
+            console.warn('[Control] video-framerate-select element not found');
+        }
 
         // Drag-and-drop for media files
         const dropZone = document.getElementById('media-drop-zone');
         const fileInput = document.getElementById('media-file-input');
 
-        // Click to browse
-        dropZone.addEventListener('click', () => {
-            fileInput.click();
-        });
+        if (dropZone && fileInput) {
+            // Click to browse
+            dropZone.addEventListener('click', () => {
+                fileInput.click();
+            });
 
-        // Drag over
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.style.borderColor = '#0066FF';
-            dropZone.style.background = '#0a1a2a';
-        });
+            // Drag over
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#0066FF';
+                dropZone.style.background = '#0a1a2a';
+            });
 
-        // Drag leave
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.style.borderColor = '#2a2a2a';
-            dropZone.style.background = '#0a0a0a';
-        });
+            // Drag leave
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.style.borderColor = '#2a2a2a';
+                dropZone.style.background = '#0a0a0a';
+            });
 
-        // Drop
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.style.borderColor = '#2a2a2a';
-            dropZone.style.background = '#0a0a0a';
+            // Drop
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#2a2a2a';
+                dropZone.style.background = '#0a0a0a';
 
-            const file = e.dataTransfer.files[0];
-            if (file) {
-                handleMediaFile(file);
-            }
-        });
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    handleMediaFile(file);
+                }
+            });
 
-        // File input change (from click to browse)
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                handleMediaFile(file);
-            }
-        });
+            // File input change (from click to browse)
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    handleMediaFile(file);
+                }
+            });
+        } else {
+            console.warn('[Control] media-drop-zone or media-file-input element not found');
+        }
 
         // Unified media file handler
         function handleMediaFile(file) {
@@ -2637,6 +2677,18 @@
             console.log('[Control] Media beat reactive:', e.target.checked);
             // Send to program in real-time
             sendCommand('mediaBeatReactive', e.target.checked ? 'true' : 'false');
+        });
+
+        // Global audio output toggle
+        document.getElementById('global-audio-output').addEventListener('change', (e) => {
+            console.log('[Control] Global audio output:', e.target.checked);
+            sendCommand('videoAudioOutput', e.target.checked ? 'true' : 'false');
+        });
+
+        // Global audio beat-reactive toggle
+        document.getElementById('global-audio-beat-reactive').addEventListener('change', (e) => {
+            console.log('[Control] Global audio beat-reactive:', e.target.checked);
+            sendCommand('audioBeatReactive', e.target.checked ? 'true' : 'false');
         });
 
         // Stream audio reactive toggle
