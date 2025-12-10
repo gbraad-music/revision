@@ -1008,9 +1008,9 @@ class RevisionAppV2 {
                         this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
                         this.midiAudioSynth.initialize();
 
-                        // Apply saved audible setting
+                        // Apply saved audible setting (MUST await to ensure AudioContext is ready)
                         const audibleSetting = this.settings.get('midiSynthAudible') === 'true';
-                        this.midiAudioSynth.setAudible(audibleSetting);
+                        await this.midiAudioSynth.setAudible(audibleSetting);
 
                         console.log('[Revision] ✓ MIDI audio synthesizer ENABLED - audible:', audibleSetting);
 
@@ -1036,13 +1036,6 @@ class RevisionAppV2 {
                         this.midiAudioSynth.destroy();
                         this.midiAudioSynth = null;
                         console.log('[Revision] ✓ MIDI audio synthesizer DISABLED');
-
-                        // Auto-disable beat kick (can't work without synth)
-                        const beatKickEnabled = this.settings.get('midiSynthBeatKick') === 'true';
-                        if (beatKickEnabled) {
-                            this.settings.set('midiSynthBeatKick', 'false');
-                            console.log('[Revision] Auto-disabled beat kick (synth destroyed)');
-                        }
 
                         // If reactive input was MIDI, switch back to microphone
                         if (this.currentVisualAudioSource === 'midi') {
@@ -1087,9 +1080,9 @@ class RevisionAppV2 {
                             this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
                             this.midiAudioSynth.initialize();
 
-                            // Apply saved audible setting
+                            // Apply saved audible setting (MUST await to ensure AudioContext is ready)
                             const audibleSetting = this.settings.get('midiSynthAudible') === 'true';
-                            this.midiAudioSynth.setAudible(audibleSetting);
+                            await this.midiAudioSynth.setAudible(audibleSetting);
                             console.log('[Revision] ✓ MIDI synthesizer CREATED - audible:', audibleSetting);
                         } else {
                             console.log('[Revision] ✓ MIDI synthesizer already enabled');
@@ -1110,8 +1103,7 @@ class RevisionAppV2 {
                             console.log('[Revision] ✅ Active sources:', this.inputManager.getAllSources());
                         }
                     } else if (data === 'microphone') {
-                        // Check if synth should be kept alive (beat kick OR explicitly enabled)
-                        const beatKickEnabled = this.settings.get('midiSynthBeatKick') === 'true';
+                        // Check if synth should be kept alive (only if explicitly enabled)
                         const synthEnabled = this.settings.get('midiSynthEnable') === 'true';
 
                         if (this.midiAudioSynth) {
@@ -1119,13 +1111,12 @@ class RevisionAppV2 {
                             console.log('[Revision] Unregistering MIDI synth from reactive input');
                             this.inputManager.unregisterSource('midi-synth');
 
-                            if (beatKickEnabled || synthEnabled) {
-                                // Keep synth alive (beat kick OR explicitly enabled by user)
-                                const reason = beatKickEnabled ? 'beat kick' : 'explicitly enabled';
-                                console.log(`[Revision] ✓ MIDI synth kept alive (${reason})`);
+                            if (synthEnabled) {
+                                // Keep synth alive (explicitly enabled by user)
+                                console.log('[Revision] ✓ MIDI synth kept alive (explicitly enabled)');
                             } else {
-                                // No dependencies - safe to destroy
-                                console.log('[Revision] Destroying MIDI synthesizer (not needed)...');
+                                // Not explicitly enabled - safe to destroy
+                                console.log('[Revision] Destroying MIDI synthesizer (not explicitly enabled)...');
                                 this.midiAudioSynth.destroy();
                                 this.midiAudioSynth = null;
                                 console.log('[Revision] ✓ MIDI synthesizer DESTROYED - switching to audio input device');
@@ -1166,7 +1157,7 @@ class RevisionAppV2 {
                     console.log('[BroadcastChannel] MIDI Synth Audible:', data);
                     this.settings.set('midiSynthAudible', data);
                     if (this.midiAudioSynth) {
-                        this.midiAudioSynth.setAudible(data === 'true');
+                        await this.midiAudioSynth.setAudible(data === 'true');
                     }
 
                     // Update display immediately
@@ -1236,19 +1227,8 @@ class RevisionAppV2 {
                         }
                     }
 
-                    // CRITICAL: Destroy MIDI synth when beat kick disabled (if reactive input is microphone)
-                    if (data === 'false' && this.midiAudioSynth) {
-                        const reactiveInput = this.currentVisualAudioSource || 'microphone';
-                        if (reactiveInput === 'microphone') {
-                            console.log('[Revision] Beat kick disabled and reactive input is microphone - destroying synth');
-                            this.inputManager.unregisterSource('midi-synth');
-                            this.midiAudioSynth.destroy();
-                            this.midiAudioSynth = null;
-                            console.log('[Revision] ✓ MIDI synth destroyed');
-                        } else {
-                            console.log('[Revision] Beat kick disabled but reactive input is MIDI - keeping synth alive');
-                        }
-                    }
+                    // Beat kick is a persistent setting - synth stays alive when disabled
+                    // Only "Enable MIDI Synthesizer" controls synth lifecycle
 
                     // Update display immediately
                     this.broadcastState();

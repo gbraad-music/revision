@@ -350,16 +350,11 @@
         <div class="info" style="margin-top: 5px;">Creates audio synthesizer from MIDI input. Required for MIDI reactive visualization.</div>
 
         <label style="display: block; margin-top: 10px; font-size: 12px;">
-            <input type="checkbox" id="midi-synth-audible" style="width: auto; margin-right: 5px;">
-            Make MIDI synth audible (hear the notes)
-        </label>
-
-        <label style="display: block; margin-top: 10px; font-size: 12px;">
             <input type="checkbox" id="midi-synth-beat-kick" style="width: auto; margin-right: 5px;">
             Generate kick drum from beat events
         </label>
         <div class="info" style="margin-top: 5px;">
-            Triggers a kick drum on each beat (from MIDI clock OR audio beat detection). Use "Make MIDI synth audible" to hear it.
+            Triggers a kick drum on each beat (from MIDI clock OR audio beat detection). Enable "MIDI synth audio output" in PROGRAM Output to hear it.
         </div>
 
         <label style="display: block; margin-top: 10px; font-size: 12px;">
@@ -423,6 +418,11 @@
         <label style="display: block; margin-top: 10px; font-size: 12px;">
             <input type="checkbox" id="global-audio-beat-reactive" style="width: auto; margin-right: 5px;">
             Audio input monitoring (make microphone audible)
+        </label>
+
+        <label style="display: block; margin-top: 10px; font-size: 12px;">
+            <input type="checkbox" id="midi-synth-audible" style="width: auto; margin-right: 5px;">
+            MIDI synth audio output (hear notes and kick drum)
         </label>
     </div>
 
