@@ -696,19 +696,18 @@ class RevisionAppV2 {
             console.log('[Revision] MIDI auto-init failed (user can grant permission later):', error.message);
         }
 
-        // Initialize MIDI output (for audio-reactive MIDI generation)
+        // Initialize MIDI output (for Reactive Output)
         this.midiOutputSource = new MIDIOutputSource();
         try {
             const outputSuccess = await this.midiOutputSource.initialize();
             if (outputSuccess) {
                 console.log('[Revision] ✓ MIDI output initialized');
 
-                // Auto-connect to last output device (if enabled)
-                const midiOutputEnabled = this.settings.get('midiOutputEnabled') === 'true';
+                // Auto-connect to last output device (if one was selected)
                 const lastOutputId = this.settings.get('midiOutputId');
                 const outputChannel = this.settings.get('midiOutputChannel') || 'all';
 
-                if (midiOutputEnabled && lastOutputId) {
+                if (lastOutputId) {
                     const connected = this.midiOutputSource.connectOutput(lastOutputId);
                     if (connected) {
                         this.midiOutputSource.setChannel(outputChannel);
@@ -998,16 +997,62 @@ class RevisionAppV2 {
                     console.log('[BroadcastChannel] MIDI Synth Enable:', data);
                     this.settings.set('midiSynthEnable', data);
                     if (data === 'true' && !this.midiAudioSynth) {
+                        // CRITICAL: Resume AudioContext if suspended (requires user gesture)
+                        if (this.audioSource.audioContext.state === 'suspended') {
+                            console.log('[Revision] ⚠️ AudioContext suspended, resuming...');
+                            await this.audioSource.audioContext.resume();
+                            console.log('[Revision] ✓ AudioContext resumed:', this.audioSource.audioContext.state);
+                        }
+
                         // Enable synth
                         this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
                         this.midiAudioSynth.initialize();
-                        console.log('[Revision] MIDI audio synthesizer ENABLED');
+
+                        // Apply saved audible setting
+                        const audibleSetting = this.settings.get('midiSynthAudible') === 'true';
+                        this.midiAudioSynth.setAudible(audibleSetting);
+
+                        console.log('[Revision] ✓ MIDI audio synthesizer ENABLED - audible:', audibleSetting);
+
+                        // If reactive input is set to MIDI, register the synth
+                        if (this.currentVisualAudioSource === 'midi') {
+                            console.log('[Revision] 🟢 Registering MIDI synth with InputManager (reactive input is MIDI)');
+                            this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
+
+                            // Setup MIDI synth input handlers
+                            if (this.midiSynthSource) {
+                                this.setupMIDISynthHandlers();
+                                console.log('[Revision] ✓ MIDI synth input handlers connected');
+                            }
+
+                            // Reconnect audio to renderer
+                            this.reconnectAudioToRenderer();
+                        }
                     } else if (data === 'false' && this.midiAudioSynth) {
                         // Disable synth
+                        console.log('[Revision] Unregistering MIDI synth from InputManager');
+                        this.inputManager.unregisterSource('midi-synth');
+
                         this.midiAudioSynth.destroy();
                         this.midiAudioSynth = null;
-                        console.log('[Revision] MIDI audio synthesizer DISABLED');
+                        console.log('[Revision] ✓ MIDI audio synthesizer DISABLED');
+
+                        // Auto-disable beat kick (can't work without synth)
+                        const beatKickEnabled = this.settings.get('midiSynthBeatKick') === 'true';
+                        if (beatKickEnabled) {
+                            this.settings.set('midiSynthBeatKick', 'false');
+                            console.log('[Revision] Auto-disabled beat kick (synth destroyed)');
+                        }
+
+                        // If reactive input was MIDI, switch back to microphone
+                        if (this.currentVisualAudioSource === 'midi') {
+                            console.log('[Revision] Switching reactive input back to microphone (synth disabled)');
+                            this.currentVisualAudioSource = 'microphone';
+                            this.settings.set('visualAudioSource', 'microphone');
+                            this.reconnectAudioToRenderer();
+                        }
                     }
+                    this.broadcastState();
                     break;
                 case 'milkdropAudioSource':
                     console.log('[BroadcastChannel] ═══════════════════════════════════════');
@@ -1021,17 +1066,24 @@ class RevisionAppV2 {
                     console.log('[Revision] 🧹 Cleared old frequency data');
                     this.broadcastState(); // Immediately send zeros to EQ
 
-                    // Enable/disable MIDI synth based on source
+                    // Switch reactive input source
                     if (data === 'midi') {
-                        // CRITICAL: Resume AudioContext if suspended (requires user gesture)
-                        if (this.audioSource.audioContext.state === 'suspended') {
-                            console.log('[Revision] ⚠️ AudioContext suspended, resuming...');
-                            await this.audioSource.audioContext.resume();
-                            console.log('[Revision] ✓ AudioContext resumed:', this.audioSource.audioContext.state);
-                        }
+                        // CRITICAL: Check if MIDI synth is enabled first
+                        const synthEnabled = this.settings.get('midiSynthEnable') === 'true';
 
-                        if (!this.midiAudioSynth) {
-                            console.log('[Revision] Creating new MIDI synthesizer...');
+                        if (!synthEnabled) {
+                            // Auto-enable MIDI synth when selecting it as reactive input (temporary, not saved)
+                            console.log('[Revision] 🔧 Auto-enabling MIDI synth temporarily (reactive input set to MIDI)');
+                            // NOTE: Don't save midiSynthEnable here - only when user explicitly checks the box
+
+                            // CRITICAL: Resume AudioContext if suspended (requires user gesture)
+                            if (this.audioSource.audioContext.state === 'suspended') {
+                                console.log('[Revision] ⚠️ AudioContext suspended, resuming...');
+                                await this.audioSource.audioContext.resume();
+                                console.log('[Revision] ✓ AudioContext resumed:', this.audioSource.audioContext.state);
+                            }
+
+                            // Create synth
                             this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
                             this.midiAudioSynth.initialize();
 
@@ -1040,11 +1092,11 @@ class RevisionAppV2 {
                             this.midiAudioSynth.setAudible(audibleSetting);
                             console.log('[Revision] ✓ MIDI synthesizer CREATED - audible:', audibleSetting);
                         } else {
-                            console.log('[Revision] ✓ MIDI synthesizer already exists, keeping it');
+                            console.log('[Revision] ✓ MIDI synthesizer already enabled');
                         }
 
                         // Hook up MIDI synth input source to feed notes to synth
-                        if (this.midiSynthSource) {
+                        if (this.midiSynthSource && this.midiAudioSynth) {
                             this.setupMIDISynthHandlers();
                             console.log('[Revision] ✓ MIDI synth input handlers connected');
                         }
@@ -1052,24 +1104,28 @@ class RevisionAppV2 {
                         // Register MIDI synth for frequency analysis
                         // NOTE: We keep audio source registered too (needed for MIDI output, beat detection)
                         // The visualAudioSource setting only controls what gets routed to Milkdrop
-                        console.log('[Revision] 🟢 Registering MIDI synth with InputManager');
-                        this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
-                        console.log('[Revision] ✅ Active sources:', this.inputManager.getAllSources());
+                        if (this.midiAudioSynth) {
+                            console.log('[Revision] 🟢 Registering MIDI synth with InputManager');
+                            this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
+                            console.log('[Revision] ✅ Active sources:', this.inputManager.getAllSources());
+                        }
                     } else if (data === 'microphone') {
-                        // Check if beat kick is enabled - if so, keep synth alive for kick drum
+                        // Check if synth should be kept alive (beat kick OR explicitly enabled)
                         const beatKickEnabled = this.settings.get('midiSynthBeatKick') === 'true';
+                        const synthEnabled = this.settings.get('midiSynthEnable') === 'true';
 
                         if (this.midiAudioSynth) {
-                            if (beatKickEnabled) {
-                                // Keep MIDI synth alive for beat kick, but unregister from reactive input
-                                console.log('[Revision] Unregistering MIDI synth from reactive input (keeping it for beat kick)');
-                                this.inputManager.unregisterSource('midi-synth');
-                                console.log('[Revision] ✓ MIDI synth kept alive for beat kick functionality');
+                            // Always unregister from reactive input (we're switching to microphone)
+                            console.log('[Revision] Unregistering MIDI synth from reactive input');
+                            this.inputManager.unregisterSource('midi-synth');
+
+                            if (beatKickEnabled || synthEnabled) {
+                                // Keep synth alive (beat kick OR explicitly enabled by user)
+                                const reason = beatKickEnabled ? 'beat kick' : 'explicitly enabled';
+                                console.log(`[Revision] ✓ MIDI synth kept alive (${reason})`);
                             } else {
-                                // No beat kick - safe to destroy
-                                console.log('[Revision] Destroying MIDI synthesizer...');
-                                console.log('[Revision] Unregistering MIDI synth from InputManager');
-                                this.inputManager.unregisterSource('midi-synth');
+                                // No dependencies - safe to destroy
+                                console.log('[Revision] Destroying MIDI synthesizer (not needed)...');
                                 this.midiAudioSynth.destroy();
                                 this.midiAudioSynth = null;
                                 console.log('[Revision] ✓ MIDI synthesizer DESTROYED - switching to audio input device');
@@ -1146,21 +1202,37 @@ class RevisionAppV2 {
                     console.log('[BroadcastChannel] MIDI Synth Beat Kick:', data);
                     this.settings.set('midiSynthBeatKick', data);
 
-                    // CRITICAL: Create MIDI synth when beat kick enabled (if needed)
-                    if (data === 'true' && !this.midiAudioSynth) {
-                        console.log('[Revision] Creating MIDI synth for beat kick...');
-                        if (this.audioSource && this.audioSource.audioContext) {
+                    if (data === 'true') {
+                        // CRITICAL: Create MIDI synth if it doesn't exist
+                        if (!this.midiAudioSynth) {
+                            console.log('[Revision] Creating MIDI synth for beat kick...');
+                            if (this.audioSource && this.audioSource.audioContext) {
+                                // Resume AudioContext if suspended
+                                if (this.audioSource.audioContext.state === 'suspended') {
+                                    console.log('[Revision] ⚠️ AudioContext suspended, resuming...');
+                                    await this.audioSource.audioContext.resume();
+                                }
+
+                                this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
+                                this.midiAudioSynth.initialize();
+                                console.log('[Revision] ✓ MIDI synth created for beat kick');
+                            } else {
+                                console.error('[Revision] Cannot create MIDI synth - audio source not initialized');
+                            }
+                        } else {
+                            // CRITICAL: Synth exists - ALWAYS recreate beat oscillator to ensure it works
+                            // regardless of AudioContext state when it was first created
+                            console.log('[Revision] MIDI synth exists - recreating beat oscillator for reliability...');
+
                             // Resume AudioContext if suspended
                             if (this.audioSource.audioContext.state === 'suspended') {
                                 console.log('[Revision] ⚠️ AudioContext suspended, resuming...');
                                 await this.audioSource.audioContext.resume();
                             }
 
-                            this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
-                            this.midiAudioSynth.initialize();
-                            console.log('[Revision] ✓ MIDI synth created for beat kick');
-                        } else {
-                            console.error('[Revision] Cannot create MIDI synth - audio source not initialized');
+                            // Always recreate beat synth to ensure it's in a good state
+                            this.midiAudioSynth.setupBeatSynth();
+                            console.log('[Revision] ✓ Beat oscillator recreated and ready');
                         }
                     }
 
@@ -1209,25 +1281,27 @@ class RevisionAppV2 {
                     console.log('[Revision] SysEx setting changed to:', data, '- Reload required');
                     this.broadcastState();
                     break;
-                case 'midiOutputEnabled':
-                    console.log('[BroadcastChannel] MIDI Output Enabled:', data);
-                    this.settings.set('midiOutputEnabled', data);
-                    if (data === 'true' && this.midiOutputSource) {
-                        // Re-connect if we have a saved device
-                        const lastOutputId = this.settings.get('midiOutputId');
-                        if (lastOutputId) {
-                            this.midiOutputSource.connectOutput(lastOutputId);
-                        }
-                    } else if (data === 'false' && this.midiOutputSource) {
-                        this.midiOutputSource.disconnect();
-                    }
+                case 'reactiveOutputFrequency':
+                    console.log('[BroadcastChannel] Reactive Output Frequency:', data);
+                    this.settings.set('reactiveOutputFrequency', data);
+                    this.broadcastState();
+                    break;
+                case 'reactiveOutputBeatKick':
+                    console.log('[BroadcastChannel] Reactive Output Beat Kick:', data);
+                    this.settings.set('reactiveOutputBeatKick', data);
                     this.broadcastState();
                     break;
                 case 'midiOutputSelect':
                     console.log('[BroadcastChannel] MIDI Output Select:', data);
                     this.settings.set('midiOutputId', data);
                     if (this.midiOutputSource && data) {
+                        // Auto-connect when a device is selected
                         this.midiOutputSource.connectOutput(data);
+                        console.log('[Revision] ✓ MIDI output auto-connected to:', data);
+                    } else if (this.midiOutputSource && !data) {
+                        // Disconnect when "No device" is selected
+                        this.midiOutputSource.disconnect();
+                        console.log('[Revision] MIDI output disconnected');
                     }
                     this.broadcastState();
                     break;
@@ -1605,6 +1679,7 @@ class RevisionAppV2 {
             position: positionValid ? `${bar}.${beat}.${sixteenth}` : undefined,
             audioDeviceId: this.settings.get('audioInputDeviceId') || 'none',
             visualAudioSource: this.currentVisualAudioSource, // ACTUAL state, not saved setting
+            midiSynthEnabled: this.midiAudioSynth ? 'true' : 'false', // ACTUAL state (synth exists or not)
             midiSynthChannel: this.settings.get('midiSynthChannel') || 'all',
             midiSynthAudible: this.settings.get('midiSynthAudible') === 'true' ? 'true' : 'false',
             midiSynthAutoFeed: this.settings.get('midiSynthAutoFeed') === 'true' ? 'true' : 'false',
@@ -1746,18 +1821,24 @@ class RevisionAppV2 {
             // Feed beats to MIDI synthesizer (generates kick drum if enabled)
             const beatKickEnabled = this.settings.get('midiSynthBeatKick') === 'true';
 
-            // DEBUG: Log beat event details every few beats
-            if (!this.lastBeatDebugTime || performance.now() - this.lastBeatDebugTime > 2000) {
-                console.log('[Revision] 🎵 Beat event - Source:', data.source,
-                           'BeatKick enabled:', beatKickEnabled,
-                           'MIDI synth exists:', !!this.midiAudioSynth,
-                           'Intensity:', data.intensity);
-                this.lastBeatDebugTime = performance.now();
-            }
-
             // CRITICAL: Trigger kick for ANY beat source (audio OR midi), not just MIDI
             if (this.midiAudioSynth && beatKickEnabled) {
                 this.midiAudioSynth.handleBeat(data.intensity || 1.0);
+            }
+
+            // Send MIDI kick notes to MIDI output (if enabled in Reactive Output)
+            const reactiveOutputBeatKick = this.settings.get('reactiveOutputBeatKick') === 'true';
+            if (this.midiOutputSource && this.midiOutputSource.isActive && reactiveOutputBeatKick) {
+                const kickNote = 36; // C1 - standard kick drum MIDI note
+                const velocity = Math.floor((data.intensity || 1.0) * 127);
+
+                // Send Note ON
+                this.midiOutputSource.sendNoteOn(kickNote, velocity);
+
+                // Auto Note OFF after 100ms (short kick)
+                setTimeout(() => {
+                    this.midiOutputSource.sendNoteOff(kickNote);
+                }, 100);
             }
 
             // Update position tracking for MIDI interpolation
@@ -1803,8 +1884,10 @@ class RevisionAppV2 {
 
         // Note events
         this.inputManager.on('note', (data) => {
-            // Send audio-frequency notes to MIDI output (audio-reactive MIDI generation)
-            if (this.midiOutputSource && this.midiOutputSource.isActive && data.source === 'audio-frequency') {
+            // Send audio-frequency notes to MIDI output (if enabled in Reactive Output)
+            const reactiveOutputFrequency = this.settings.get('reactiveOutputFrequency') === 'true';
+            if (this.midiOutputSource && this.midiOutputSource.isActive &&
+                data.source === 'audio-frequency' && reactiveOutputFrequency) {
                 if (data.velocity > 0) {
                     this.midiOutputSource.sendNoteOn(data.note, data.velocity);
                 } else {

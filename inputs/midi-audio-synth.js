@@ -95,16 +95,20 @@ class MIDIAudioSynth {
 
         this.beatOscillator.connect(this.beatGain);
 
-        // Connect beat kick ONLY to masterGain (respects "Make MIDI synth audible" setting)
-        // This goes through speakerGain, so it's only audible when user wants to hear the synth
+        // Connect beat kick to masterGain (goes through speakerGain like notes)
+        // This way "Make MIDI synth audible" controls BOTH notes AND kick drum
         this.beatGain.connect(this.masterGain);
+
+        // CRITICAL: Reset stopped flag before starting oscillator
+        this.beatOscillatorStopped = false;
 
         // Start oscillator (may fail if AudioContext is suspended - will work after resume)
         try {
             this.beatOscillator.start();
-            console.log('[MIDIAudioSynth] Beat oscillator started (direct output + analysis)');
+            console.log('[MIDIAudioSynth] Beat oscillator started (goes through main audible control)');
         } catch (e) {
             console.warn('[MIDIAudioSynth] Beat oscillator failed to start (AudioContext suspended):', e.message);
+            this.beatOscillatorStopped = true; // Mark as stopped if start failed
         }
     }
 
@@ -310,7 +314,7 @@ class MIDIAudioSynth {
         this.beatGain.gain.exponentialRampToValueAtTime(kickGain * 0.3, now + 0.05); // Quick decay
         this.beatGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4); // Longer tail (was 0.2)
 
-        console.log('[MIDIAudioSynth] 🥁 KICK! Intensity:', intensity.toFixed(2), 'Gain:', kickGain.toFixed(2), 'AudioContext:', this.audioContext.state);
+        // Removed kick logging to prevent console spam (triggers on every beat)
     }
 
     // Handle control changes - could modulate synth parameters
@@ -367,7 +371,7 @@ class MIDIAudioSynth {
         } else {
             const now = this.audioContext.currentTime;
             this.speakerGain.gain.setValueAtTime(0, now);
-            console.log('[MIDIAudioSynth] 🔇 Muted - visuals only, no sound');
+            console.log('[MIDIAudioSynth] 🔇 Muted - visuals only, no sound (notes AND kick)');
         }
     }
 
