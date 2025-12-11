@@ -4,6 +4,7 @@ const ASSETS = [
     './index.html',
     './control.html',
     './app.js',
+    './control.js',
     './manifest.json',
     // External libraries (local files)
     './external/butterchurn.min.js',
