@@ -58,6 +58,9 @@ class AudioInputSource {
 
             console.log('[AudioInput] AudioContext created - sampleRate:', this.audioContext.sampleRate, 'Hz (requested:', desiredSampleRate, 'Hz)');
 
+            // Create DJ-style kill EQ (applied BEFORE analysis)
+            this.killEQ = new KillEQ(this.audioContext);
+
             // Create analyser
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = options.fftSize || 2048;
@@ -163,13 +166,13 @@ class AudioInputSource {
             console.log('[AudioInput] MediaStreamSource mediaStream:', this.microphone.mediaStream);
             console.log('[AudioInput] MediaStreamSource active:', this.microphone.mediaStream.active);
 
-            // Connect to analyser for beat detection (always connected)
-            this.microphone.connect(this.analyser);
-            console.log('[AudioInput] ✓ Connected to analyser');
-
-            // Connect to monitor gain for audio output (controlled by toggle)
-            this.microphone.connect(this.monitorGain);
-            console.log('[AudioInput] ✓ Connected to monitor gain');
+            // Connect audio chain with kill EQ BEFORE analysis:
+            // microphone → kill EQ → analyser
+            //                      → monitor gain
+            this.microphone.connect(this.killEQ.getInput());
+            this.killEQ.getOutput().connect(this.analyser);
+            this.killEQ.getOutput().connect(this.monitorGain);
+            console.log('[AudioInput] ✓ Audio chain: microphone → KillEQ → analyser + monitor');
 
             // Check if audio monitoring is enabled
             // Read from SettingsManager's JSON storage
@@ -549,6 +552,19 @@ class AudioInputSource {
     setNoteDuration(duration) {
         this.noteDuration = duration;
         console.log('[AudioInput] Note duration updated:', duration, 'ms');
+    }
+
+    // DJ-style kill EQ controls
+    setEQKill(band, kill) {
+        if (!this.eqFilters || !this.eqFilters[band]) {
+            console.warn('[AudioInput] EQ filter not initialized:', band);
+            return;
+        }
+
+        // Kill = -40dB cut, Restore = 0dB (no change)
+        const gain = kill ? -40 : 0;
+        this.eqFilters[band].gain.value = gain;
+        console.log('[AudioInput] EQ', band, kill ? 'KILLED' : 'RESTORED', '(gain:', gain, 'dB)');
     }
 
     setFFTSize(size) {

@@ -199,6 +199,16 @@ class RevisionAppV2 {
         await this.audioSource.initialize(this.mobileCompat.getOptimalSettings());
         console.log('[Revision] Audio source created, AudioContext ready');
 
+        // Restore saved EQ settings
+        ['Low', 'Mid', 'High'].forEach(band => {
+            const savedValue = this.settings.get(`eq${band}`);
+            if (savedValue && this.audioSource.killEQ) {
+                const value = parseInt(savedValue);
+                this.audioSource.killEQ.setGain(band.toLowerCase(), value);
+                console.log('[Revision] Restored EQ', band, 'to', value);
+            }
+        });
+
         // NEVER auto-start MIDI synth on page load (AudioContext will be suspended)
         // User must explicitly select it in control.html (which provides user gesture)
         // The saved setting is shown in control.html but ignored at startup
@@ -1252,6 +1262,27 @@ class RevisionAppV2 {
                         this.audioSource.setBeatMinTime(parseInt(data));
                         console.log('[Revision] ✓ Beat min time updated:', data, 'ms');
                     }
+                    break;
+                case 'eqGain':
+                    console.log('[BroadcastChannel] EQ Gain:', data.band, 'value:', data.value);
+                    const bandCapitalized = data.band.charAt(0).toUpperCase() + data.band.slice(1);
+                    this.settings.set(`eq${bandCapitalized}`, data.value.toString());
+
+                    // Apply to audio source EQ
+                    if (this.audioSource && this.audioSource.killEQ) {
+                        this.audioSource.killEQ.setGain(data.band, data.value);
+
+                        // Calculate dB for logging
+                        let db;
+                        if (data.value <= 50) {
+                            db = (data.value / 50) * 40 - 40;
+                        } else {
+                            db = ((data.value - 50) / 50) * 12;
+                        }
+                        console.log('[Revision] ✓ EQ', data.band, 'set to', db.toFixed(1), 'dB');
+                    }
+
+                    this.broadcastState();
                     break;
                 case 'midiSynthBeatKick':
                     console.log('[BroadcastChannel] MIDI Synth Beat Kick:', data);

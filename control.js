@@ -1528,33 +1528,66 @@ function updateState(state) {
         document.getElementById('midi-synth-beat-kick').checked = state.midiSynthBeatKick === 'true';
     }
     if (state.audioNoteDuration !== undefined) {
-        const slider = document.getElementById('audio-note-duration');
+        const fader = document.getElementById('audio-note-duration');
         const valueDisplay = document.getElementById('audio-note-duration-value');
-        if (slider && valueDisplay) {
-            slider.value = state.audioNoteDuration;
+        if (fader) {
+            fader.setAttribute('value', state.audioNoteDuration);
+        }
+        if (valueDisplay) {
             valueDisplay.textContent = state.audioNoteDuration;
         }
     }
     if (state.beatThreshold !== undefined) {
-        const slider = document.getElementById('beat-threshold');
-        const valueDisplay = document.getElementById('beat-threshold-value');
-        if (slider && valueDisplay) {
-            slider.value = state.beatThreshold;
-            valueDisplay.textContent = parseFloat(state.beatThreshold).toFixed(1);
+        const fader = document.getElementById('beat-threshold');
+        if (fader) {
+            // Convert 1.0-3.0 to 10-30 for fader
+            const faderValue = Math.round(parseFloat(state.beatThreshold) * 10);
+            fader.setAttribute('value', faderValue);
         }
     }
     if (state.beatMinTime !== undefined) {
-        const slider = document.getElementById('beat-min-time');
+        const fader = document.getElementById('beat-min-time');
         const valueDisplay = document.getElementById('beat-min-time-value');
         const bpmDisplay = document.getElementById('beat-max-bpm');
-        if (slider && valueDisplay && bpmDisplay) {
-            slider.value = state.beatMinTime;
+        if (fader) {
+            fader.setAttribute('value', state.beatMinTime);
+        }
+        if (valueDisplay && bpmDisplay) {
             valueDisplay.textContent = state.beatMinTime;
             // Calculate max BPM
             const maxBpm = Math.floor(60000 / parseInt(state.beatMinTime));
             bpmDisplay.textContent = maxBpm;
         }
     }
+
+    // Update EQ knobs
+    ['Low', 'Mid', 'High'].forEach(band => {
+        const bandLower = band.toLowerCase();
+        const stateKey = `eq${band}`;
+        if (state[stateKey] !== undefined) {
+            const knob = document.getElementById(`eq-${bandLower}`);
+            if (knob) {
+                const value = parseInt(state[stateKey]);
+                knob.setAttribute('value', value);
+
+                // Update sublabel with dB value
+                const calculateDB = (val) => {
+                    if (val <= 50) {
+                        return (val / 50) * 40 - 40;
+                    } else {
+                        return ((val - 50) / 50) * 12;
+                    }
+                };
+                const db = calculateDB(value);
+                const freqRange = {
+                    'low': '<250Hz',
+                    'mid': '~1kHz',
+                    'high': '>4kHz'
+                }[bandLower];
+                knob.setAttribute('sublabel', `${freqRange}\n${db.toFixed(1)}dB`);
+            }
+        }
+    });
 
     // Update current mode display and track program mode
     if (state.mode) {
@@ -1866,40 +1899,72 @@ document.getElementById('midi-synth-feed-input').addEventListener('change', (e) 
     sendCommand('midiSynthFeedInput', e.target.checked ? 'true' : 'false');
 });
 
-// Audio note duration slider
-const audioNoteDurationSlider = document.getElementById('audio-note-duration');
+// Audio note duration fader
+const audioNoteDurationFader = document.getElementById('audio-note-duration');
 const audioNoteDurationValue = document.getElementById('audio-note-duration-value');
-if (audioNoteDurationSlider && audioNoteDurationValue) {
-    audioNoteDurationSlider.addEventListener('input', (e) => {
-        audioNoteDurationValue.textContent = e.target.value;
-        sendCommand('audioNoteDuration', e.target.value);
+if (audioNoteDurationFader && audioNoteDurationValue) {
+    audioNoteDurationFader.addEventListener('cc-change', (e) => {
+        audioNoteDurationValue.textContent = e.detail.value;
+        sendCommand('audioNoteDuration', e.detail.value.toString());
     });
 }
 
-// Beat detection threshold slider
-const beatThresholdSlider = document.getElementById('beat-threshold');
-const beatThresholdValue = document.getElementById('beat-threshold-value');
-if (beatThresholdSlider && beatThresholdValue) {
-    beatThresholdSlider.addEventListener('input', (e) => {
-        beatThresholdValue.textContent = parseFloat(e.target.value).toFixed(1);
-        sendCommand('beatThreshold', e.target.value);
+// Beat detection threshold fader (value 10-30, maps to 1.0-3.0)
+const beatThresholdFader = document.getElementById('beat-threshold');
+if (beatThresholdFader) {
+    beatThresholdFader.addEventListener('cc-change', (e) => {
+        const actualValue = e.detail.value / 10; // Convert 10-30 to 1.0-3.0
+        sendCommand('beatThreshold', actualValue.toString());
     });
 }
 
-// Beat minimum time slider
-const beatMinTimeSlider = document.getElementById('beat-min-time');
+// Beat minimum time fader
+const beatMinTimeFader = document.getElementById('beat-min-time');
 const beatMinTimeValue = document.getElementById('beat-min-time-value');
 const beatMaxBpmValue = document.getElementById('beat-max-bpm');
-if (beatMinTimeSlider && beatMinTimeValue && beatMaxBpmValue) {
-    beatMinTimeSlider.addEventListener('input', (e) => {
-        const minTime = parseInt(e.target.value);
+if (beatMinTimeFader && beatMinTimeValue && beatMaxBpmValue) {
+    beatMinTimeFader.addEventListener('cc-change', (e) => {
+        const minTime = e.detail.value;
         beatMinTimeValue.textContent = minTime;
         // Calculate max BPM: 60000ms / minTime
         const maxBpm = Math.floor(60000 / minTime);
         beatMaxBpmValue.textContent = maxBpm;
-        sendCommand('beatMinTime', e.target.value);
+        sendCommand('beatMinTime', minTime.toString());
     });
 }
+
+// EQ knobs (0-100: 0=kill(-40dB), 50=neutral(0dB), 100=boost(+12dB))
+['low', 'mid', 'high'].forEach(band => {
+    const knob = document.getElementById(`eq-${band}`);
+    if (knob) {
+        // Calculate dB from knob value
+        const calculateDB = (value) => {
+            if (value <= 50) {
+                return (value / 50) * 40 - 40;
+            } else {
+                return ((value - 50) / 50) * 12;
+            }
+        };
+
+        // Update sublabel with frequency range and dB value
+        const updateSublabel = (value) => {
+            const db = calculateDB(value);
+            const freqRange = {
+                'low': '<250Hz',
+                'mid': '~1kHz',
+                'high': '>4kHz'
+            }[band];
+            knob.setAttribute('sublabel', `${freqRange}\n${db.toFixed(1)}dB`);
+        };
+
+        // Listen for knob changes
+        knob.addEventListener('cc-change', (e) => {
+            const value = e.detail.value;
+            updateSublabel(value);
+            sendCommand('eqGain', { band, value });
+        });
+    }
+});
 
 // MIDI synth beat kick toggle
 document.getElementById('midi-synth-beat-kick').addEventListener('change', (e) => {
