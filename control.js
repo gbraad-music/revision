@@ -1567,7 +1567,7 @@ function updateState(state) {
         audioSelect.value = state.audioDeviceId;
     }
 
-    // Update EQ bars
+    // Update EQ bars with stale data detection
     if (state.frequency !== undefined) {
         const bass = Math.min(100, Math.round((state.frequency.bass || 0) * 100));
         const mid = Math.min(100, Math.round((state.frequency.mid || 0) * 100));
@@ -1576,6 +1576,9 @@ function updateState(state) {
         document.getElementById('bass-bar').style.height = `${bass}%`;
         document.getElementById('mid-bar').style.height = `${mid}%`;
         document.getElementById('high-bar').style.height = `${high}%`;
+
+        // Track last update time to detect stale data
+        window.lastFrequencyUpdateTime = Date.now();
     }
 
     // Update SPP indicator
@@ -3122,4 +3125,24 @@ setTimeout(() => {
     // Retry every 500ms until connected
     window.stateRequestInterval = setInterval(requestStateWithRetry, 500);
 }, 200);
+
+// Clear stale frequency data (no updates for >500ms)
+setInterval(() => {
+    const now = Date.now();
+    const lastUpdate = window.lastFrequencyUpdateTime || 0;
+    const timeSinceUpdate = now - lastUpdate;
+
+    // If no update for 500ms, clear the bars
+    if (timeSinceUpdate > 500) {
+        const bassBar = document.getElementById('bass-bar');
+        const midBar = document.getElementById('mid-bar');
+        const highBar = document.getElementById('high-bar');
+
+        if (bassBar && bassBar.style.height !== '0%') {
+            bassBar.style.height = '0%';
+            midBar.style.height = '0%';
+            highBar.style.height = '0%';
+        }
+    }
+}, 100); // Check every 100ms
 

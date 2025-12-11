@@ -280,9 +280,12 @@ class AudioInputSource {
                 // The mediaElementSource node still exists but may be disconnected
                 console.log('[AudioInput] Reconnecting audio chain...');
                 this.mediaElementSource.disconnect(); // Disconnect first to ensure clean state
-                this.mediaElementSource.connect(this.analyser);
-                this.mediaElementSource.connect(this.monitorGain);
-                console.log('[AudioInput] ✓ Audio chain reconnected: mediaElement → analyser + monitorGain');
+
+                // Route through Kill EQ for consistent processing
+                this.mediaElementSource.connect(this.killEQ.getInput());
+                this.killEQ.getOutput().connect(this.analyser);
+                this.killEQ.getOutput().connect(this.monitorGain);
+                console.log('[AudioInput] ✓ Audio chain reconnected: mediaElement → KillEQ → analyser + monitorGain');
 
                 // Check media state
                 if (audioElement.muted) {
@@ -357,13 +360,14 @@ class AudioInputSource {
             this.connectedMediaElement = audioElement; // Track which element we're connected to
             console.log('[AudioInput] ✓ MediaElementSource created');
 
-            // Connect audio chain for media feed:
-            // mediaElement → analyser (for frequency analysis)
-            //             → monitorGain (for audio output, controlled by setMonitoring)
-            this.mediaElementSource.connect(this.analyser);
-            this.mediaElementSource.connect(this.monitorGain);
+            // Connect audio chain for media feed with Kill EQ (same as microphone):
+            // mediaElement → killEQ → analyser (for frequency analysis)
+            //                       → monitorGain (for audio output)
+            this.mediaElementSource.connect(this.killEQ.getInput());
+            this.killEQ.getOutput().connect(this.analyser);
+            this.killEQ.getOutput().connect(this.monitorGain);
 
-            console.log('[AudioInput] ✓ Audio chain: mediaElement → analyser + monitorGain');
+            console.log('[AudioInput] ✓ Audio chain: mediaElement → KillEQ → analyser + monitorGain');
             console.log('[AudioInput] Monitoring enabled:', this.monitoringEnabled);
 
             // Set source type to 'media' (media element)
