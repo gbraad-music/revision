@@ -46,9 +46,17 @@ class AudioInputSource {
 
     async initialize(options = {}) {
         try {
-            // Create audio context
+            // Get desired sample rate from settings (match microphone request)
+            const desiredSampleRate = parseInt(localStorage.getItem('audioSampleRate') || '48000');
+
+            // Create audio context with proper configuration for Android
             const AudioContext = window.AudioContext || window.webkitAudioContext;
-            this.audioContext = new AudioContext();
+            this.audioContext = new AudioContext({
+                sampleRate: desiredSampleRate,
+                latencyHint: 'playback' // Better for monitoring, less aggressive processing
+            });
+
+            console.log('[AudioInput] AudioContext created - sampleRate:', this.audioContext.sampleRate, 'Hz (requested:', desiredSampleRate, 'Hz)');
 
             // Create analyser
             this.analyser = this.audioContext.createAnalyser();

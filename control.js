@@ -1441,6 +1441,13 @@ controlChannel.onmessage = (event) => {
 };
 
 function updateState(state) {
+    // Clear retry interval on first successful state update
+    if (window.stateRequestInterval) {
+        clearInterval(window.stateRequestInterval);
+        window.stateRequestInterval = null;
+        console.log('[Control] ✓ Connected to main app');
+    }
+
     // Update connection status
     document.getElementById('connection-status').classList.add('connected');
 
@@ -2860,7 +2867,27 @@ loadMIDIOutputDevices();
 loadVideoDevices();
 
 // Request full state after a short delay (allows commands to be processed first)
-setTimeout(() => {
-    console.log('[Control] Requesting state from main app...');
+// Keep retrying until we get a response (connection established)
+window.stateRequestAttempts = 0;
+window.stateRequestInterval = null;
+
+function requestStateWithRetry() {
+    window.stateRequestAttempts++;
+    console.log('[Control] Requesting state from main app... (attempt', window.stateRequestAttempts + ')');
     sendCommand('requestState');
+
+    // Stop retrying after 20 attempts (10 seconds)
+    if (window.stateRequestAttempts >= 20) {
+        clearInterval(window.stateRequestInterval);
+        console.warn('[Control] ⚠️ Failed to connect to main app after 20 attempts');
+    }
+}
+
+// Initial request after 200ms
+setTimeout(() => {
+    requestStateWithRetry();
+
+    // Retry every 500ms until connected
+    window.stateRequestInterval = setInterval(requestStateWithRetry, 500);
 }, 200);
+

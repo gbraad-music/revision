@@ -194,6 +194,7 @@ class RevisionAppV2 {
         this.presetManager.initialize();
 
         // Pre-initialize audio source to get shared AudioContext
+        // Uses proper sampleRate and latencyHint to prevent Android audio interference
         this.audioSource = new AudioInputSource();
         await this.audioSource.initialize(this.mobileCompat.getOptimalSettings());
         console.log('[Revision] Audio source created, AudioContext ready');
