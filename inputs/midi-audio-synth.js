@@ -124,7 +124,7 @@ class MIDIAudioSynth {
             this.releaseVoice(voice);
         }
 
-        // Create RICH sound with multiple oscillators for visual impact
+        // Create SIMPLE sound - ONE oscillator per note for CPU efficiency
         const gain = this.audioContext.createGain();
         const frequency = 440 * Math.pow(2, (note - 69) / 12);
 
@@ -133,60 +133,32 @@ class MIDIAudioSynth {
         const noteName = noteNames[note % 12];
         const octave = Math.floor(note / 12) - 1; // MIDI octave (C4 = middle C = note 60)
 
-        // Main oscillator (sawtooth has rich harmonics)
+        // Single oscillator - sawtooth for rich harmonics
         const oscillator = this.audioContext.createOscillator();
         oscillator.frequency.value = frequency;
-        oscillator.type = 'sawtooth'; // Sawtooth - rich harmonics
-        const osc1Gain = this.audioContext.createGain();
-        osc1Gain.gain.value = 0.3;
-        oscillator.connect(osc1Gain);
-        osc1Gain.connect(gain);
+        oscillator.type = 'sawtooth'; // Sawtooth - rich harmonics for visualization
+        oscillator.connect(gain);
 
-        // Add a detuned second oscillator for width (square wave for bass content)
-        const osc2 = this.audioContext.createOscillator();
-        osc2.frequency.value = frequency * 1.005; // Very slightly detuned
-        osc2.type = 'square'; // Square wave has strong fundamental for bass
-        const osc2Gain = this.audioContext.createGain();
-        osc2Gain.gain.value = 0.2;
-        osc2.connect(osc2Gain);
-        osc2Gain.connect(gain);
-
-        // Add sub-bass for low-end punch (boosted for bass notes)
-        const subOsc = this.audioContext.createOscillator();
-        subOsc.frequency.value = frequency * 0.5; // One octave down
-        subOsc.type = 'sine';
-        const subGain = this.audioContext.createGain();
-        subGain.gain.value = 0.4; // Boosted sub-bass
-        subOsc.connect(subGain);
-        subGain.connect(gain);
-
-        // Velocity to gain
-        const velocityGain = (velocity / 127) * 0.6;
+        // Velocity to gain - REDUCED for less volume buildup
+        const velocityGain = (velocity / 127) * 0.3; // Halved from 0.6
         gain.gain.value = 0;
 
         // Connect to master
         gain.connect(this.masterGain);
 
-        // Start ALL oscillators
+        // Start oscillator
         oscillator.start();
-        osc2.start();
-        subOsc.start();
 
         const now = this.audioContext.currentTime;
 
-        // ADSR Envelope - sustain indefinitely until Note OFF
+        // ADSR Envelope - FAST attack, short sustain
         gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(velocityGain, now + 0.01); // Attack
-        gain.gain.exponentialRampToValueAtTime(velocityGain * 0.7, now + 0.1); // Decay to sustain
-        gain.gain.setValueAtTime(velocityGain * 0.6, now + 0.1); // Sustain level (hold until note off)
+        gain.gain.linearRampToValueAtTime(velocityGain, now + 0.005); // Very fast attack (5ms)
+        gain.gain.exponentialRampToValueAtTime(velocityGain * 0.6, now + 0.05); // Quick decay
+        gain.gain.setValueAtTime(velocityGain * 0.5, now + 0.05); // Lower sustain level
 
-        // Store voice with all oscillators for cleanup
+        // Store voice for cleanup
         voice.oscillator = oscillator;
-        voice.osc2 = osc2;
-        voice.subOsc = subOsc;
-        voice.osc1Gain = osc1Gain;
-        voice.osc2Gain = osc2Gain;
-        voice.subGain = subGain;
         voice.gain = gain;
         voice.note = note;
         voice.active = true;
@@ -218,41 +190,19 @@ class MIDIAudioSynth {
 
         // console.log('[MIDIAudioSynth] 📉 Releasing voice - note:', voice.note);
 
-        // Release envelope - cancel scheduled values and apply immediate release
+        // FAST release envelope - SHORT decay to prevent buildup
         voice.gain.gain.cancelScheduledValues(now);
         voice.gain.gain.setValueAtTime(voice.gain.gain.value, now);
-        voice.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); // Release
+        voice.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05); // FAST 50ms release
 
-        // Stop ALL oscillators and disconnect all nodes after release
+        // Stop oscillator and disconnect after release
         const osc = voice.oscillator;
-        const osc2 = voice.osc2;
-        const subOsc = voice.subOsc;
-        const osc1Gain = voice.osc1Gain;
-        const osc2Gain = voice.osc2Gain;
-        const subGain = voice.subGain;
         const gainNode = voice.gain;
         setTimeout(() => {
             try {
                 if (osc) {
                     osc.stop();
                     osc.disconnect();
-                }
-                if (osc2) {
-                    osc2.stop();
-                    osc2.disconnect();
-                }
-                if (subOsc) {
-                    subOsc.stop();
-                    subOsc.disconnect();
-                }
-                if (osc1Gain) {
-                    osc1Gain.disconnect();
-                }
-                if (osc2Gain) {
-                    osc2Gain.disconnect();
-                }
-                if (subGain) {
-                    subGain.disconnect();
                 }
                 if (gainNode) {
                     gainNode.disconnect();
@@ -261,16 +211,11 @@ class MIDIAudioSynth {
                 console.log('[MIDIAudioSynth] Error stopping oscillators:', e.message);
             }
             voice.oscillator = null;
-            voice.osc2 = null;
-            voice.subOsc = null;
-            voice.osc1Gain = null;
-            voice.osc2Gain = null;
-            voice.subGain = null;
             voice.gain = null;
             voice.note = null;
             voice.active = false;
             console.log('[MIDIAudioSynth] ✓ Voice released');
-        }, 350);
+        }, 60); // Fast cleanup after 50ms release
     }
 
     // Handle beat events - trigger kick drum

@@ -8,6 +8,7 @@ class AudioInputSource {
         this.frequencyData = null;
         this.timeDomainData = null;
         this.isActive = false;
+        this.isPaused = false; // For pausing analysis when source is inactive
         this.listeners = new Map();
         this.monitorGain = null; // For audio monitoring (hearing the input)
         this.monitoringEnabled = false;
@@ -15,13 +16,19 @@ class AudioInputSource {
 
         // Beat detection
         this.beatDetector = {
-            threshold: 1.3,
+            threshold: 1.6, // Higher threshold = less sensitive (was 1.3)
             decay: 0.98,
-            minTimeBetweenBeats: 200, // ms
+            minTimeBetweenBeats: 400, // Longer gap between beats (was 200ms)
             lastBeatTime: 0,
             energyHistory: [],
             maxHistoryLength: 43 // ~1 second at 60fps
         };
+
+        // Note duration tracking for auto-release
+        this.noteTimers = new Map(); // Track timers for auto note-off
+        this.noteDuration = 60; // ms - VERY SHORT notes to prevent cacophony
+        this.noteLastTrigger = new Map(); // Track last trigger time per note
+        this.noteCooldown = 300; // ms - long cooldown to prevent rapid re-triggering
 
         // Frequency bands
         this.bands = {
@@ -157,8 +164,23 @@ class AudioInputSource {
             console.log('[AudioInput] ✓ Connected to monitor gain');
 
             // Check if audio monitoring is enabled
-            const monitoringEnabled = localStorage.getItem('audioBeatReactive') === 'true';
-            this.setMonitoring(monitoringEnabled);
+            // Read from SettingsManager's JSON storage
+            try {
+                const settingsJson = localStorage.getItem('revision-settings');
+                console.log('[AudioInput] Reading monitoring setting from localStorage');
+                if (settingsJson) {
+                    const settings = JSON.parse(settingsJson);
+                    const monitoringEnabled = settings.audioBeatReactive === 'true';
+                    console.log('[AudioInput] Monitoring setting:', monitoringEnabled, '(from settings:', settings.audioBeatReactive, ')');
+                    this.setMonitoring(monitoringEnabled);
+                } else {
+                    console.log('[AudioInput] No settings found - monitoring disabled by default');
+                    this.setMonitoring(false);
+                }
+            } catch (e) {
+                console.warn('[AudioInput] Could not read monitoring setting:', e);
+                this.setMonitoring(false);
+            }
 
             this.isActive = true;
             this.startAnalysis();
@@ -252,6 +274,12 @@ class AudioInputSource {
         // Stop analysis loop
         this.isActive = false;
 
+        // Clear all note timers
+        for (const timer of this.noteTimers.values()) {
+            clearTimeout(timer);
+        }
+        this.noteTimers.clear();
+
         // Send Note OFF for all active frequency notes
         for (const note of this.activeFrequencyNotes) {
             this.emit('*', {
@@ -283,6 +311,42 @@ class AudioInputSource {
         this.emit('disconnected', {});
     }
 
+    pause() {
+        // Pause analysis without disconnecting the stream
+        // Used when switching to a different audio source
+        if (!this.isPaused) {
+            this.isPaused = true;
+            console.log('[AudioInput] Analysis paused (source inactive)');
+
+            // Clear all note timers
+            for (const timer of this.noteTimers.values()) {
+                clearTimeout(timer);
+            }
+            this.noteTimers.clear();
+
+            // Send Note OFF for all active frequency notes
+            for (const note of this.activeFrequencyNotes) {
+                this.emit('*', {
+                    type: 'note',
+                    data: {
+                        note,
+                        velocity: 0,
+                        source: 'audio-frequency'
+                    }
+                });
+            }
+            this.activeFrequencyNotes.clear();
+        }
+    }
+
+    resume() {
+        // Resume analysis when switching back to this source
+        if (this.isPaused) {
+            this.isPaused = false;
+            console.log('[AudioInput] Analysis resumed (source active)');
+        }
+    }
+
     startAnalysis() {
         if (!this.isActive) return;
 
@@ -291,7 +355,7 @@ class AudioInputSource {
     }
 
     analyze() {
-        if (!this.analyser || !this.isActive) return;
+        if (!this.analyser || !this.isActive || this.isPaused) return;
 
         // Get frequency and time domain data
         this.analyser.getByteFrequencyData(this.frequencyData);
@@ -409,14 +473,24 @@ class AudioInputSource {
             high: 96      // C6
         };
 
+        const now = performance.now();
+
         for (const [band, note] of Object.entries(bandNoteMap)) {
             const level = bandLevels[band];
             const isActive = this.activeFrequencyNotes.has(note);
 
             if (level > 0.6) {
-                // Band is loud - send Note ON (only if not already active)
+                // Band is loud - send Note ON (only if not already active AND not in cooldown)
                 if (!isActive) {
+                    // Check cooldown to prevent rapid re-triggering
+                    const lastTrigger = this.noteLastTrigger.get(note) || 0;
+                    if (now - lastTrigger < this.noteCooldown) {
+                        continue; // Skip - still in cooldown period
+                    }
+
                     const velocity = Math.floor(level * 127);
+
+                    // Send Note ON
                     this.emit('*', {
                         type: 'note',
                         data: {
@@ -426,21 +500,30 @@ class AudioInputSource {
                         }
                     });
                     this.activeFrequencyNotes.add(note);
-                }
-            } else {
-                // Band is quiet - send Note OFF (only if currently active)
-                if (isActive) {
-                    this.emit('*', {
-                        type: 'note',
-                        data: {
-                            note,
-                            velocity: 0, // Note OFF
-                            source: 'audio-frequency'
-                        }
-                    });
-                    this.activeFrequencyNotes.delete(note);
+                    this.noteLastTrigger.set(note, now);
+
+                    // Schedule automatic Note OFF after duration (natural decay)
+                    const timer = setTimeout(() => {
+                        this.emit('*', {
+                            type: 'note',
+                            data: {
+                                note,
+                                velocity: 0,
+                                source: 'audio-frequency'
+                            }
+                        });
+                        this.activeFrequencyNotes.delete(note);
+                        this.noteTimers.delete(note);
+                    }, this.noteDuration);
+
+                    // Clear any existing timer for this note
+                    if (this.noteTimers.has(note)) {
+                        clearTimeout(this.noteTimers.get(note));
+                    }
+                    this.noteTimers.set(note, timer);
                 }
             }
+            // Note: We don't manually send note-off anymore - it happens automatically via timer
         }
     }
 

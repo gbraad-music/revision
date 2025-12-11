@@ -1061,6 +1061,27 @@ class RevisionAppV2 {
                     console.log('[Revision] 🧹 Cleared old frequency data');
                     this.broadcastState(); // Immediately send zeros to EQ
 
+                    // CRITICAL: Stop all active MIDI synth voices to prevent stuck notes
+                    if (this.midiAudioSynth) {
+                        this.midiAudioSynth.stopAll();
+                        console.log('[Revision] 🛑 Stopped all synth voices (source switching)');
+                    }
+
+                    // CRITICAL: Clear active frequency notes from audio source to prevent stuck notes
+                    if (this.audioSource && this.audioSource.activeFrequencyNotes) {
+                        // Send note-off for all active audio-frequency notes
+                        for (const note of this.audioSource.activeFrequencyNotes) {
+                            this.inputManager.emit('note', {
+                                note,
+                                velocity: 0,
+                                source: 'audio-frequency',
+                                timestamp: performance.now()
+                            });
+                        }
+                        this.audioSource.activeFrequencyNotes.clear();
+                        console.log('[Revision] 🛑 Cleared all active audio-frequency notes');
+                    }
+
                     // Switch reactive input source
                     if (data === 'midi') {
                         // CRITICAL: Check if MIDI synth is enabled first
@@ -1098,12 +1119,15 @@ class RevisionAppV2 {
 
                         // Register MIDI synth for frequency analysis
                         // NOTE: We keep audio source registered too (needed for MIDI output, beat detection)
-                        // The visualAudioSource setting only controls what gets routed to Milkdrop
+                        // The visualAudioSource setting controls which source's FREQUENCY data is used
                         if (this.midiAudioSynth) {
                             console.log('[Revision] 🟢 Registering MIDI synth with InputManager');
                             this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
                             console.log('[Revision] ✅ Active sources:', this.inputManager.getAllSources());
                         }
+
+                        // Audio monitoring is independent of visualization source
+                        // User can toggle it separately via "Audio input monitoring" checkbox
                     } else if (data === 'microphone') {
                         // Check if synth should be kept alive (only if explicitly enabled)
                         const synthEnabled = this.settings.get('midiSynthEnable') === 'true';
@@ -1127,7 +1151,7 @@ class RevisionAppV2 {
                             console.log('[Revision] ✓ Already using audio input device');
                         }
 
-                        // Audio source is already registered when it connects (in enableAudioInput)
+                        // Audio source stays registered (needed for MIDI output, beat detection)
                         // No need to re-register here - just ensure it's connected
                         if (this.audioSource && !this.audioSource.isActive) {
                             console.log('[Revision] ⚠️ Audio source was disconnected, reconnecting...');
@@ -1135,6 +1159,13 @@ class RevisionAppV2 {
                             await this.audioSource.connectMicrophone(audioDeviceId);
                         } else if (this.audioSource) {
                             console.log('[Revision] ✓ Audio source already active and registered');
+                        }
+
+                        // Re-apply audio monitoring setting when switching back to microphone
+                        if (this.audioSource && this.audioSource.setMonitoring) {
+                            const monitoringEnabled = this.settings.get('audioBeatReactive') === 'true';
+                            this.audioSource.setMonitoring(monitoringEnabled);
+                            console.log('[Revision] Re-applied audio monitoring:', monitoringEnabled);
                         }
                     }
 

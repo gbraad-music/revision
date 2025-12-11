@@ -59,7 +59,8 @@ class InputManager {
             source.off('*', callback);
         }
 
-        // Don't disconnect audio source - keep it running in background for quick switching
+        // Don't disconnect audio source - keep it running in background
+        // It's needed for MIDI output and beat detection even when not the active visualization source
         // Only disconnect MIDI sources (midi-synth should be destroyed manually)
         if (source && source.disconnect && name !== 'audio') {
             source.disconnect();
