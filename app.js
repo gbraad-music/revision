@@ -1731,7 +1731,35 @@ class RevisionAppV2 {
                                 await this.connectToProgramMedia();
                             }
                         } catch (error) {
-                            console.error('[Stream] ✗ Failed to load stream:', error);
+                            if (error.name === 'NotAllowedError') {
+                                console.warn('[Stream] ═══════════════════════════════════════');
+                                console.warn('[Stream] ⚠️ Stream loaded but AUTOPLAY was BLOCKED');
+                                console.warn('[Stream] ═══════════════════════════════════════');
+                                console.warn('[Stream] TO START PLAYBACK:');
+                                console.warn('[Stream] 1. Click anywhere on the MAIN window, OR');
+                                console.warn('[Stream] 2. Click "Load Stream to Preview" button in control window');
+                                console.warn('[Stream] ═══════════════════════════════════════');
+
+                                // Show in status bar
+                                this.showStatusMessage('⚠️ Autoplay blocked - Click anywhere to start playback', 'warning');
+
+                                // Send to control.html for notification
+                                this.controlChannel.postMessage({
+                                    type: 'statusMessage',
+                                    data: { message: '⚠️ Autoplay blocked - Click in main window to start playback', level: 'warning' }
+                                });
+                            } else {
+                                console.error('[Stream] ✗ Failed to load stream:', error);
+
+                                // Show in status bar
+                                this.showStatusMessage('❌ Stream error: ' + error.message, 'error');
+
+                                // Send to control.html
+                                this.controlChannel.postMessage({
+                                    type: 'statusMessage',
+                                    data: { message: '❌ Stream error: ' + error.message, level: 'error' }
+                                });
+                            }
                         }
                     } else {
                         console.error('[Revision] ✗ Invalid stream data or renderer not available');
@@ -1871,6 +1899,19 @@ class RevisionAppV2 {
                         });
                     } else {
                         console.warn('[BroadcastChannel] No Milkdrop presets loaded yet');
+                    }
+                    break;
+                case 'requestStreamStats':
+                    // Send stream statistics
+                    if (this.streamRenderer && this.streamRenderer.getStats) {
+                        const stats = this.streamRenderer.getStats();
+                        console.log('[Stream] Sending stats to control:', stats);
+                        this.controlChannel.postMessage({
+                            type: 'streamStats',
+                            data: stats
+                        });
+                    } else {
+                        console.warn('[Stream] Cannot send stats - renderer or getStats not available');
                     }
                     break;
             }
@@ -2620,6 +2661,33 @@ class RevisionAppV2 {
         }
 
         console.log('[Revision] ✓ All canvases FORCED to exact dimensions');
+    }
+
+    showStatusMessage(message, level = 'info', duration = 10000) {
+        const statusEl = document.getElementById('status-message');
+        if (!statusEl) return;
+
+        statusEl.textContent = message;
+        statusEl.style.display = 'block';
+
+        // Set color based on level
+        if (level === 'error') {
+            statusEl.style.color = '#ff0000';
+        } else if (level === 'warning') {
+            statusEl.style.color = '#ff6600';
+        } else if (level === 'success') {
+            statusEl.style.color = '#00ff00';
+        } else {
+            statusEl.style.color = '#0066ff';
+        }
+
+        // Auto-hide after duration
+        if (this.statusMessageTimeout) {
+            clearTimeout(this.statusMessageTimeout);
+        }
+        this.statusMessageTimeout = setTimeout(() => {
+            statusEl.style.display = 'none';
+        }, duration);
     }
 
     broadcastState() {

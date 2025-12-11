@@ -769,6 +769,43 @@ class AudioInputSource {
         return this.isActive;
     }
 
+    getMediaStats() {
+        // Return stats for connected media element (media feed or program media)
+        if (!this.connectedMediaElement) {
+            return null;
+        }
+
+        const media = this.connectedMediaElement;
+        const buffered = media.buffered;
+        let bufferLength = 0;
+
+        if (buffered.length > 0) {
+            const currentTime = media.currentTime;
+            const bufferedEnd = buffered.end(buffered.length - 1);
+            bufferLength = bufferedEnd - currentTime;
+        }
+
+        return {
+            duration: media.duration || 0,
+            currentTime: media.currentTime || 0,
+            buffered: bufferLength,
+            networkState: media.networkState, // 0=empty, 1=idle, 2=loading, 3=no source
+            readyState: media.readyState, // 0=nothing, 1=metadata, 2=current, 3=future, 4=enough
+            paused: media.paused,
+            ended: media.ended,
+            muted: media.muted,
+            volume: media.volume,
+            playbackRate: media.playbackRate,
+            // Video-specific (if available)
+            videoWidth: media.videoWidth || 0,
+            videoHeight: media.videoHeight || 0,
+            // Network state labels
+            networkStateLabel: ['Empty', 'Idle', 'Loading', 'No Source'][media.networkState] || 'Unknown',
+            readyStateLabel: ['Nothing', 'Metadata', 'Current Data', 'Future Data', 'Enough Data'][media.readyState] || 'Unknown',
+            bufferHealth: bufferLength >= 2 ? 'Good' : bufferLength >= 1 ? 'Fair' : 'Low'
+        };
+    }
+
     setInputGain(value) {
         if (!this.inputGain) {
             console.warn('[AudioInput] Cannot set input gain - audio not initialized');

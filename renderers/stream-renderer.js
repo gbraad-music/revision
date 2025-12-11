@@ -22,6 +22,20 @@ class StreamRenderer {
         this.beatZoom = 1.0;
         this.targetZoom = 1.0;
         this.lastBeatTime = 0;
+
+        // Stream statistics
+        this.stats = {
+            quality: null,
+            bitrate: 0,
+            resolution: { width: 0, height: 0 },
+            fps: 0,
+            droppedFrames: 0,
+            totalFrames: 0,
+            bufferLength: 0,
+            bandwidth: 0,
+            errors: 0,
+            recoverableErrors: 0
+        };
     }
 
     async loadStream(url, type = 'auto', options = {}) {
@@ -93,18 +107,37 @@ class StreamRenderer {
             this.hls.loadSource(url);
             this.hls.attachMedia(this.videoElement);
 
+            // Track statistics from HLS events
+            this.setupHLSStatsTracking();
+
             return new Promise((resolve, reject) => {
                 this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
                     console.log('[StreamRenderer] HLS manifest parsed');
                     this.videoElement.play()
                         .then(resolve)
-                        .catch(reject);
+                        .catch((error) => {
+                            if (error.name === 'NotAllowedError') {
+                                console.error('[StreamRenderer] ═══════════════════════════════════════');
+                                console.error('[StreamRenderer] ⚠️ AUTOPLAY BLOCKED BY BROWSER');
+                                console.error('[StreamRenderer] ═══════════════════════════════════════');
+                                console.error('[StreamRenderer] The stream loaded but cannot autoplay.');
+                                console.error('[StreamRenderer] SOLUTION: Click anywhere on the MAIN WINDOW (index.html) to start playback.');
+                                console.error('[StreamRenderer] OR: Click the "Load Stream to Preview" button in control.html');
+                                console.error('[StreamRenderer] ═══════════════════════════════════════');
+                            }
+                            reject(error);
+                        });
                 });
 
                 this.hls.on(Hls.Events.ERROR, (event, data) => {
                     if (data.fatal) {
                         console.error('[StreamRenderer] HLS fatal error:', data);
+                        this.stats.errors++;
                         reject(new Error(`HLS error: ${data.type}`));
+                    } else {
+                        // Recoverable error
+                        this.stats.recoverableErrors++;
+                        console.warn('[StreamRenderer] HLS recoverable error:', data.type, data.details);
                     }
                 });
             });
@@ -121,6 +154,72 @@ class StreamRenderer {
         // WebRTC implementation would go here
         // This is a placeholder - would need WebRTC signaling server
         throw new Error('WebRTC streaming not yet implemented. Use HLS or direct stream.');
+    }
+
+    setupHLSStatsTracking() {
+        if (!this.hls) return;
+
+        // Track level switches (quality changes)
+        this.hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+            const level = this.hls.levels[data.level];
+            if (level) {
+                this.stats.quality = level.height + 'p';
+                this.stats.bitrate = level.bitrate;
+                this.stats.resolution = { width: level.width, height: level.height };
+                console.log('[StreamRenderer] Quality switched:', this.stats.quality, 'bitrate:', (this.stats.bitrate / 1000000).toFixed(2), 'Mbps');
+            }
+        });
+
+        // Track fragment loading (for bandwidth estimation)
+        this.hls.on(Hls.Events.FRAG_LOADED, (event, data) => {
+            if (data.stats) {
+                // Bandwidth in bits per second
+                this.stats.bandwidth = data.stats.bw || 0;
+            }
+        });
+
+        // Track buffer updates
+        this.hls.on(Hls.Events.FRAG_BUFFERED, () => {
+            this.updateBufferStats();
+        });
+    }
+
+    updateBufferStats() {
+        if (!this.videoElement) return;
+
+        const buffered = this.videoElement.buffered;
+        if (buffered.length > 0) {
+            const currentTime = this.videoElement.currentTime;
+            const bufferedEnd = buffered.end(buffered.length - 1);
+            this.stats.bufferLength = bufferedEnd - currentTime;
+        }
+
+        // Update dropped frames
+        if (this.videoElement.getVideoPlaybackQuality) {
+            const quality = this.videoElement.getVideoPlaybackQuality();
+            this.stats.droppedFrames = quality.droppedVideoFrames;
+            this.stats.totalFrames = quality.totalVideoFrames;
+        }
+
+        // Calculate FPS
+        this.stats.fps = this.videoElement.getVideoPlaybackQuality ?
+            Math.round(this.videoElement.getVideoPlaybackQuality().totalVideoFrames / this.videoElement.currentTime) : 0;
+    }
+
+    getStats() {
+        // Update stats before returning
+        this.updateBufferStats();
+
+        return {
+            ...this.stats,
+            // Add computed properties
+            dropRate: this.stats.totalFrames > 0 ?
+                (this.stats.droppedFrames / this.stats.totalFrames * 100).toFixed(2) + '%' : '0%',
+            bandwidthMbps: (this.stats.bandwidth / 1000000).toFixed(2),
+            bitrateMbps: (this.stats.bitrate / 1000000).toFixed(2),
+            bufferHealth: this.stats.bufferLength >= 2 ? 'Good' :
+                          this.stats.bufferLength >= 1 ? 'Fair' : 'Low'
+        };
     }
 
     calculateFitDimensions(videoWidth, videoHeight) {

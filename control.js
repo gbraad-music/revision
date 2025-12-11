@@ -1501,6 +1501,35 @@ controlChannel.onmessage = (event) => {
             // Ignore - control.html loads presets directly from butterchurnPresets
             // (Similar to how Three.js works)
             break;
+        case 'streamStats':
+            updateStreamStats(data);
+            break;
+        case 'statusMessage':
+            // Show status message from main window
+            const compactStats = document.getElementById('media-stats-compact');
+            if (compactStats) {
+                compactStats.style.display = 'block';
+                compactStats.textContent = data.message;
+
+                // Set color based on level
+                if (data.level === 'error') {
+                    compactStats.style.color = '#ff0000';
+                } else if (data.level === 'warning') {
+                    compactStats.style.color = '#ff6600';
+                } else if (data.level === 'success') {
+                    compactStats.style.color = '#00ff00';
+                } else {
+                    compactStats.style.color = '#0066ff';
+                }
+
+                // Restore normal display after 10 seconds
+                setTimeout(() => {
+                    compactStats.style.color = '#888';
+                    compactStats.textContent = '';
+                }, 10000);
+            }
+            console.log('[Control] Status message:', data.message);
+            break;
         case 'mediaFeedError':
             // Show error status (no blocking alert)
             const errorStatus = document.getElementById('media-feed-status');
@@ -1713,11 +1742,10 @@ function updateState(state) {
         }
     });
 
-    // Update current mode display and track program mode
+    // Update current mode and track program mode
     if (state.mode) {
         currentProgramMode = state.mode; // Track current program mode
         const modeNames = { black: 'Black', builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video', media: 'Media', stream: 'Stream', webpage: 'Webpage' };
-        document.getElementById('current-mode-display').textContent = modeNames[state.mode] || state.mode;
 
         // Show/hide scene display based on mode
         const sceneDisplay = document.getElementById('program-scene-display');
@@ -1747,6 +1775,21 @@ function updateState(state) {
                 builtinProgramDisplay.style.display = '';
             } else {
                 builtinProgramDisplay.style.display = 'none';
+            }
+        }
+
+        // Show/hide compact stats based on mode
+        const compactStats = document.getElementById('media-stats-compact');
+        const compactModeEl = document.getElementById('compact-mode');
+        if (compactStats && compactModeEl) {
+            if (state.mode === 'stream' || state.mode === 'media') {
+                // Show compact stats for stream and media modes
+                compactStats.style.display = 'block';
+                compactModeEl.textContent = modeNames[state.mode] || state.mode;
+                console.log('[Control] Showing compact stats for mode:', state.mode);
+            } else {
+                // Hide compact stats for other modes
+                compactStats.style.display = 'none';
             }
         }
     }
@@ -3167,4 +3210,113 @@ setInterval(() => {
         }
     }
 }, 100); // Check every 100ms
+
+// Update stream statistics
+function updateStreamStats(stats) {
+    const statsContainer = document.getElementById('stream-stats');
+    const compactStats = document.getElementById('media-stats-compact');
+
+    // Show detailed stats container if hidden
+    if (stats && statsContainer && statsContainer.style.display === 'none') {
+        statsContainer.style.display = 'block';
+    }
+
+    // Show compact stats in Connection section
+    if (stats && compactStats) {
+        console.log('[Control] Updating compact stats:', stats);
+        compactStats.style.display = 'block';
+
+        // Update compact display
+        const modeEl = document.getElementById('compact-mode');
+        const qualityEl = document.getElementById('compact-quality');
+        const bitrateEl = document.getElementById('compact-bitrate');
+        const bufferEl = document.getElementById('compact-buffer');
+        const droppedEl = document.getElementById('compact-dropped');
+
+        // Update mode (show current program mode)
+        if (modeEl) {
+            const modeNames = { black: 'Black', builtin: 'Built-in', threejs: 'Three.js', milkdrop: 'Milkdrop', video: 'Video', media: 'Media', stream: 'Stream', webpage: 'Webpage' };
+            modeEl.textContent = modeNames[currentProgramMode] || currentProgramMode || '-';
+        }
+
+        if (qualityEl) qualityEl.textContent = stats.quality || '-';
+        if (bitrateEl) bitrateEl.textContent = stats.bitrateMbps ? `${stats.bitrateMbps} Mbps` : '-';
+
+        if (bufferEl) {
+            const bufferText = stats.bufferLength ? `${stats.bufferLength.toFixed(1)}s` : '-';
+            bufferEl.textContent = bufferText;
+
+            // Color code buffer
+            if (stats.bufferHealth === 'Good') {
+                bufferEl.style.color = '#00ff00';
+            } else if (stats.bufferHealth === 'Fair') {
+                bufferEl.style.color = '#ffaa00';
+            } else {
+                bufferEl.style.color = '#ff0000';
+            }
+        }
+
+        if (droppedEl) {
+            droppedEl.textContent = stats.dropRate || '0%';
+
+            // Color code dropped frames
+            const dropRate = parseFloat(stats.dropRate);
+            if (dropRate > 5) {
+                droppedEl.style.color = '#ff0000';
+            } else if (dropRate > 1) {
+                droppedEl.style.color = '#ffaa00';
+            } else {
+                droppedEl.style.color = '#00ff00';
+            }
+        }
+    }
+
+    if (!statsContainer) return;
+
+    // Update detailed stat fields
+    document.getElementById('stat-quality').textContent = stats.quality || '-';
+    document.getElementById('stat-resolution').textContent = stats.resolution ?
+        `${stats.resolution.width}x${stats.resolution.height}` : '-';
+    document.getElementById('stat-bitrate').textContent = stats.bitrateMbps ?
+        `${stats.bitrateMbps} Mbps` : '-';
+    document.getElementById('stat-bandwidth').textContent = stats.bandwidthMbps ?
+        `${stats.bandwidthMbps} Mbps` : '-';
+    document.getElementById('stat-fps').textContent = stats.fps || '-';
+    document.getElementById('stat-buffer').textContent = stats.bufferLength ?
+        `${stats.bufferLength.toFixed(1)}s (${stats.bufferHealth})` : '-';
+    document.getElementById('stat-dropped').textContent = stats.dropRate ?
+        `${stats.droppedFrames} (${stats.dropRate})` : '-';
+    document.getElementById('stat-errors').textContent = stats.errors ?
+        `${stats.errors} fatal, ${stats.recoverableErrors} recoverable` :
+        `0 fatal, ${stats.recoverableErrors || 0} recoverable`;
+
+    // Color code buffer health
+    const bufferEl = document.getElementById('stat-buffer');
+    if (stats.bufferHealth === 'Good') {
+        bufferEl.style.color = '#00ff00';
+    } else if (stats.bufferHealth === 'Fair') {
+        bufferEl.style.color = '#ffaa00';
+    } else {
+        bufferEl.style.color = '#ff0000';
+    }
+
+    // Color code dropped frames
+    const dropRate = parseFloat(stats.dropRate);
+    const droppedEl = document.getElementById('stat-dropped');
+    if (dropRate > 5) {
+        droppedEl.style.color = '#ff0000';
+    } else if (dropRate > 1) {
+        droppedEl.style.color = '#ffaa00';
+    } else {
+        droppedEl.style.color = '#00ff00';
+    }
+}
+
+// Request stream stats every 2 seconds when stream mode is active
+setInterval(() => {
+    if (currentProgramMode === 'stream') {
+        sendCommand('requestStreamStats');
+        console.log('[Control] Requesting stream stats...');
+    }
+}, 2000);
 
