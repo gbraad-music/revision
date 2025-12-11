@@ -15,6 +15,7 @@ class AudioInputSource {
         this.monitorGain = null; // For audio monitoring (hearing the input)
         this.monitoringEnabled = false;
         this.deviceName = null; // Friendly device name
+        this.sourceType = 'audio'; // Track source type: 'audio' (microphone) or 'media' (media element)
 
         // Beat detection
         this.beatDetector = {
@@ -176,6 +177,9 @@ class AudioInputSource {
             this.killEQ.getOutput().connect(this.monitorGain);
             console.log('[AudioInput] ✓ Audio chain: microphone → KillEQ → analyser + monitor');
 
+            // Set source type to 'audio' (microphone)
+            this.sourceType = 'audio';
+
             // Check if audio monitoring is enabled
             // Read from SettingsManager's JSON storage
             try {
@@ -271,6 +275,31 @@ class AudioInputSource {
             // Calling it again throws: InvalidStateError: HTMLMediaElement already connected
             if (this.mediaElementSource && this.connectedMediaElement === audioElement) {
                 console.log('[AudioInput] ✓ Already connected to this media element - reusing connection');
+
+                // CRITICAL: Reconnect audio chain (may have been disconnected when switching sources)
+                // The mediaElementSource node still exists but may be disconnected
+                console.log('[AudioInput] Reconnecting audio chain...');
+                this.mediaElementSource.disconnect(); // Disconnect first to ensure clean state
+                this.mediaElementSource.connect(this.analyser);
+                this.mediaElementSource.connect(this.monitorGain);
+                console.log('[AudioInput] ✓ Audio chain reconnected: mediaElement → analyser + monitorGain');
+
+                // Check media state
+                if (audioElement.muted) {
+                    console.warn('[AudioInput] ⚠️ Media element is MUTED - frequency data may not flow');
+                    console.warn('[AudioInput] → User should enable "Enable audio output" for reactive visualization');
+                }
+
+                if (audioElement.paused) {
+                    console.warn('[AudioInput] ⚠️ Media element is PAUSED - no audio will flow');
+                    console.warn('[AudioInput] → User must manually resume playback');
+                } else {
+                    console.log('[AudioInput] ✓ Media element is playing');
+                }
+
+                // Set source type to 'media' (media element)
+                this.sourceType = 'media';
+
                 this.isActive = true;
                 this.isPaused = false;
 
@@ -292,7 +321,7 @@ class AudioInputSource {
             }
 
             // Debug: Check media element state
-            console.log('[AudioInput] DEBUG - Media element state:', {
+            console.log('[AudioInput] DEBUG - Media element state BEFORE connection:', {
                 paused: audioElement.paused,
                 muted: audioElement.muted,
                 volume: audioElement.volume,
@@ -303,6 +332,15 @@ class AudioInputSource {
 
             if (audioElement.paused) {
                 console.warn('[AudioInput] ⚠️ Media element is PAUSED! Audio might not flow to analyser.');
+            }
+
+            // CRITICAL: Check if element is muted
+            // DON'T unmute programmatically - this can trigger autoplay policy and STOP playback!
+            // User must enable "Enable audio output (unmute video/stream/camera)" for frequency data to work
+            if (audioElement.muted) {
+                console.warn('[AudioInput] ⚠️ Media element is MUTED - frequency data may not flow to analyser!');
+                console.warn('[AudioInput] → User should enable "Enable audio output" for reactive visualization');
+                console.warn('[AudioInput] → NOT unmuting programmatically to avoid triggering autoplay policy');
             }
 
             // CRITICAL: Resume AudioContext if suspended
@@ -327,6 +365,18 @@ class AudioInputSource {
 
             console.log('[AudioInput] ✓ Audio chain: mediaElement → analyser + monitorGain');
             console.log('[AudioInput] Monitoring enabled:', this.monitoringEnabled);
+
+            // Set source type to 'media' (media element)
+            this.sourceType = 'media';
+
+            // Check if media stopped after connection
+            if (audioElement.paused) {
+                console.error('[AudioInput] ✗ Media element is PAUSED after connection!');
+                console.error('[AudioInput] → Cannot restart programmatically due to autoplay policy');
+                console.error('[AudioInput] → User must manually resume playback (click play button)');
+            } else {
+                console.log('[AudioInput] ✓ Media element is still playing after connection');
+            }
 
             this.isActive = true;
             this.isPaused = false;
@@ -401,8 +451,11 @@ class AudioInputSource {
         if (this.mediaElementSource) {
             console.log('[AudioInput] Disconnecting media element source');
             this.mediaElementSource.disconnect();
-            this.mediaElementSource = null;
-            this.connectedMediaElement = null; // Clear reference to allow reconnection
+            // DON'T clear these - the element is permanently bound to the AudioContext
+            // We'll reuse the connection if user switches back to program-media
+            // this.mediaElementSource = null;
+            // this.connectedMediaElement = null;
+            console.log('[AudioInput] Media element source disconnected but retained for reuse');
         }
 
         console.log('[AudioInput] Disconnected');
@@ -483,7 +536,7 @@ class AudioInputSource {
                 data: {
                     intensity: beat.intensity,
                     phase: 0, // Audio doesn't have phase info
-                    source: 'audio'
+                    source: this.sourceType // 'audio' for microphone, 'media' for media element
                 }
             });
         }
@@ -494,7 +547,7 @@ class AudioInputSource {
             data: {
                 bands: bandLevels,
                 rms: rms,
-                source: 'audio'
+                source: this.sourceType // 'audio' for microphone, 'media' for media element
             }
         });
 

@@ -941,8 +941,8 @@ class RevisionAppV2 {
                             console.log('[Video] Render loop started');
 
                             // CRITICAL: If "Program Media" is active, connect to the video element
-                            if (this.currentVisualAudioSource === 'program-media') {
-                                console.log('[Revision] 🎬 Video camera switched - reconnecting program media reactive input');
+                            if (this.audioInputSource === 'program-media') {
+                                console.log('[Revision] 🎬 Video camera switched - connecting program media reactive input');
                                 await this.connectToProgramMedia();
                             }
                         } else {
@@ -988,13 +988,65 @@ class RevisionAppV2 {
                     this.settings.set('videoAudioOutput', data);
                     const audioEnabled = data === 'true';
 
-                    // CRITICAL: If "Program Media" is active, control audio through Web Audio API
-                    // Once createMediaElementSource() is called, muted/volume properties have NO EFFECT
-                    if (this.currentVisualAudioSource === 'program-media') {
-                        console.log('[Revision] 🎬 Program Media active - routing audio output through Web Audio API');
-                        if (this.audioSource && this.audioSource.setMonitoring) {
-                            this.audioSource.setMonitoring(audioEnabled);
-                            console.log('[Revision] ✓ Audio monitoring set to:', audioEnabled);
+                    // Check if "Program Media" is active
+                    const isProgramMediaActive = this.audioInputSource === 'program-media';
+
+                    if (isProgramMediaActive) {
+                        console.log('[Revision] 🎬 Program Media active - unmute and restart with USER INTERACTION');
+
+                        // Get the current program's media element
+                        let programMediaElement = null;
+                        switch (this.currentPresetType) {
+                            case 'stream':
+                                if (this.streamRenderer && this.streamRenderer.videoElement) {
+                                    programMediaElement = this.streamRenderer.videoElement;
+                                }
+                                break;
+                            case 'media':
+                                if (this.mediaRenderer && this.mediaRenderer.mediaElement) {
+                                    programMediaElement = this.mediaRenderer.mediaElement;
+                                }
+                                break;
+                            case 'video':
+                                if (this.videoRenderer && this.videoRenderer.videoElement) {
+                                    programMediaElement = this.videoRenderer.videoElement;
+                                }
+                                break;
+                        }
+
+                        if (programMediaElement) {
+                            console.log('[Revision] Step 1: Current media element state:', {
+                                paused: programMediaElement.paused,
+                                muted: programMediaElement.muted
+                            });
+
+                            // Step 1: Unmute the media element
+                            programMediaElement.muted = !audioEnabled;
+                            console.log('[Revision] Step 2: Media element muted:', !audioEnabled);
+
+                            // Step 2: If unmuting AND media is paused, restart playback
+                            // NOTE: This may fail due to autoplay policy (user gesture required)
+                            if (audioEnabled && programMediaElement.paused) {
+                                console.log('[Revision] Step 3: Media is paused - restarting...');
+                                programMediaElement.play().then(() => {
+                                    console.log('[Revision] ✓ Playback restarted successfully');
+                                }).catch(err => {
+                                    console.error('[Revision] ✗ Failed to restart playback:', err);
+                                    console.error('[Revision] → Autoplay policy blocked restart');
+                                    console.error('[Revision] → Click in the MAIN WINDOW (not control window) to resume playback');
+                                    console.error('[Revision] → Or: Click the play button / stream / anywhere in index.html');
+                                });
+                            } else {
+                                console.log('[Revision] Step 3: Media is playing, no restart needed');
+                            }
+
+                            // Step 3: Set Web Audio API monitoring (speaker output)
+                            if (this.audioSource && this.audioSource.setMonitoring) {
+                                this.audioSource.setMonitoring(audioEnabled);
+                                console.log('[Revision] Step 4: Web Audio API monitoring set to:', audioEnabled);
+                            }
+                        } else {
+                            console.warn('[Revision] ⚠️ No program media element found');
                         }
                     } else {
                         // Not using Web Audio API - use native browser audio control
@@ -1039,7 +1091,7 @@ class RevisionAppV2 {
                     // CRITICAL: Only apply if NOT using Program Media
                     // Program Media audio is controlled by "videoAudioOutput" setting
                     // This setting (audioBeatReactive) is for MICROPHONE monitoring only
-                    if (this.currentVisualAudioSource === 'program-media') {
+                    if (this.audioInputSource === 'program-media') {
                         console.log('[Revision] ⚠️ Program Media active - ignoring microphone monitoring toggle');
                         console.log('[Revision] Use "Enable audio output" to control program media audio');
                     } else {
@@ -1076,7 +1128,7 @@ class RevisionAppV2 {
                         console.log('[Revision] ✓ MIDI audio synthesizer ENABLED - audible:', audibleSetting);
 
                         // If reactive input is set to MIDI, register the synth
-                        if (this.currentVisualAudioSource === 'midi') {
+                        if (this.reactiveInputSource === 'midi') {
                             console.log('[Revision] 🟢 Registering MIDI synth with InputManager (reactive input is MIDI)');
                             this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
 
@@ -1098,11 +1150,11 @@ class RevisionAppV2 {
                         this.midiAudioSynth = null;
                         console.log('[Revision] ✓ MIDI audio synthesizer DISABLED');
 
-                        // If reactive input was MIDI, switch back to microphone
-                        if (this.currentVisualAudioSource === 'midi') {
-                            console.log('[Revision] Switching reactive input back to microphone (synth disabled)');
-                            this.currentVisualAudioSource = 'microphone';
-                            this.settings.set('visualAudioSource', 'microphone');
+                        // If reactive input was MIDI, switch back to audio
+                        if (this.reactiveInputSource === 'midi') {
+                            console.log('[Revision] Switching reactive input back to audio (synth disabled)');
+                            this.reactiveInputSource = 'audio';
+                            this.settings.set('reactiveInputSource', 'audio');
                             this.reconnectAudioToRenderer();
                         }
                     }
@@ -1123,6 +1175,14 @@ class RevisionAppV2 {
                             this.releaseMediaFeed();
                         }
 
+                        // CRITICAL: Disconnect from program media if active
+                        // This releases the media element from Web Audio API
+                        if (this.audioSource && this.audioSource.connectedMediaElement) {
+                            console.log('[Revision] Disconnecting from program media...');
+                            this.audioSource.disconnect();
+                            console.log('[Revision] ✓ Disconnected from program media');
+                        }
+
                         // CRITICAL: Restart the microphone if we have a device ID
                         const micDeviceId = this.settings.get('audioInputDeviceId');
                         if (micDeviceId && micDeviceId !== 'none') {
@@ -1138,8 +1198,16 @@ class RevisionAppV2 {
                         // Media feed will be loaded via separate command
                     } else if (data === 'program-media') {
                         console.log('[Revision] Switching to program media (follows current program)');
+                        console.log('[Revision] ⚠️ NOTE: Media will remain MUTED until you enable "Enable audio output"');
+                        console.log('[Revision] ⚠️ Reactive visualization REQUIRES audio output to be enabled');
+
                         // Stop microphone input
                         this.disableAudioInput();
+
+                        // DON'T unmute automatically - this triggers autoplay policy and stops playback
+                        // User must click "Enable audio output" (which is a user interaction)
+                        // That toggle will unmute and restart playback
+
                         await this.connectToProgramMedia();
                     }
 
@@ -1182,8 +1250,8 @@ class RevisionAppV2 {
                     console.log('[BroadcastChannel] ═══════════════════════════════════════');
                     console.log('[BroadcastChannel] SWITCHING Audio Source to:', data);
                     console.log('[BroadcastChannel] Current synth state:', this.midiAudioSynth ? 'EXISTS' : 'NULL');
-                    this.settings.set('visualAudioSource', data);
-                    this.currentVisualAudioSource = data; // Update ACTUAL state
+                    // OLD visualAudioSource setting is deprecated - ignore it
+                    console.log('[Revision] ⚠️ visualAudioSource is deprecated - use audioInputSource + reactiveInputSource instead');
 
                     // Clear old frequency data and immediately update EQ
                     this.lastFrequencyData = { bass: 0, mid: 0, high: 0 };
@@ -1579,8 +1647,8 @@ class RevisionAppV2 {
 
                         // CRITICAL: If "Program Media" is active, connect to the new media element
                         // (switchPresetType already does this, but ensure it's done after media loads)
-                        if (this.currentVisualAudioSource === 'program-media') {
-                            console.log('[Revision] 🎬 Media loaded - reconnecting program media reactive input');
+                        if (this.audioInputSource === 'program-media') {
+                            console.log('[Revision] 🎬 Media loaded - connecting program media reactive input');
                             await this.connectToProgramMedia();
                         }
                     } else {
@@ -1634,8 +1702,8 @@ class RevisionAppV2 {
                             console.log('[Stream] ✓ Stream loaded successfully - audioOutput:', audioOutputEnabled);
 
                             // CRITICAL: If "Program Media" is active, connect to the stream's video element
-                            if (this.currentVisualAudioSource === 'program-media') {
-                                console.log('[Revision] 🎬 Stream loaded - reconnecting program media reactive input');
+                            if (this.audioInputSource === 'program-media') {
+                                console.log('[Revision] 🎬 Stream loaded - connecting program media reactive input');
                                 await this.connectToProgramMedia();
                             }
                         } catch (error) {
@@ -1914,19 +1982,26 @@ class RevisionAppV2 {
         return deviceId.length > 20 ? deviceId.substring(0, 20) + '...' : deviceId;
     }
 
-    // Get what drives the visual reactivity (microphone or MIDI synth)
+    // Get what drives the visual reactivity (audio or MIDI synth)
     getFormattedReactiveInput() {
         // Use ACTUAL running state, not saved setting
         // (MIDI synth is never auto-started, requires user gesture)
-        const visualSource = this.currentVisualAudioSource || 'microphone';
+        const reactiveSource = this.reactiveInputSource || 'audio';
+        const audioInput = this.audioInputSource || 'microphone';
 
-        if (visualSource === 'midi') {
+        if (reactiveSource === 'midi') {
             return 'MIDI Synthesizer';
-        } else if (visualSource === 'media-feed') {
-            return 'Media Feed';
-        } else {
-            return 'Audio Input Device';
+        } else if (reactiveSource === 'audio') {
+            // Show which audio input is active
+            if (audioInput === 'microphone') {
+                return 'Audio Input Device';
+            } else if (audioInput === 'media-feed') {
+                return 'Media Feed';
+            } else if (audioInput === 'program-media') {
+                return 'Program Media';
+            }
         }
+        return 'Unknown';
     }
 
     // Load media feed for reactive input (audio from video/audio file)
@@ -2282,10 +2357,43 @@ class RevisionAppV2 {
         }
 
         if (mediaElement) {
+            // Check media element state
+            console.log('[Revision] 🎬 Media element state:', {
+                tagName: mediaElement.tagName,
+                paused: mediaElement.paused,
+                muted: mediaElement.muted,
+                volume: mediaElement.volume,
+                readyState: mediaElement.readyState,
+                currentTime: mediaElement.currentTime,
+                duration: mediaElement.duration,
+                networkState: mediaElement.networkState
+            });
+
+            // CRITICAL: If media element is paused after unmuting, restart it
+            if (mediaElement.paused) {
+                console.warn('[Revision] 🎬 ⚠️ Media element is PAUSED after unmuting!');
+                console.warn('[Revision] 🎬 Attempting to restart playback...');
+                try {
+                    await mediaElement.play();
+                    console.log('[Revision] 🎬 ✓ Playback restarted successfully');
+                } catch (playError) {
+                    console.error('[Revision] 🎬 ✗ Failed to restart playback:', playError);
+                    console.error('[Revision] 🎬 This is likely due to autoplay policy - user must interact with page first');
+                }
+            } else {
+                console.log('[Revision] 🎬 ✓ Media element is playing');
+            }
+
             // Connect to audio source
             if (this.audioSource) {
                 await this.audioSource.connectMediaElement(mediaElement);
                 console.log('[Revision] ✅ Program media connected to audio source');
+
+                // CRITICAL: Re-register audio source with InputManager
+                // (it was unregistered when switching from microphone)
+                console.log('[Revision] 🟢 Re-registering audio source with InputManager');
+                this.inputManager.registerSource('audio', this.audioSource);
+                console.log('[Revision] ✅ AudioSource re-registered - events will flow');
 
                 // CRITICAL: Apply VIDEO audio output setting (NOT microphone monitoring setting!)
                 // videoAudioOutput controls video/stream/media audio
@@ -2303,10 +2411,42 @@ class RevisionAppV2 {
                             max: maxFreq,
                             avg: avgFreq.toFixed(1),
                             isActive: this.audioSource.isActive,
-                            isPaused: this.audioSource.isPaused
+                            isPaused: this.audioSource.isPaused,
+                            mediaElementPaused: mediaElement.paused,
+                            mediaElementMuted: mediaElement.muted,
+                            audioContextState: this.audioSource.audioContext ? this.audioSource.audioContext.state : 'N/A'
                         });
                         if (maxFreq === 0) {
                             console.error('[Revision] 🎬 ✗ NO FREQUENCY DATA - Audio may not be flowing!');
+                            console.error('[Revision] 🎬 Diagnostics:');
+                            console.error('[Revision] 🎬 - Media element paused:', mediaElement.paused);
+                            console.error('[Revision] 🎬 - Media element muted:', mediaElement.muted);
+                            console.error('[Revision] 🎬 - AudioContext state:', this.audioSource.audioContext ? this.audioSource.audioContext.state : 'N/A');
+                            console.error('[Revision] 🎬 - Analysis active:', this.audioSource.isActive);
+
+                            // CRITICAL: Check if media has audio tracks
+                            if (mediaElement.mozHasAudio !== undefined) {
+                                console.error('[Revision] 🎬 - Has audio (mozHasAudio):', mediaElement.mozHasAudio);
+                            }
+                            if (mediaElement.webkitAudioDecodedByteCount !== undefined) {
+                                console.error('[Revision] 🎬 - Audio decoded (webkit):', mediaElement.webkitAudioDecodedByteCount);
+                            }
+                            // Try to detect audio tracks
+                            if (mediaElement.audioTracks && mediaElement.audioTracks.length !== undefined) {
+                                console.error('[Revision] 🎬 - Audio tracks count:', mediaElement.audioTracks.length);
+                            }
+
+                            if (mediaElement.paused) {
+                                console.error('[Revision] 🎬 → Media is PAUSED - click play or interact with page to allow autoplay');
+                            }
+                            if (mediaElement.muted) {
+                                console.error('[Revision] 🎬 → Media is MUTED - analyser cannot receive data');
+                            }
+                            console.error('[Revision] 🎬 → If stream has no audio track, frequency data will be zero');
+                            console.error('[Revision] 🎬 → Try enabling "Enable audio output" BEFORE loading stream');
+                            if (this.audioSource.audioContext && this.audioSource.audioContext.state === 'suspended') {
+                                console.error('[Revision] 🎬 → AudioContext is SUSPENDED - click page to resume');
+                            }
                         } else {
                             console.log('[Revision] 🎬 ✓ Frequency data is flowing from program media');
                         }
@@ -2856,27 +2996,32 @@ class RevisionAppV2 {
 
         // Frequency events (from audio OR midi-synth)
         this.inputManager.on('frequency', (data) => {
-            // CRITICAL: Only accept frequency events from the ACTIVE visualAudioSource
-            const activeSource = this.currentVisualAudioSource || 'microphone';
+            // NEW FILTERING SYSTEM: Check reactiveInputSource and audioInputSource
+            const reactiveSource = this.reactiveInputSource || 'audio';
+            const audioInput = this.audioInputSource || 'microphone';
 
-            // Map source names:
-            // - 'audio' -> 'microphone' OR 'media-feed' (check which is active)
-            // - 'media' -> 'media-feed' (explicit media feed source)
-            // - 'midi-synth' -> 'midi'
-            let dataSourceMapped = data.source;
+            // Determine if we should accept this event
+            let shouldAccept = false;
 
-            if (data.source === 'audio') {
-                // 'audio' can be either microphone or media feed - use active source
-                dataSourceMapped = (activeSource === 'media-feed') ? 'media-feed' : 'microphone';
-            } else if (data.source === 'media') {
-                dataSourceMapped = 'media-feed';
-            } else if (data.source === 'midi-synth') {
-                dataSourceMapped = 'midi';
+            if (reactiveSource === 'midi') {
+                // Only accept from MIDI synth
+                shouldAccept = (data.source === 'midi-synth');
+            } else if (reactiveSource === 'audio') {
+                // Accept from current audio input source
+                // Map event sources to audio input sources:
+                if (audioInput === 'microphone') {
+                    shouldAccept = (data.source === 'audio'); // Microphone sends 'audio'
+                } else if (audioInput === 'media-feed') {
+                    shouldAccept = (data.source === 'audio' || data.source === 'media'); // Media feed sends 'media' or 'audio'
+                } else if (audioInput === 'program-media') {
+                    // TEMPORARY: Accept 'audio' until user refreshes (then will be 'media')
+                    shouldAccept = (data.source === 'media' || data.source === 'audio');
+                }
             }
 
-            if (dataSourceMapped !== activeSource) {
+            if (!shouldAccept) {
                 // Ignore frequency events from inactive source
-                // console.log('[Revision] Ignoring frequency from:', dataSourceMapped, '(active:', activeSource, ')');
+                // console.log('[Revision] Filtering out frequency from:', data.source);
                 return;
             }
 
@@ -3647,8 +3792,8 @@ class RevisionAppV2 {
         }
 
         // CRITICAL: If "Program Media" reactive input is active, reconnect to new program's media element
-        if (this.currentVisualAudioSource === 'program-media') {
-            console.log('[Revision] 🎬 Program Media is active - auto-reconnecting to new program mode:', type);
+        if (this.audioInputSource === 'program-media') {
+            console.log('[Revision] 🎬 Program Media is active - auto-connecting to new program mode:', type);
             await this.connectToProgramMedia();
         }
 

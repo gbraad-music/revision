@@ -1782,20 +1782,31 @@ function updateState(state) {
     // Update reactive input display (what drives visuals)
     const reactiveInputElement = document.getElementById('current-reactive-input');
     if (reactiveInputElement) {
-        if (state.visualAudioSource === 'midi') {
+        // NEW SYSTEM: Check reactiveInputSource and audioInputSource
+        const reactiveSource = state.reactiveInputSource || state.visualAudioSource || 'audio';
+        const audioInput = state.audioInputSource || 'microphone';
+
+        if (reactiveSource === 'midi') {
             reactiveInputElement.textContent = 'MIDI Synthesizer';
             reactiveInputElement.style.color = '#FF6600'; // Orange for MIDI
-        } else if (state.visualAudioSource === 'media-feed') {
-            reactiveInputElement.textContent = 'Media Feed (dedicated)';
-            reactiveInputElement.style.color = '#00FF00'; // Green for media feed
-        } else if (state.visualAudioSource === 'program-media') {
-            // Show which program mode's audio is being used
-            const modeName = state.mode ? state.mode.toUpperCase() : 'NONE';
-            reactiveInputElement.textContent = `Program Media (${modeName})`;
-            reactiveInputElement.style.color = '#00FFFF'; // Cyan for program media
+        } else if (reactiveSource === 'audio') {
+            // Show which audio input is driving visualization
+            if (audioInput === 'microphone') {
+                reactiveInputElement.textContent = 'Audio Input Device (Microphone)';
+                reactiveInputElement.style.color = '#0066FF'; // Blue for audio
+            } else if (audioInput === 'media-feed') {
+                reactiveInputElement.textContent = 'Media Feed (dedicated)';
+                reactiveInputElement.style.color = '#00FF00'; // Green for media feed
+            } else if (audioInput === 'program-media') {
+                // Show which program mode's audio is being used
+                const modeName = state.mode ? state.mode.toUpperCase() : 'NONE';
+                reactiveInputElement.textContent = `Program Media (${modeName})`;
+                reactiveInputElement.style.color = '#00FFFF'; // Cyan for program media
+            }
         } else {
+            // Fallback for old system
             reactiveInputElement.textContent = 'Audio Input Device';
-            reactiveInputElement.style.color = '#0066FF'; // Blue for audio
+            reactiveInputElement.style.color = '#0066FF';
         }
     }
 
