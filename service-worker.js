@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v111';
+const CACHE_NAME = 'revision-v112';
 const ASSETS = [
     './',
     './index.html',
@@ -42,7 +42,11 @@ const ASSETS = [
     './utils/osc-client.js',
     './utils/settings-manager.js',
     './utils/wake-lock.js',
-    './utils/remote-channel.js'
+    './utils/remote-channel.js',
+    // UI Components
+    './utils/pad-knob.js',
+    './utils/svg-slider.js',
+    './utils/fader-components.js'
 ];
 
 // Install event - cache assets
