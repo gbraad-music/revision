@@ -1520,6 +1520,14 @@ function updateState(state) {
     if (state.midiSynthBeatKick !== undefined) {
         document.getElementById('midi-synth-beat-kick').checked = state.midiSynthBeatKick === 'true';
     }
+    if (state.audioNoteDuration !== undefined) {
+        const slider = document.getElementById('audio-note-duration');
+        const valueDisplay = document.getElementById('audio-note-duration-value');
+        if (slider && valueDisplay) {
+            slider.value = state.audioNoteDuration;
+            valueDisplay.textContent = state.audioNoteDuration;
+        }
+    }
 
     // Update current mode display and track program mode
     if (state.mode) {
@@ -1830,6 +1838,16 @@ document.getElementById('midi-synth-auto-feed').addEventListener('change', (e) =
 document.getElementById('midi-synth-feed-input').addEventListener('change', (e) => {
     sendCommand('midiSynthFeedInput', e.target.checked ? 'true' : 'false');
 });
+
+// Audio note duration slider
+const audioNoteDurationSlider = document.getElementById('audio-note-duration');
+const audioNoteDurationValue = document.getElementById('audio-note-duration-value');
+if (audioNoteDurationSlider && audioNoteDurationValue) {
+    audioNoteDurationSlider.addEventListener('input', (e) => {
+        audioNoteDurationValue.textContent = e.target.value;
+        sendCommand('audioNoteDuration', e.target.value);
+    });
+}
 
 // MIDI synth beat kick toggle
 document.getElementById('midi-synth-beat-kick').addEventListener('change', (e) => {

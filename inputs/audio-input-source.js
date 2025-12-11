@@ -532,6 +532,11 @@ class AudioInputSource {
         this.beatDetector.threshold = threshold;
     }
 
+    setNoteDuration(duration) {
+        this.noteDuration = duration;
+        console.log('[AudioInput] Note duration updated:', duration, 'ms');
+    }
+
     setFFTSize(size) {
         if (this.analyser) {
             this.analyser.fftSize = size;

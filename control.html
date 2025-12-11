@@ -690,6 +690,13 @@
             Routes notes from MIDI input device(s) to the synthesizer
         </div>
 
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Note Duration</label>
+        <input type="range" id="audio-note-duration" min="30" max="500" value="60" step="10" style="width: 100%;">
+        <div class="info" style="margin-top: 5px;">
+            Duration of auto-generated frequency notes: <span id="audio-note-duration-value">60</span>ms
+            <br>Shorter = staccato (clean, no overlap), Longer = legato (blend, may stack)
+        </div>
+
         <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">MIDI Input for Synth Notes</label>
         <select id="midi-synth-input-select">
             <option value="">No MIDI devices found</option>

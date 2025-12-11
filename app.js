@@ -1222,6 +1222,16 @@ class RevisionAppV2 {
                     // Update display immediately
                     this.broadcastState();
                     break;
+                case 'audioNoteDuration':
+                    console.log('[BroadcastChannel] Audio Note Duration:', data, 'ms');
+                    this.settings.set('audioNoteDuration', data);
+
+                    // Apply to audio source
+                    if (this.audioSource && this.audioSource.setNoteDuration) {
+                        this.audioSource.setNoteDuration(parseInt(data));
+                        console.log('[Revision] ✓ Note duration updated:', data, 'ms');
+                    }
+                    break;
                 case 'midiSynthBeatKick':
                     console.log('[BroadcastChannel] MIDI Synth Beat Kick:', data);
                     this.settings.set('midiSynthBeatKick', data);
@@ -1895,6 +1905,7 @@ class RevisionAppV2 {
             midiSynthAutoFeed: this.settings.get('midiSynthAutoFeed') === 'true' ? 'true' : 'false',
             midiSynthFeedInput: this.settings.get('midiSynthFeedInput') === 'true' ? 'true' : 'false',
             midiSynthBeatKick: this.settings.get('midiSynthBeatKick') === 'true' ? 'true' : 'false',
+            audioNoteDuration: this.settings.get('audioNoteDuration') || '60',
             audioSourceDisplay: this.getFormattedAudioSource(),
             reactiveInputDisplay: this.getFormattedReactiveInput(),
             midiInputId: this.settings.get('midiInputId') || '',
@@ -1964,6 +1975,13 @@ class RevisionAppV2 {
             if (this.audioSource.setMonitoring) {
                 this.audioSource.setMonitoring(monitoringEnabled);
                 console.log('[Revision] Applied audio monitoring setting:', monitoringEnabled);
+            }
+
+            // Apply note duration setting
+            const noteDuration = this.settings.get('audioNoteDuration') || '60';
+            if (this.audioSource.setNoteDuration) {
+                this.audioSource.setNoteDuration(parseInt(noteDuration));
+                console.log('[Revision] Applied note duration setting:', noteDuration, 'ms');
             }
 
             // ALWAYS register audio source with InputManager when connected
