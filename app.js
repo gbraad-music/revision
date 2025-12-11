@@ -207,6 +207,15 @@ class RevisionAppV2 {
         await this.audioSource.initialize(this.mobileCompat.getOptimalSettings());
         console.log('[Revision] Audio source created, AudioContext ready');
 
+        // Restore saved input gain
+        const savedGain = this.settings.get('inputGain');
+        if (savedGain && this.audioSource.setInputGain) {
+            const value = parseInt(savedGain);
+            this.audioSource.setInputGain(value);
+            const db = (value - 50) * 0.4;
+            console.log('[Revision] Restored input gain to', db >= 0 ? '+' : '', db.toFixed(1), 'dB');
+        }
+
         // Restore saved EQ settings
         ['Low', 'Mid', 'High'].forEach(band => {
             const savedValue = this.settings.get(`eq${band}`);
@@ -1485,6 +1494,21 @@ class RevisionAppV2 {
                             db = ((data.value - 50) / 50) * 12;
                         }
                         console.log('[Revision] ✓ EQ', data.band, 'set to', db.toFixed(1), 'dB');
+                    }
+
+                    this.broadcastState();
+                    break;
+                case 'inputGain':
+                    console.log('[BroadcastChannel] Input Gain:', data);
+                    this.settings.set('inputGain', data.toString());
+
+                    // Apply to audio source input gain
+                    if (this.audioSource && this.audioSource.setInputGain) {
+                        this.audioSource.setInputGain(data);
+
+                        // Calculate dB for logging (-20dB to +20dB)
+                        const db = (data - 50) * 0.4;
+                        console.log('[Revision] ✓ Input gain set to', db >= 0 ? '+' : '', db.toFixed(1), 'dB');
                     }
 
                     this.broadcastState();

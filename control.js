@@ -2104,6 +2104,28 @@ if (beatMinTimeFader && beatMinTimeValue && beatMaxBpmValue) {
     });
 }
 
+// Input Gain knob (0-100: 0=-20dB, 50=0dB, 100=+20dB)
+const gainKnob = document.getElementById('input-gain');
+if (gainKnob) {
+    // Calculate dB from knob value (-20dB to +20dB)
+    const calculateGainDB = (value) => {
+        return (value - 50) * 0.4; // -20 to +20 dB range
+    };
+
+    // Update sublabel with dB value
+    const updateGainSublabel = (value) => {
+        const db = calculateGainDB(value);
+        gainKnob.setAttribute('sublabel', `${db >= 0 ? '+' : ''}${db.toFixed(1)}dB`);
+    };
+
+    // Listen for knob changes
+    gainKnob.addEventListener('cc-change', (e) => {
+        const value = e.detail.value;
+        updateGainSublabel(value);
+        sendCommand('inputGain', value);
+    });
+}
+
 // EQ knobs (0-100: 0=kill(-40dB), 50=neutral(0dB), 100=boost(+12dB))
 ['low', 'mid', 'high'].forEach(band => {
     const knob = document.getElementById(`eq-${band}`);
