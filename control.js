@@ -1483,6 +1483,16 @@ function updateState(state) {
         }, 300);
     }
 
+    // Update beat indicator
+    if (state.beatActive === true) {
+        const beatIndicator = document.getElementById('beat-indicator');
+        beatIndicator.classList.add('beat');
+        // Remove after animation completes
+        setTimeout(() => {
+            beatIndicator.classList.remove('beat');
+        }, 150);
+    }
+
     // Update visual audio source - ALWAYS from main app state, NEVER from saved settings
     if (state.visualAudioSource !== undefined) {
         const dropdown = document.getElementById('milkdrop-audio-source');

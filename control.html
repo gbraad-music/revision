@@ -93,6 +93,18 @@
             100% { transform: scale(1); }
         }
 
+        .status.beat {
+            background: #00ff00;
+            box-shadow: 0 0 8px #00ff00;
+            animation: pulse-beat 0.15s ease-out;
+        }
+
+        @keyframes pulse-beat {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.5); }
+            100% { transform: scale(1); }
+        }
+
         .eq-container {
             display: flex;
             gap: 8px;
@@ -226,7 +238,7 @@
     </div>
 
     <div class="section">
-        <h2>Reactive Information</h2>
+        <h2>Reactive Information <span class="status" id="beat-indicator" title="Beat Detection"></span></h2>
         <div class="eq-container">
             <div class="eq-bar">
                 <div class="eq-bar-container">
@@ -247,7 +259,7 @@
                 <div class="eq-label">High</div>
             </div>
         </div>
-        <div class="info">Real-time frequency analysis from active audio source</div>
+        <div class="info">Real-time frequency analysis and beat detection from active audio source</div>
     </div>
 
     <div class="section">

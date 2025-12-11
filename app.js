@@ -1822,6 +1822,14 @@ class RevisionAppV2 {
         // Flash indicator within 100ms of SPP message
         const sppActive = timeSinceLastSPP < 100;
 
+        // Check if beat was detected recently
+        const timeSinceLastBeat = this.lastBeatTime
+            ? (now - this.lastBeatTime)
+            : Infinity;
+
+        // Flash beat indicator within 150ms of beat detection
+        const beatActive = timeSinceLastBeat < 150;
+
         // Position is valid within 5 seconds of last SPP
         const positionValid = timeSinceLastSPP < 5000;
 
@@ -1875,6 +1883,7 @@ class RevisionAppV2 {
                 : '-',
             frequency: this.lastFrequencyData,
             sppActive: sppActive,
+            beatActive: beatActive,
             // Program canvas dimensions (for preview aspect ratio in control.html)
             programWidth: programWidth,
             programHeight: programHeight
@@ -1997,6 +2006,7 @@ class RevisionAppV2 {
         // Beat events
         this.inputManager.on('beat', (data) => {
             this.beatPhase = data.phase;
+            this.lastBeatTime = performance.now(); // Track beat for control.html indicator
 
             // Feed beats to MIDI synthesizer (generates kick drum if enabled)
             const beatKickEnabled = this.settings.get('midiSynthBeatKick') === 'true';
