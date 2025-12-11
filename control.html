@@ -584,18 +584,46 @@
 
     <div class="section">
         <h2>Audio Input <span id="audio-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
-        <select id="audio-device-select">
-            <option value="none">No Audio Input</option>
-        </select>
-        <div class="info">Select microphone or audio input device</div>
 
-        <select id="audio-samplerate-select" style="margin-top: 10px;">
-            <option value="48000" selected>48 kHz (studio quality)</option>
-            <option value="44100">44.1 kHz (CD quality)</option>
-            <option value="22050">22 kHz (voice quality)</option>
-            <option value="16000">16 kHz (low bandwidth)</option>
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">Audio Source</label>
+        <select id="audio-input-source">
+            <option value="microphone" selected>Microphone</option>
+            <option value="media-feed">Media Feed (dedicated audio file/stream)</option>
+            <option value="program-media">Program Media (follows what's on screen)</option>
         </select>
-        <div class="info" style="margin-top: 5px;">Preferred sample rate (browser may use system default instead)</div>
+        <div class="info" style="margin-top: 5px;">What audio to capture for analysis and MIDI output</div>
+
+        <!-- Microphone Configuration (shown when microphone is selected) -->
+        <div id="microphone-config" style="display: block;">
+            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Microphone Device</label>
+            <select id="audio-device-select">
+                <option value="none">No Audio Input</option>
+            </select>
+            <div class="info">Select microphone or audio input device</div>
+
+            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Sample Rate</label>
+            <select id="audio-samplerate-select">
+                <option value="48000" selected>48 kHz (studio quality)</option>
+                <option value="44100">44.1 kHz (CD quality)</option>
+                <option value="22050">22 kHz (voice quality)</option>
+                <option value="16000">16 kHz (low bandwidth)</option>
+            </select>
+            <div class="info" style="margin-top: 5px;">Preferred sample rate (browser may use system default instead)</div>
+        </div>
+
+        <!-- Media Feed Configuration (shown when media-feed is selected) -->
+        <div id="media-feed-config" style="display: none; margin-top: 15px; padding: 15px; background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 4px;">
+            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">Media URL</label>
+            <input type="text" id="media-feed-url" placeholder="https://example.com/audio.mp3 or video.mp4" style="width: 100%; background: #1a1a1a; color: #fff; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px; margin-bottom: 10px;" />
+            <div class="info" style="margin-bottom: 10px;">Audio or video file URL to analyze (auto-detects file type)</div>
+
+            <div id="media-feed-status" style="display: none; margin-bottom: 10px; padding: 10px; border-radius: 4px; font-size: 12px;"></div>
+
+            <button onclick="loadMediaFeed()" style="width: 100%; padding: 10px; background: #0066FF; border: 1px solid #0088FF; border-radius: 4px; color: white; font-weight: bold; cursor: pointer; margin-bottom: 10px;">Load Media Feed</button>
+
+            <button onclick="releaseMediaFeed()" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: white; cursor: pointer;">Release Media Feed</button>
+            <div class="info" style="margin-top: 5px;">Stop media feed and free resources</div>
+        </div>
     </div>
 
     <div class="section">
@@ -630,11 +658,11 @@
 
     <div class="section">
         <h2>Reactive Input</h2>
-        <select id="milkdrop-audio-source">
-            <option value="microphone" selected>Audio Input Device</option>
+        <select id="reactive-input-source">
+            <option value="audio" selected>Audio (uses Audio Input source)</option>
             <option value="midi">MIDI Synthesizer</option>
         </select>
-        <div class="info" style="margin-top: 5px;">Source that drives visualization (Milkdrop, Three.js, etc.)</div>
+        <div class="info" style="margin-top: 5px;">What drives the visualization frequency data</div>
     </div>
 
     <div class="section">

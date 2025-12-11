@@ -5,6 +5,8 @@ class AudioInputSource {
         this.audioContext = null;
         this.analyser = null;
         this.microphone = null;
+        this.mediaElementSource = null; // MediaElementSource for video/audio files
+        this.connectedMediaElement = null; // Track which media element we're connected to
         this.frequencyData = null;
         this.timeDomainData = null;
         this.isActive = false;
@@ -264,18 +266,95 @@ class AudioInputSource {
         }
 
         try {
-            const source = this.audioContext.createMediaElementSource(audioElement);
-            source.connect(this.analyser);
-            this.analyser.connect(this.audioContext.destination); // Allow playback
+            // CRITICAL: Check if we're reconnecting to the SAME element
+            // createMediaElementSource() can only be called ONCE per element
+            // Calling it again throws: InvalidStateError: HTMLMediaElement already connected
+            if (this.mediaElementSource && this.connectedMediaElement === audioElement) {
+                console.log('[AudioInput] ✓ Already connected to this media element - reusing connection');
+                this.isActive = true;
+                this.isPaused = false;
+
+                // Make sure analysis is running
+                if (!this.analyserIntervalId) {
+                    this.startAnalysis();
+                }
+
+                console.log('[AudioInput] Reused existing connection successfully');
+                return true;
+            }
+
+            // Disconnect any existing media element source first (different element)
+            if (this.mediaElementSource) {
+                console.log('[AudioInput] Disconnecting previous media element source (different element)');
+                this.mediaElementSource.disconnect();
+                this.mediaElementSource = null;
+                this.connectedMediaElement = null;
+            }
+
+            // Debug: Check media element state
+            console.log('[AudioInput] DEBUG - Media element state:', {
+                paused: audioElement.paused,
+                muted: audioElement.muted,
+                volume: audioElement.volume,
+                readyState: audioElement.readyState,
+                currentTime: audioElement.currentTime,
+                duration: audioElement.duration
+            });
+
+            if (audioElement.paused) {
+                console.warn('[AudioInput] ⚠️ Media element is PAUSED! Audio might not flow to analyser.');
+            }
+
+            // CRITICAL: Resume AudioContext if suspended
+            console.log('[AudioInput] AudioContext state BEFORE:', this.audioContext.state);
+            if (this.audioContext.state === 'suspended') {
+                console.warn('[AudioInput] AudioContext is SUSPENDED - attempting to resume...');
+                await this.audioContext.resume();
+                console.log('[AudioInput] AudioContext state AFTER resume:', this.audioContext.state);
+            }
+
+            // Create and connect media element source
+            console.log('[AudioInput] Creating MediaElementSource from', audioElement.tagName, 'element...');
+            this.mediaElementSource = this.audioContext.createMediaElementSource(audioElement);
+            this.connectedMediaElement = audioElement; // Track which element we're connected to
+            console.log('[AudioInput] ✓ MediaElementSource created');
+
+            // Connect audio chain for media feed:
+            // mediaElement → analyser (for frequency analysis)
+            //             → monitorGain (for audio output, controlled by setMonitoring)
+            this.mediaElementSource.connect(this.analyser);
+            this.mediaElementSource.connect(this.monitorGain);
+
+            console.log('[AudioInput] ✓ Audio chain: mediaElement → analyser + monitorGain');
+            console.log('[AudioInput] Monitoring enabled:', this.monitoringEnabled);
 
             this.isActive = true;
+            this.isPaused = false;
             this.startAnalysis();
 
-            console.log('[AudioInput] Media element connected');
+            console.log('[AudioInput] Media element connected successfully');
+
+            // Debug: Log frequency data after 1 second to verify it's flowing
+            setTimeout(() => {
+                const maxFreq = Math.max(...this.frequencyData);
+                const avgFreq = this.frequencyData.reduce((a, b) => a + b, 0) / this.frequencyData.length;
+                console.log('[AudioInput] DEBUG - Media feed frequency data:', {
+                    max: maxFreq,
+                    avg: avgFreq.toFixed(1),
+                    sampleData: Array.from(this.frequencyData.slice(0, 10))
+                });
+                if (maxFreq === 0) {
+                    console.error('[AudioInput] ⚠️ NO FREQUENCY DATA! Audio might not be playing or analyser not working');
+                } else {
+                    console.log('[AudioInput] ✓ Frequency data is flowing');
+                }
+            }, 1000);
+
             this.emit('connected', { source: 'media' });
             return true;
         } catch (error) {
             console.error('[AudioInput] Failed to connect media element:', error);
+            console.error('[AudioInput] Error details:', error.message);
             this.emit('error', { error, source: 'media' });
             return false;
         }
@@ -316,6 +395,14 @@ class AudioInputSource {
             // Disconnect audio node
             this.microphone.disconnect();
             this.microphone = null;
+        }
+
+        // Disconnect media element source if exists
+        if (this.mediaElementSource) {
+            console.log('[AudioInput] Disconnecting media element source');
+            this.mediaElementSource.disconnect();
+            this.mediaElementSource = null;
+            this.connectedMediaElement = null; // Clear reference to allow reconnection
         }
 
         console.log('[AudioInput] Disconnected');

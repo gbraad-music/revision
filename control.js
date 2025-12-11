@@ -1206,6 +1206,70 @@ function goToProgramWebpage() {
     });
 }
 
+// LOAD MEDIA FEED for reactive input
+function loadMediaFeed() {
+    const url = document.getElementById('media-feed-url').value.trim();
+    const statusDiv = document.getElementById('media-feed-status');
+
+    if (!url) {
+        // Show error status instead of alert
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = 'rgba(255, 0, 0, 0.2)';
+        statusDiv.style.border = '1px solid rgba(255, 0, 0, 0.5)';
+        statusDiv.style.color = '#ff6666';
+        statusDiv.textContent = '⚠️ Please enter a media URL';
+
+        // Hide after 3 seconds
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 3000);
+        return;
+    }
+
+    // Show loading status
+    statusDiv.style.display = 'block';
+    statusDiv.style.background = 'rgba(0, 102, 255, 0.2)';
+    statusDiv.style.border = '1px solid rgba(0, 102, 255, 0.5)';
+    statusDiv.style.color = '#66aaff';
+    statusDiv.textContent = '🔄 Loading media feed...';
+
+    console.log('[Control] Loading media feed:', url, 'Type: auto');
+
+    // Send command to main app to load media feed for reactive input (always auto-detect)
+    sendCommand('mediaFeedLoad', {
+        url: url,
+        type: 'auto'
+    });
+
+    // Switch reactive input to media-feed
+    sendCommand('milkdropAudioSource', 'media-feed');
+
+    console.log('[Control] ✓ Media feed load command sent');
+}
+
+// RELEASE MEDIA FEED
+function releaseMediaFeed() {
+    console.log('[Control] Releasing media feed...');
+
+    // Send command to release media feed
+    sendCommand('mediaFeedRelease');
+
+    // Switch back to microphone
+    document.getElementById('audio-input-source').value = 'microphone';
+    sendCommand('audioInputSource', 'microphone');
+
+    // Clear URL field
+    document.getElementById('media-feed-url').value = '';
+
+    // Clear status
+    const statusDiv = document.getElementById('media-feed-status');
+    if (statusDiv) {
+        statusDiv.style.display = 'none';
+    }
+
+    console.log('[Control] ✓ Media feed released, switched to microphone');
+}
+
 // MILKDROP NAVIGATION
 function stageMilkdropNav(direction) {
     if (direction === 'next') {
@@ -1437,6 +1501,40 @@ controlChannel.onmessage = (event) => {
             // Ignore - control.html loads presets directly from butterchurnPresets
             // (Similar to how Three.js works)
             break;
+        case 'mediaFeedError':
+            // Show error status (no blocking alert)
+            const errorStatus = document.getElementById('media-feed-status');
+            if (errorStatus) {
+                errorStatus.style.display = 'block';
+                errorStatus.style.background = 'rgba(255, 0, 0, 0.2)';
+                errorStatus.style.border = '1px solid rgba(255, 0, 0, 0.5)';
+                errorStatus.style.color = '#ff6666';
+                errorStatus.textContent = '❌ Failed to load: ' + data;
+
+                // Hide after 5 seconds
+                setTimeout(() => {
+                    errorStatus.style.display = 'none';
+                }, 5000);
+            }
+            console.error('[Control] Media feed error:', data);
+            break;
+        case 'mediaFeedSuccess':
+            // Show success status
+            const successStatus = document.getElementById('media-feed-status');
+            if (successStatus) {
+                successStatus.style.display = 'block';
+                successStatus.style.background = 'rgba(0, 255, 0, 0.2)';
+                successStatus.style.border = '1px solid rgba(0, 255, 0, 0.5)';
+                successStatus.style.color = '#66ff66';
+                successStatus.textContent = '✓ Media feed loaded successfully';
+
+                // Hide after 3 seconds
+                setTimeout(() => {
+                    successStatus.style.display = 'none';
+                }, 3000);
+            }
+            console.log('[Control] Media feed loaded successfully');
+            break;
     }
 };
 
@@ -1500,12 +1598,35 @@ function updateState(state) {
         }, 150);
     }
 
-    // Update visual audio source - ALWAYS from main app state, NEVER from saved settings
-    if (state.visualAudioSource !== undefined) {
-        const dropdown = document.getElementById('milkdrop-audio-source');
-        dropdown.value = state.visualAudioSource;
-        // Removed spam log - broadcasts every 100ms
-        // Note: MIDI synth options are now in a separate section, always visible
+    // Update audio input source (what audio is being captured)
+    if (state.audioInputSource !== undefined) {
+        const dropdown = document.getElementById('audio-input-source');
+        dropdown.value = state.audioInputSource;
+
+        // Get microphone and media feed sections
+        const microphoneSection = document.getElementById('microphone-config');
+        const mediaFeedConfig = document.getElementById('media-feed-config');
+
+        // Show/hide sections based on current source
+        if (state.audioInputSource === 'microphone') {
+            // Show microphone device + sample rate, hide media feed
+            if (microphoneSection) microphoneSection.style.display = 'block';
+            mediaFeedConfig.style.display = 'none';
+        } else if (state.audioInputSource === 'media-feed') {
+            // Show media feed config, hide microphone
+            if (microphoneSection) microphoneSection.style.display = 'none';
+            mediaFeedConfig.style.display = 'block';
+        } else if (state.audioInputSource === 'program-media') {
+            // Hide both (program media needs no additional config)
+            if (microphoneSection) microphoneSection.style.display = 'none';
+            mediaFeedConfig.style.display = 'none';
+        }
+    }
+
+    // Update reactive input source (what drives visualization)
+    if (state.reactiveInputSource !== undefined) {
+        const dropdown = document.getElementById('reactive-input-source');
+        dropdown.value = state.reactiveInputSource;
     }
 
     // Update MIDI synth settings
@@ -1664,6 +1785,14 @@ function updateState(state) {
         if (state.visualAudioSource === 'midi') {
             reactiveInputElement.textContent = 'MIDI Synthesizer';
             reactiveInputElement.style.color = '#FF6600'; // Orange for MIDI
+        } else if (state.visualAudioSource === 'media-feed') {
+            reactiveInputElement.textContent = 'Media Feed (dedicated)';
+            reactiveInputElement.style.color = '#00FF00'; // Green for media feed
+        } else if (state.visualAudioSource === 'program-media') {
+            // Show which program mode's audio is being used
+            const modeName = state.mode ? state.mode.toUpperCase() : 'NONE';
+            reactiveInputElement.textContent = `Program Media (${modeName})`;
+            reactiveInputElement.style.color = '#00FFFF'; // Cyan for program media
         } else {
             reactiveInputElement.textContent = 'Audio Input Device';
             reactiveInputElement.style.color = '#0066FF'; // Blue for audio
@@ -1866,12 +1995,40 @@ document.getElementById('audio-samplerate-select').addEventListener('change', (e
     sendCommand('audioSampleRate', e.target.value);
 });
 
-// Milkdrop audio source selection
-document.getElementById('milkdrop-audio-source').addEventListener('change', (e) => {
+// Audio Input source selection (what audio to capture)
+document.getElementById('audio-input-source').addEventListener('change', (e) => {
     const source = e.target.value;
-    sendCommand('milkdropAudioSource', source);
 
-    // Note: MIDI synth options are now in a separate section, always visible
+    // Get microphone and media feed sections
+    const microphoneSection = document.getElementById('microphone-config');
+    const mediaFeedConfig = document.getElementById('media-feed-config');
+
+    // Show/hide sections based on selected source
+    if (source === 'microphone') {
+        // Show microphone device + sample rate, hide media feed
+        if (microphoneSection) microphoneSection.style.display = 'block';
+        mediaFeedConfig.style.display = 'none';
+        console.log('[Control] Microphone selected - showing device selection');
+    } else if (source === 'media-feed') {
+        // Show media feed config, hide microphone
+        if (microphoneSection) microphoneSection.style.display = 'none';
+        mediaFeedConfig.style.display = 'block';
+        console.log('[Control] Media feed selected - awaiting URL input');
+    } else if (source === 'program-media') {
+        // Hide both (program media needs no additional config)
+        if (microphoneSection) microphoneSection.style.display = 'none';
+        mediaFeedConfig.style.display = 'none';
+        console.log('[Control] Program media selected - no additional config needed');
+    }
+
+    // Send command to switch audio input source
+    sendCommand('audioInputSource', source);
+});
+
+// Reactive Input source selection (what drives visualization)
+document.getElementById('reactive-input-source').addEventListener('change', (e) => {
+    const source = e.target.value; // 'audio' or 'midi'
+    sendCommand('reactiveInputSource', source);
 });
 
 // MIDI synth enable/disable toggle
@@ -2756,16 +2913,15 @@ function loadScript(src, cacheBust = false) {
     });
 }
 
-// Force dropdown to default to "microphone" on load
-// Main app will NEVER auto-start MIDI synth, so this is always correct initially
-document.getElementById('milkdrop-audio-source').value = 'microphone';
-// Note: MIDI synth options are now in a separate section, always visible
-console.log('[Control] Defaulted to Audio Input Device');
+// Force dropdowns to default values on load
+document.getElementById('audio-input-source').value = 'microphone';
+document.getElementById('reactive-input-source').value = 'audio';
+console.log('[Control] Defaulted to Microphone + Audio reactive input');
 
-// CRITICAL: Force main app to microphone mode on control.html load
-// This ensures MIDI synth is never auto-started (requires user gesture)
-console.log('[Control] Forcing Visual Reactive Input to microphone...');
-sendCommand('milkdropAudioSource', 'microphone');
+// CRITICAL: Force main app to correct mode on control.html load
+console.log('[Control] Setting Audio Input to microphone and Reactive Input to audio...');
+sendCommand('audioInputSource', 'microphone');
+sendCommand('reactiveInputSource', 'audio');
 
 // Get resolution dimensions from preset or custom
 function getResolutionDimensions(resolution) {
