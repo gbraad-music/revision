@@ -50,6 +50,7 @@ class RevisionAppV2 {
         // Broadcast state periodically
         this.lastBroadcastTime = 0;
         this.lastSPPWarningTime = 0;
+        this.broadcastIntervalId = null; // Dedicated interval for broadcasting (continues when tab hidden)
 
         // State
         this.currentBPM = 120;
@@ -648,6 +649,14 @@ class RevisionAppV2 {
 
         // Setup BroadcastChannel for control.html
         this.setupControlChannel();
+
+        // CRITICAL: Start dedicated broadcast interval that continues even when tab is hidden
+        // This ensures control.html ALWAYS receives state updates (EQ, beat indicators, etc.)
+        // setInterval is NOT throttled when tab is hidden (unlike requestAnimationFrame)
+        this.broadcastIntervalId = setInterval(() => {
+            this.broadcastState();
+        }, 100); // Broadcast every 100ms
+        console.log('[Revision] Started dedicated broadcast interval (continues when tab hidden)');
 
         // Setup drag-and-drop for media files on main display
         this.setupDragAndDrop();
@@ -2457,11 +2466,8 @@ class RevisionAppV2 {
             }
         }
 
-        // Broadcast state to control.html every 100ms
-        if (now - this.lastBroadcastTime > 100) {
-            this.broadcastState();
-            this.lastBroadcastTime = now;
-        }
+        // Note: State broadcasting now handled by dedicated setInterval in initialize()
+        // This ensures broadcasts continue even when tab is hidden (setInterval not throttled)
 
         // Only update built-in renderer if in builtin mode
         if (this.currentPresetType === 'builtin') {
