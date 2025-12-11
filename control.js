@@ -1528,6 +1528,26 @@ function updateState(state) {
             valueDisplay.textContent = state.audioNoteDuration;
         }
     }
+    if (state.beatThreshold !== undefined) {
+        const slider = document.getElementById('beat-threshold');
+        const valueDisplay = document.getElementById('beat-threshold-value');
+        if (slider && valueDisplay) {
+            slider.value = state.beatThreshold;
+            valueDisplay.textContent = parseFloat(state.beatThreshold).toFixed(1);
+        }
+    }
+    if (state.beatMinTime !== undefined) {
+        const slider = document.getElementById('beat-min-time');
+        const valueDisplay = document.getElementById('beat-min-time-value');
+        const bpmDisplay = document.getElementById('beat-max-bpm');
+        if (slider && valueDisplay && bpmDisplay) {
+            slider.value = state.beatMinTime;
+            valueDisplay.textContent = state.beatMinTime;
+            // Calculate max BPM
+            const maxBpm = Math.floor(60000 / parseInt(state.beatMinTime));
+            bpmDisplay.textContent = maxBpm;
+        }
+    }
 
     // Update current mode display and track program mode
     if (state.mode) {
@@ -1846,6 +1866,31 @@ if (audioNoteDurationSlider && audioNoteDurationValue) {
     audioNoteDurationSlider.addEventListener('input', (e) => {
         audioNoteDurationValue.textContent = e.target.value;
         sendCommand('audioNoteDuration', e.target.value);
+    });
+}
+
+// Beat detection threshold slider
+const beatThresholdSlider = document.getElementById('beat-threshold');
+const beatThresholdValue = document.getElementById('beat-threshold-value');
+if (beatThresholdSlider && beatThresholdValue) {
+    beatThresholdSlider.addEventListener('input', (e) => {
+        beatThresholdValue.textContent = parseFloat(e.target.value).toFixed(1);
+        sendCommand('beatThreshold', e.target.value);
+    });
+}
+
+// Beat minimum time slider
+const beatMinTimeSlider = document.getElementById('beat-min-time');
+const beatMinTimeValue = document.getElementById('beat-min-time-value');
+const beatMaxBpmValue = document.getElementById('beat-max-bpm');
+if (beatMinTimeSlider && beatMinTimeValue && beatMaxBpmValue) {
+    beatMinTimeSlider.addEventListener('input', (e) => {
+        const minTime = parseInt(e.target.value);
+        beatMinTimeValue.textContent = minTime;
+        // Calculate max BPM: 60000ms / minTime
+        const maxBpm = Math.floor(60000 / minTime);
+        beatMaxBpmValue.textContent = maxBpm;
+        sendCommand('beatMinTime', e.target.value);
     });
 }
 

@@ -1232,6 +1232,26 @@ class RevisionAppV2 {
                         console.log('[Revision] ✓ Note duration updated:', data, 'ms');
                     }
                     break;
+                case 'beatThreshold':
+                    console.log('[BroadcastChannel] Beat Threshold:', data);
+                    this.settings.set('beatThreshold', data);
+
+                    // Apply to audio source
+                    if (this.audioSource && this.audioSource.setBeatThreshold) {
+                        this.audioSource.setBeatThreshold(parseFloat(data));
+                        console.log('[Revision] ✓ Beat threshold updated:', data);
+                    }
+                    break;
+                case 'beatMinTime':
+                    console.log('[BroadcastChannel] Beat Min Time:', data, 'ms');
+                    this.settings.set('beatMinTime', data);
+
+                    // Apply to audio source
+                    if (this.audioSource && this.audioSource.setBeatMinTime) {
+                        this.audioSource.setBeatMinTime(parseInt(data));
+                        console.log('[Revision] ✓ Beat min time updated:', data, 'ms');
+                    }
+                    break;
                 case 'midiSynthBeatKick':
                     console.log('[BroadcastChannel] MIDI Synth Beat Kick:', data);
                     this.settings.set('midiSynthBeatKick', data);
@@ -1906,6 +1926,8 @@ class RevisionAppV2 {
             midiSynthFeedInput: this.settings.get('midiSynthFeedInput') === 'true' ? 'true' : 'false',
             midiSynthBeatKick: this.settings.get('midiSynthBeatKick') === 'true' ? 'true' : 'false',
             audioNoteDuration: this.settings.get('audioNoteDuration') || '60',
+            beatThreshold: this.settings.get('beatThreshold') || '1.6',
+            beatMinTime: this.settings.get('beatMinTime') || '400',
             audioSourceDisplay: this.getFormattedAudioSource(),
             reactiveInputDisplay: this.getFormattedReactiveInput(),
             midiInputId: this.settings.get('midiInputId') || '',
@@ -1982,6 +2004,19 @@ class RevisionAppV2 {
             if (this.audioSource.setNoteDuration) {
                 this.audioSource.setNoteDuration(parseInt(noteDuration));
                 console.log('[Revision] Applied note duration setting:', noteDuration, 'ms');
+            }
+
+            // Apply beat detection settings
+            const beatThreshold = this.settings.get('beatThreshold') || '1.6';
+            if (this.audioSource.setBeatThreshold) {
+                this.audioSource.setBeatThreshold(parseFloat(beatThreshold));
+                console.log('[Revision] Applied beat threshold:', beatThreshold);
+            }
+
+            const beatMinTime = this.settings.get('beatMinTime') || '400';
+            if (this.audioSource.setBeatMinTime) {
+                this.audioSource.setBeatMinTime(parseInt(beatMinTime));
+                console.log('[Revision] Applied beat min time:', beatMinTime, 'ms');
             }
 
             // ALWAYS register audio source with InputManager when connected

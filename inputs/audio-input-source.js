@@ -530,6 +530,12 @@ class AudioInputSource {
     // Configuration
     setBeatThreshold(threshold) {
         this.beatDetector.threshold = threshold;
+        console.log('[AudioInput] Beat threshold updated:', threshold);
+    }
+
+    setBeatMinTime(minTime) {
+        this.beatDetector.minTimeBetweenBeats = minTime;
+        console.log('[AudioInput] Beat min time updated:', minTime, 'ms (max', Math.floor(60000 / minTime), 'BPM)');
     }
 
     setNoteDuration(duration) {
