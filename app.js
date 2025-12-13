@@ -20,6 +20,10 @@ class RevisionAppV2 {
         this.mediaFeedElement = null; // Media element (audio/video) for reactive input from file
         this.oscClient = new OSCClient();
 
+        // WebRTC MIDI connection and virtual source
+        this.webrtcMidi = null; // WebRTC MIDI receiver instance
+        this.webrtcMidiSource = null; // Virtual MIDI source (single source with role filtering)
+
         // Renderers
         this.renderer = new VisualRenderer('builtin-canvas');
         this.sceneManager = null;
@@ -719,15 +723,20 @@ class RevisionAppV2 {
             const enableSysEx = this.settings.get('enableSysEx') !== 'false';
             const midiSuccess = await this.midiSource.initialize(enableSysEx);
             if (midiSuccess) {
-                this.inputManager.registerSource('midi', this.midiSource);
-                console.log('[Revision] ✓ MIDI auto-initialized successfully');
+                // DO NOT register with InputManager yet - will register when device is selected
+                console.log('[Revision] ✓ MIDI auto-initialized successfully (not registered with InputManager yet)');
 
-                // Auto-connect to last MIDI device
+                // Auto-connect to last MIDI device (if it's a physical device)
+                // WebRTC devices will be reconnected when webrtcMidiConnected message is received
                 const lastMidiId = this.settings.get('midiInputId');
-                if (lastMidiId) {
+                if (lastMidiId && !lastMidiId.startsWith('webrtc-')) {
+                    // Physical MIDI device - connect and register
                     this.midiSource.connectInput(lastMidiId);
+                    this.inputManager.registerSource('midi', this.midiSource);
                     this.midiIndicator.classList.add('connected');
                     console.log('[Revision] ✓ MIDI reconnected to last device:', lastMidiId);
+                } else if (lastMidiId && lastMidiId.startsWith('webrtc-')) {
+                    console.log('[Revision] Last MIDI device was WebRTC:', lastMidiId, '- will reconnect when bridge connects');
                 }
             }
         } catch (error) {
@@ -832,7 +841,7 @@ class RevisionAppV2 {
         this.controlChannel.onmessage = async (event) => {
             const { command, data } = event.data;
 
-            console.log('[BroadcastChannel] Received command:', command, 'data:', data);
+            // console.log('[BroadcastChannel] Received command:', command, 'data:', data);
 
             // Flash remote indicator when receiving command from control.html
             const remoteIndicator = document.getElementById('remote-indicator');
@@ -848,7 +857,7 @@ class RevisionAppV2 {
 
             switch (command) {
                 case 'blackScreen':
-                    console.log('[BroadcastChannel] Black Screen - static black screen');
+                    // console.log('[BroadcastChannel] Black Screen - static black screen');
                     // Stop all renderers
                     this.renderer.stop();
                     if (this.threeJSRenderer) this.threeJSRenderer.stop();
@@ -883,7 +892,7 @@ class RevisionAppV2 {
                     this.switchScene(data);
                     break;
                 case 'milkdropNext':
-                    console.log('[BroadcastChannel] milkdropNext - currentPresetType:', this.currentPresetType);
+                    // console.log('[BroadcastChannel] milkdropNext - currentPresetType:', this.currentPresetType);
                     if (this.currentPresetType === 'milkdrop') {
                         console.log('[Control] Milkdrop Next pressed - currentIndex:', this.currentMilkdropIndex);
                         // loadMilkdropPreset handles initialization
@@ -901,7 +910,7 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'milkdropSelect':
-                    console.log('[BroadcastChannel] milkdropSelect - index:', data, 'currentMode:', this.currentPresetType);
+                    // console.log('[BroadcastChannel] milkdropSelect - index:', data, 'currentMode:', this.currentPresetType);
                     if (this.currentPresetType === 'milkdrop') {
                         this.loadMilkdropPreset(data);
                     } else {
@@ -909,7 +918,7 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'threejsSelect':
-                    console.log('[BroadcastChannel] threejsSelect - preset:', data, 'currentMode:', this.currentPresetType);
+                    // console.log('[BroadcastChannel] threejsSelect - preset:', data, 'currentMode:', this.currentPresetType);
                     if (this.currentPresetType === 'threejs') {
                         if (this.threeJSRenderer) {
                             // Load preset on-demand with fresh cache
@@ -939,7 +948,7 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'videoDeviceSelect':
-                    console.log('[BroadcastChannel] Video Device Select:', data);
+                    // console.log('[BroadcastChannel] Video Device Select:', data);
                     this.settings.set('videoDeviceId', data);
                     if (this.videoRenderer && this.currentPresetType === 'video') {
                         const success = await this.videoRenderer.switchCamera(data);
@@ -961,7 +970,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'videoAudioReactive':
-                    console.log('[BroadcastChannel] Video Audio Reactive:', data);
+                    // console.log('[BroadcastChannel] Video Audio Reactive:', data);
                     this.settings.set('videoAudioReactive', data);
                     if (this.videoRenderer) {
                         this.videoRenderer.setAudioReactive(data === 'true');
@@ -969,7 +978,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'videoBeatReactive':
-                    console.log('[BroadcastChannel] Video Beat Reactive:', data);
+                    // console.log('[BroadcastChannel] Video Beat Reactive:', data);
                     this.settings.set('videoBeatReactive', data);
                     if (this.videoRenderer) {
                         this.videoRenderer.setBeatReactive(data === 'true');
@@ -977,7 +986,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'videoRelease':
-                    console.log('[BroadcastChannel] Video Release Camera');
+                    // console.log('[BroadcastChannel] Video Release Camera');
                     if (this.videoRenderer) {
                         this.videoRenderer.release();
                         console.log('[Video] Camera released - ready for reinitialization');
@@ -985,15 +994,15 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'videoResolution':
-                    console.log('[BroadcastChannel] Video Resolution:', data);
+                    // console.log('[BroadcastChannel] Video Resolution:', data);
                     this.settings.set('videoResolution', data);
                     break;
                 case 'videoFramerate':
-                    console.log('[BroadcastChannel] Video Framerate:', data);
+                    // console.log('[BroadcastChannel] Video Framerate:', data);
                     this.settings.set('videoFramerate', data);
                     break;
                 case 'videoAudioOutput':
-                    console.log('[BroadcastChannel] Video Audio Output:', data);
+                    // console.log('[BroadcastChannel] Video Audio Output:', data);
                     this.settings.set('videoAudioOutput', data);
                     const audioEnabled = data === 'true';
 
@@ -1078,7 +1087,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'audioSampleRate':
-                    console.log('[BroadcastChannel] Audio Sample Rate:', data);
+                    // console.log('[BroadcastChannel] Audio Sample Rate:', data);
                     this.settings.set('audioSampleRate', data);
 
                     // Auto-reconnect microphone with new sample rate
@@ -1094,7 +1103,7 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'audioBeatReactive':
-                    console.log('[BroadcastChannel] Audio Beat Reactive (Monitoring):', data);
+                    // console.log('[BroadcastChannel] Audio Beat Reactive (Monitoring):', data);
                     this.settings.set('audioBeatReactive', data);
 
                     // CRITICAL: Only apply if NOT using Program Media
@@ -1116,7 +1125,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'midiSynthEnable':
-                    console.log('[BroadcastChannel] MIDI Synth Enable:', data);
+                    // console.log('[BroadcastChannel] MIDI Synth Enable:', data);
                     this.settings.set('midiSynthEnable', data);
                     if (data === 'true' && !this.midiAudioSynth) {
                         // CRITICAL: Resume AudioContext if suspended (requires user gesture)
@@ -1170,8 +1179,8 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'audioInputSource':
-                    console.log('[BroadcastChannel] ═══════════════════════════════════════');
-                    console.log('[BroadcastChannel] AUDIO INPUT SOURCE changed to:', data);
+                    // console.log('[BroadcastChannel] ═══════════════════════════════════════');
+                    // console.log('[BroadcastChannel] AUDIO INPUT SOURCE changed to:', data);
                     this.settings.set('audioInputSource', data);
                     this.audioInputSource = data; // Track current audio input
 
@@ -1221,12 +1230,12 @@ class RevisionAppV2 {
                     }
 
                     this.broadcastState();
-                    console.log('[BroadcastChannel] ═══════════════════════════════════════');
+                    // console.log('[BroadcastChannel] ═══════════════════════════════════════');
                     break;
 
                 case 'reactiveInputSource':
-                    console.log('[BroadcastChannel] ═══════════════════════════════════════');
-                    console.log('[BroadcastChannel] REACTIVE INPUT SOURCE changed to:', data);
+                    // console.log('[BroadcastChannel] ═══════════════════════════════════════');
+                    // console.log('[BroadcastChannel] REACTIVE INPUT SOURCE changed to:', data);
                     this.settings.set('reactiveInputSource', data);
                     this.reactiveInputSource = data; // Track what drives visualization
 
@@ -1246,19 +1255,19 @@ class RevisionAppV2 {
                     }
 
                     this.broadcastState();
-                    console.log('[BroadcastChannel] ═══════════════════════════════════════');
+                    // console.log('[BroadcastChannel] ═══════════════════════════════════════');
                     break;
 
                 case 'milkdropAudioSource':
                     // DEPRECATED: Old combined dropdown - ignore, superseded by audioInputSource + reactiveInputSource
-                    console.log('[BroadcastChannel] ⚠️ DEPRECATED milkdropAudioSource command received - ignoring');
-                    console.log('[BroadcastChannel] Use audioInputSource + reactiveInputSource instead');
+                    // console.log('[BroadcastChannel] ⚠️ DEPRECATED milkdropAudioSource command received - ignoring');
+                    // console.log('[BroadcastChannel] Use audioInputSource + reactiveInputSource instead');
                     break;
 
                 case 'OLD_milkdropAudioSource':
-                    console.log('[BroadcastChannel] ═══════════════════════════════════════');
-                    console.log('[BroadcastChannel] SWITCHING Audio Source to:', data);
-                    console.log('[BroadcastChannel] Current synth state:', this.midiAudioSynth ? 'EXISTS' : 'NULL');
+                    // console.log('[BroadcastChannel] ═══════════════════════════════════════');
+                    // console.log('[BroadcastChannel] SWITCHING Audio Source to:', data);
+                    // console.log('[BroadcastChannel] Current synth state:', this.midiAudioSynth ? 'EXISTS' : 'NULL');
                     // OLD visualAudioSource setting is deprecated - ignore it
                     console.log('[Revision] ⚠️ visualAudioSource is deprecated - use audioInputSource + reactiveInputSource instead');
 
@@ -1394,17 +1403,17 @@ class RevisionAppV2 {
                         await this.connectToProgramMedia();
                     }
 
-                    console.log('[BroadcastChannel] Reconnecting audio to renderer...');
+                    // console.log('[BroadcastChannel] Reconnecting audio to renderer...');
                     // Reconnect audio to active renderer immediately
                     this.reconnectAudioToRenderer();
 
-                    console.log('[BroadcastChannel] Broadcasting state update...');
+                    // console.log('[BroadcastChannel] Broadcasting state update...');
                     // Update display immediately
                     this.broadcastState();
-                    console.log('[BroadcastChannel] ═══════════════════════════════════════');
+                    // console.log('[BroadcastChannel] ═══════════════════════════════════════');
                     break;
                 case 'midiSynthChannel':
-                    console.log('[BroadcastChannel] MIDI Synth Channel:', data);
+                    // console.log('[BroadcastChannel] MIDI Synth Channel:', data);
                     this.settings.set('midiSynthChannel', data);
                     console.log('[Revision] MIDI synth now listening to:', data === 'all' ? 'All Channels' : `Channel ${parseInt(data) + 1}`);
 
@@ -1412,7 +1421,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'midiSynthAudible':
-                    console.log('[BroadcastChannel] MIDI Synth Audible:', data);
+                    // console.log('[BroadcastChannel] MIDI Synth Audible:', data);
                     this.settings.set('midiSynthAudible', data);
                     if (this.midiAudioSynth) {
                         await this.midiAudioSynth.setAudible(data === 'true');
@@ -1422,7 +1431,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'midiSynthAutoFeed':
-                    console.log('[BroadcastChannel] MIDI Synth Auto-Feed:', data);
+                    // console.log('[BroadcastChannel] MIDI Synth Auto-Feed:', data);
                     this.settings.set('midiSynthAutoFeed', data);
 
                     // CRITICAL: When disabling auto-feed, stop ALL active voices
@@ -1435,7 +1444,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'midiSynthFeedInput':
-                    console.log('[BroadcastChannel] MIDI Synth Feed Input:', data);
+                    // console.log('[BroadcastChannel] MIDI Synth Feed Input:', data);
                     this.settings.set('midiSynthFeedInput', data);
 
                     // CRITICAL: When disabling MIDI input feed, stop ALL active voices
@@ -1448,7 +1457,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'audioNoteDuration':
-                    console.log('[BroadcastChannel] Audio Note Duration:', data, 'ms');
+                    // console.log('[BroadcastChannel] Audio Note Duration:', data, 'ms');
                     this.settings.set('audioNoteDuration', data);
 
                     // Apply to audio source
@@ -1458,7 +1467,7 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'beatThreshold':
-                    console.log('[BroadcastChannel] Beat Threshold:', data);
+                    // console.log('[BroadcastChannel] Beat Threshold:', data);
                     this.settings.set('beatThreshold', data);
 
                     // Apply to audio source
@@ -1468,7 +1477,7 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'beatMinTime':
-                    console.log('[BroadcastChannel] Beat Min Time:', data, 'ms');
+                    // console.log('[BroadcastChannel] Beat Min Time:', data, 'ms');
                     this.settings.set('beatMinTime', data);
 
                     // Apply to audio source
@@ -1478,7 +1487,7 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'eqGain':
-                    console.log('[BroadcastChannel] EQ Gain:', data.band, 'value:', data.value);
+                    // console.log('[BroadcastChannel] EQ Gain:', data.band, 'value:', data.value);
                     const bandCapitalized = data.band.charAt(0).toUpperCase() + data.band.slice(1);
                     this.settings.set(`eq${bandCapitalized}`, data.value.toString());
 
@@ -1499,7 +1508,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'inputGain':
-                    console.log('[BroadcastChannel] Input Gain:', data);
+                    // console.log('[BroadcastChannel] Input Gain:', data);
                     this.settings.set('inputGain', data.toString());
 
                     // Apply to audio source input gain
@@ -1514,7 +1523,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'midiSynthBeatKick':
-                    console.log('[BroadcastChannel] MIDI Synth Beat Kick:', data);
+                    // console.log('[BroadcastChannel] MIDI Synth Beat Kick:', data);
                     this.settings.set('midiSynthBeatKick', data);
 
                     if (data === 'true') {
@@ -1558,48 +1567,87 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'midiInputSelect':
-                    console.log('[BroadcastChannel] MIDI Input Select:', data);
-                    if (data && this.midiSource) {
-                        this.midiSource.connectInput(data);
-                        this.settings.set('midiInputId', data);
-                        this.midiIndicator.classList.add('connected');
-                        this.broadcastState();
+                    // console.log('[BroadcastChannel] MIDI Input Select:', data);
+
+                    // Unregister previous MIDI source
+                    this.inputManager.unregisterSource('midi');
+                    this.inputManager.unregisterSource('webrtc-midi');
+
+                    if (data) {
+                        if (data.startsWith('webrtc-')) {
+                            // WebRTC MIDI selected - extract role filter
+                            const role = data.replace('webrtc-', '');
+                            if (this.webrtcMidiSource && this.webrtcMidiSource.isActive) {
+                                this.webrtcMidiSource.setRoleFilter(role);
+                                this.midiSource = this.webrtcMidiSource;
+                                this.inputManager.registerSource('webrtc-midi', this.webrtcMidiSource);
+                                this.midiIndicator.classList.add('connected');
+                                console.log(`[Revision] ✓ WebRTC MIDI selected with role filter: ${role}`);
+                            }
+                            this.settings.set('midiInputId', data);
+                            this.broadcastState();
+                        } else if (this.midiSource && this.midiSource.connectInput) {
+                            // Physical MIDI device
+                            this.midiSource.connectInput(data);
+                            this.inputManager.registerSource('midi', this.midiSource);
+                            this.midiIndicator.classList.add('connected');
+                            this.settings.set('midiInputId', data);
+                            this.broadcastState();
+                        }
                     }
                     break;
                 case 'midiSynthInputSelect':
-                    console.log('[BroadcastChannel] MIDI Synth Input Select:', data);
-                    if (data && this.midiSynthSource) {
-                        this.midiSynthSource.connectInput(data);
-                        this.settings.set('midiSynthInputId', data);
-                        console.log('[Revision] MIDI synth input connected to:', data);
-                        // Reconnect handlers to ensure they're using the new device
-                        if (this.midiAudioSynth) {
-                            this.setupMIDISynthHandlers();
+                    // console.log('[BroadcastChannel] MIDI Synth Input Select:', data);
+                    if (data) {
+                        if (data.startsWith('webrtc-')) {
+                            // WebRTC MIDI for synth
+                            if (this.webrtcMidiSource && this.webrtcMidiSource.isActive) {
+                                this.midiSynthSource = this.webrtcMidiSource;
+                                this.settings.set('midiSynthInputId', data);
+                                if (this.midiAudioSynth) {
+                                    this.setupMIDISynthHandlers();
+                                }
+                                console.log('[Revision] ✓ MIDI synth using WebRTC MIDI');
+                            }
+                        } else if (this.midiSynthSource && this.midiSynthSource.connectInput) {
+                            // Physical MIDI device
+                            this.midiSynthSource.connectInput(data);
+                            this.settings.set('midiSynthInputId', data);
+                            console.log('[Revision] MIDI synth input connected to:', data);
+                            // Reconnect handlers to ensure they're using the new device
+                            if (this.midiAudioSynth) {
+                                this.setupMIDISynthHandlers();
+                            }
+                            this.broadcastState();
                         }
-                        this.broadcastState();
                     }
                     break;
                 case 'sysexEnable':
-                    console.log('[BroadcastChannel] SysEx Enable:', data);
+                    // console.log('[BroadcastChannel] SysEx Enable:', data);
                     this.settings.set('enableSysEx', data);
                     console.log('[Revision] SysEx setting changed to:', data, '- Reload required');
                     this.broadcastState();
                     break;
                 case 'reactiveOutputFrequency':
-                    console.log('[BroadcastChannel] Reactive Output Frequency:', data);
+                    // console.log('[BroadcastChannel] Reactive Output Frequency:', data);
                     this.settings.set('reactiveOutputFrequency', data);
                     this.broadcastState();
                     break;
                 case 'reactiveOutputBeatKick':
-                    console.log('[BroadcastChannel] Reactive Output Beat Kick:', data);
+                    // console.log('[BroadcastChannel] Reactive Output Beat Kick:', data);
                     this.settings.set('reactiveOutputBeatKick', data);
                     this.broadcastState();
                     break;
                 case 'midiOutputSelect':
-                    console.log('[BroadcastChannel] MIDI Output Select:', data);
+                    // console.log('[BroadcastChannel] MIDI Output Select:', data);
                     this.settings.set('midiOutputId', data);
-                    if (this.midiOutputSource && data) {
-                        // Auto-connect when a device is selected
+
+                    if (data && data.startsWith('webrtc-')) {
+                        // WebRTC MIDI output - send messages back through WebRTC
+                        console.log('[Revision] WebRTC MIDI output selected:', data);
+                        // Output handled in reactive output code - sends via control.js broadcast
+                    } else if (this.midiOutputSource && data) {
+                        // Auto-connect when a physical device is selected
                         this.midiOutputSource.connectOutput(data);
                         console.log('[Revision] ✓ MIDI output auto-connected to:', data);
                     } else if (this.midiOutputSource && !data) {
@@ -1610,7 +1658,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'midiOutputChannel':
-                    console.log('[BroadcastChannel] MIDI Output Channel:', data);
+                    // console.log('[BroadcastChannel] MIDI Output Channel:', data);
                     this.settings.set('midiOutputChannel', data);
                     if (this.midiOutputSource) {
                         this.midiOutputSource.setChannel(data === 'all' ? 'all' : parseInt(data));
@@ -1618,7 +1666,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'rendererSelect':
-                    console.log('[BroadcastChannel] Renderer Select:', data);
+                    // console.log('[BroadcastChannel] Renderer Select:', data);
                     this.settings.set('renderer', data);
                     // CRITICAL: Switching renderer should also switch to builtin mode
                     // Otherwise the builtin canvas stays hidden and nothing is visible
@@ -1643,7 +1691,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'oscServer':
-                    console.log('[BroadcastChannel] OSC Server:', data);
+                    // console.log('[BroadcastChannel] OSC Server:', data);
                     this.settings.set('oscServer', data);
                     if (data) {
                         this.oscClient.disconnect();
@@ -1656,7 +1704,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'mediaLoad':
-                    console.log('[BroadcastChannel] Media Load:', data);
+                    // console.log('[BroadcastChannel] Media Load:', data);
                     if (this.mediaRenderer && data.url && data.type) {
                         // Store pending media data - will be loaded AFTER fade completes
                         this.pendingMediaLoad = {
@@ -1680,7 +1728,7 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'mediaAudioReactive':
-                    console.log('[BroadcastChannel] Media Audio Reactive:', data);
+                    // console.log('[BroadcastChannel] Media Audio Reactive:', data);
                     this.settings.set('mediaAudioReactive', data);
                     if (this.mediaRenderer) {
                         this.mediaRenderer.audioReactive = data === 'true';
@@ -1688,7 +1736,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'mediaBeatReactive':
-                    console.log('[BroadcastChannel] Media Beat Reactive:', data);
+                    // console.log('[BroadcastChannel] Media Beat Reactive:', data);
                     this.settings.set('mediaBeatReactive', data);
                     if (this.mediaRenderer) {
                         this.mediaRenderer.beatReactive = data === 'true';
@@ -1696,7 +1744,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'mediaFeedLoad':
-                    console.log('[BroadcastChannel] Media Feed Load for reactive input:', data);
+                    // console.log('[BroadcastChannel] Media Feed Load for reactive input:', data);
                     if (data.url) {
                         await this.loadMediaFeed(data.url, data.type || 'auto');
                     } else {
@@ -1704,11 +1752,11 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'mediaFeedRelease':
-                    console.log('[BroadcastChannel] Media Feed Release');
+                    // console.log('[BroadcastChannel] Media Feed Release');
                     this.releaseMediaFeed();
                     break;
                 case 'streamLoad':
-                    console.log('[BroadcastChannel] Stream Load:', data);
+                    // console.log('[BroadcastChannel] Stream Load:', data);
                     if (this.streamRenderer && data.url) {
                         // Switch to stream mode first
                         await this.switchPresetType('stream');
@@ -1766,7 +1814,7 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'streamAudioReactive':
-                    console.log('[BroadcastChannel] Stream Audio Reactive:', data);
+                    // console.log('[BroadcastChannel] Stream Audio Reactive:', data);
                     this.settings.set('streamAudioReactive', data);
                     if (this.streamRenderer) {
                         this.streamRenderer.setAudioReactive(data === 'true');
@@ -1774,7 +1822,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'streamBeatReactive':
-                    console.log('[BroadcastChannel] Stream Beat Reactive:', data);
+                    // console.log('[BroadcastChannel] Stream Beat Reactive:', data);
                     this.settings.set('streamBeatReactive', data);
                     if (this.streamRenderer) {
                         this.streamRenderer.setBeatReactive(data === 'true');
@@ -1782,7 +1830,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'webpageLoad':
-                    console.log('[BroadcastChannel] Webpage Load:', data);
+                    // console.log('[BroadcastChannel] Webpage Load:', data);
                     if (this.webpageRenderer && data.url) {
                         // Switch to webpage mode first
                         await this.switchPresetType('webpage');
@@ -1795,7 +1843,7 @@ class RevisionAppV2 {
                     }
                     break;
                 case 'webpageAudioReactive':
-                    console.log('[BroadcastChannel] Webpage Audio Reactive:', data);
+                    // console.log('[BroadcastChannel] Webpage Audio Reactive:', data);
                     this.settings.set('webpageAudioReactive', data);
                     if (this.webpageRenderer) {
                         this.webpageRenderer.setAudioReactive(data === 'true');
@@ -1803,7 +1851,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'webpageBeatReactive':
-                    console.log('[BroadcastChannel] Webpage Beat Reactive:', data);
+                    // console.log('[BroadcastChannel] Webpage Beat Reactive:', data);
                     this.settings.set('webpageBeatReactive', data);
                     if (this.webpageRenderer) {
                         this.webpageRenderer.setBeatReactive(data === 'true');
@@ -1811,7 +1859,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'programResolution':
-                    console.log('[BroadcastChannel] Program Resolution:', data);
+                    // console.log('[BroadcastChannel] Program Resolution:', data);
                     this.settings.set('programResolution', data.preset);
                     if (data.preset === 'custom') {
                         this.settings.set('customResolutionWidth', data.width);
@@ -1821,7 +1869,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'toggleStatusBar':
-                    console.log('[BroadcastChannel] Toggle Status Bar:', data);
+                    // console.log('[BroadcastChannel] Toggle Status Bar:', data);
                     this.settings.set('showStatusBar', data);
                     const statusBar = document.querySelector('.status-bar');
                     if (statusBar) {
@@ -1832,7 +1880,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     break;
                 case 'toggleControlPanel':
-                    console.log('[BroadcastChannel] Toggle Control Panel:', data);
+                    // console.log('[BroadcastChannel] Toggle Control Panel:', data);
                     this.settings.set('showControlPanel', data);
                     const controlPanel = document.querySelector('.control-panel');
                     if (controlPanel) {
@@ -1846,7 +1894,7 @@ class RevisionAppV2 {
                 // User should press F11 to enter/exit fullscreen mode
                 // control.html displays read-only fullscreen status
                 case 'reloadPreset':
-                    console.log('[BroadcastChannel] Reload Preset:', data);
+                    // console.log('[BroadcastChannel] Reload Preset:', data);
                     if (data && data.key && data.className && data.code) {
                         try {
                             // Remove old script if exists
@@ -1892,7 +1940,7 @@ class RevisionAppV2 {
                     this.broadcastState();
                     // Also send preset list if available
                     if (this.milkdropPresetKeys && this.milkdropPresetKeys.length > 0) {
-                        console.log('[BroadcastChannel] Sending preset list:', this.milkdropPresetKeys.length, 'presets');
+                        // console.log('[BroadcastChannel] Sending preset list:', this.milkdropPresetKeys.length, 'presets');
                         this.controlChannel.postMessage({
                             type: 'presetList',
                             data: this.milkdropPresetKeys
@@ -1913,6 +1961,114 @@ class RevisionAppV2 {
                     } else {
                         console.warn('[Stream] Cannot send stats - renderer or getStats not available');
                     }
+                    break;
+                case 'webrtcMidiConnect':
+                    // Control panel sent WebRTC offer - create connection
+                    // console.log('[WebRTC MIDI] Received offer from control panel:', data);
+                    this.handleWebRTCOffer(data.offer).then(answer => {
+                        // Send answer back to control panel
+                        this.controlChannel.postMessage({
+                            type: 'webrtcMidiAnswer',
+                            data: answer
+                        });
+                    }).catch(error => {
+                        console.error('[WebRTC MIDI] Error handling offer:', error);
+                        this.controlChannel.postMessage({
+                            type: 'webrtcMidiError',
+                            data: error.message
+                        });
+                    });
+                    break;
+
+                case 'webrtcMidiDisconnect':
+                    // Control panel requested disconnect
+                    // console.log('[WebRTC MIDI] Disconnect requested from control panel');
+                    this.disconnectWebRTCMIDI();
+                    break;
+
+                case 'webrtcMidiConnected':
+                    // WebRTC MIDI connection established (backward compatibility)
+                    // console.log('[WebRTC MIDI] Connection established');
+                    if (!this.webrtcMidiSource) {
+                        // Initialize without devices - wait for activeRoles message
+                        this.initializeWebRTCMIDISource();
+                    }
+                    break;
+
+                case 'webrtcMidiActiveRoles':
+                    // Bridge sent list of active roles
+                    // console.log('[WebRTC MIDI] Received active roles from bridge:', data);
+                    if (this.webrtcMidiSource) {
+                        // Update device list with actual roles
+                        const devices = data.map(role => ({
+                            id: `webrtc-${role}`,
+                            name: `WebRTC MIDI (${role})`,
+                            manufacturer: 'Network',
+                            state: 'connected'
+                        }));
+
+                        // console.log('[WebRTC MIDI] Created devices for dropdowns:', devices);
+                        // console.log('[WebRTC MIDI] Sending webrtcMidiDevicesChanged to control.js...');
+
+                        this.controlChannel.postMessage({
+                            type: 'webrtcMidiDevicesChanged',
+                            data: devices
+                        });
+
+                        // Auto-reconnect if WebRTC was previously selected
+                        const lastMidiId = this.settings.get('midiInputId');
+                        if (lastMidiId && lastMidiId.startsWith('webrtc-')) {
+                            const role = lastMidiId.replace('webrtc-', '');
+                            if (data.includes(role)) {
+                                this.webrtcMidiSource.setRoleFilter(role);
+                                this.inputManager.registerSource('webrtc-midi', this.webrtcMidiSource);
+                                this.midiSource = this.webrtcMidiSource;
+                                this.midiIndicator.classList.add('connected');
+                                // console.log(`[WebRTC MIDI] ✓ Auto-reconnected with role: ${role}`);
+                            } else {
+                                console.warn(`[WebRTC MIDI] Previous role '${role}' not in active roles:`, data);
+                            }
+                        }
+                    } else {
+                        console.warn('[WebRTC MIDI] Received active roles but source not initialized');
+                    }
+                    break;
+                case 'webrtcMidiMessage':
+                    // Handle incoming MIDI from WebRTC
+                    if (data && data.data) {
+                        const midiData = new Uint8Array(data.data);
+                        const timestamp = data.timestamp || performance.now();
+                        const roles = data.roles || (data.role ? [data.role] : ['control']);
+                        const deviceName = data.deviceName || 'WebRTC';
+
+                        // Ensure source exists
+                        if (!this.webrtcMidiSource) {
+                            console.warn('[WebRTC MIDI] Source not initialized - creating now');
+                            this.initializeWebRTCMIDISource();
+                        }
+
+                        // Route to WebRTC source (it will filter by role internally)
+                        if (this.webrtcMidiSource && this.webrtcMidiSource.isActive) {
+                            this.webrtcMidiSource.handleMIDIMessage({
+                                data: midiData,
+                                timeStamp: timestamp
+                            }, roles);
+                        }
+                    }
+                    break;
+
+                case 'webrtcMidiDisconnected':
+                    // Cleanup WebRTC MIDI
+                    // console.log('[WebRTC MIDI] Disconnected');
+                    if (this.webrtcMidiSource) {
+                        this.inputManager.unregisterSource('webrtc-midi');
+                        this.webrtcMidiSource.disconnect();
+                        this.webrtcMidiSource = null;
+                    }
+                    this.controlChannel.postMessage({
+                        type: 'webrtcMidiDevicesChanged',
+                        data: []
+                    });
                     break;
             }
         };
@@ -2695,11 +2851,18 @@ class RevisionAppV2 {
         const beat = Math.floor((this.currentPosition % 16) / 4);
         const sixteenth = Math.floor(this.currentPosition % 4);
 
-        // Check if SPP was received recently from MIDI source
+        // Check if SPP was received recently from currently selected MIDI source
         const now = performance.now();
-        const timeSinceLastSPP = this.midiSource && this.midiSource.lastSPPTime
-            ? (now - this.midiSource.lastSPPTime)
-            : Infinity;
+        const selectedMidiInput = this.settings.get('midiInputId') || '';
+        let sppTime = 0;
+
+        if (selectedMidiInput.startsWith('webrtc-') && this.webrtcMidiSource) {
+            sppTime = this.webrtcMidiSource.midiParser?.lastSPPTime || 0;
+        } else if (this.midiSource) {
+            sppTime = this.midiSource.lastSPPTime || 0;
+        }
+
+        const timeSinceLastSPP = sppTime > 0 ? (now - sppTime) : Infinity;
 
         // Flash indicator within 100ms of SPP message
         const sppActive = timeSinceLastSPP < 100;
@@ -2779,6 +2942,7 @@ class RevisionAppV2 {
             // Program canvas dimensions (for preview aspect ratio in control.html)
             programWidth: programWidth,
             programHeight: programHeight
+            // NOTE: webrtcMidiDevices removed - sent separately only when changed
         };
 
         this.controlChannel.postMessage({
@@ -2885,6 +3049,140 @@ class RevisionAppV2 {
         }
     }
 
+    /**
+     * Initialize WebRTC MIDI virtual source (single source with role filtering)
+     */
+    initializeWebRTCMIDISource(activeRoles = []) {
+        // console.log('[WebRTC MIDI] Creating virtual source...');
+
+        // Create ONE WebRTC MIDI source
+        this.webrtcMidiSource = new WebRTCMIDISource();
+        this.webrtcMidiSource.initialize();
+
+        // CRITICAL: Register with inputManager so events are forwarded!
+        this.inputManager.registerSource('webrtc-midi', this.webrtcMidiSource);
+        console.log('[WebRTC MIDI] ✓ Virtual source created and registered with inputManager');
+
+        // Only create dropdown entries for roles that actually exist on the bridge
+        if (activeRoles.length > 0) {
+            const devices = activeRoles.map(role => ({
+                id: `webrtc-${role}`,
+                name: `WebRTC MIDI (${role})`,
+                manufacturer: 'Network',
+                state: 'connected'
+            }));
+
+            // console.log('[WebRTC MIDI] Creating devices for active roles:', activeRoles);
+            this.controlChannel.postMessage({
+                type: 'webrtcMidiDevicesChanged',
+                data: devices
+            });
+        } else {
+            // console.log('[WebRTC MIDI] No active roles - waiting for activeRoles message');
+        }
+    }
+
+    async handleWebRTCOffer(offerJSON) {
+        // console.log('[WebRTC MIDI] Handling offer in app.js...');
+
+        // Close existing connection if any
+        if (this.webrtcMidi) {
+            // console.log('[WebRTC MIDI] Closing existing connection');
+            this.webrtcMidi.close();
+            this.webrtcMidi = null;
+        }
+
+        // Create WebRTC MIDI receiver
+        this.webrtcMidi = new WebRTCMIDI('receiver');
+        await this.webrtcMidi.initialize();
+
+        // Forward MIDI messages to virtual source
+        this.webrtcMidi.onMIDIMessage = (message) => {
+            if (!this.webrtcMidiSource) {
+                this.initializeWebRTCMIDISource();
+            }
+            if (this.webrtcMidiSource && this.webrtcMidiSource.isActive) {
+                this.webrtcMidiSource.handleMIDIMessage({
+                    data: message.data,
+                    timeStamp: message.timestamp
+                }, message.roles);
+            }
+        };
+
+        // Handle active targets from bridge
+        this.webrtcMidi.onActiveTargets = (targets) => {
+            // console.log('[WebRTC MIDI] onActiveTargets called with:', targets);
+            // console.log('[WebRTC MIDI] Type:', typeof targets, 'Is array:', Array.isArray(targets));
+
+            // Create source if it doesn't exist
+            if (!this.webrtcMidiSource) {
+                this.initializeWebRTCMIDISource();
+            }
+
+            // Create devices for dropdowns
+            const devices = targets.map(target => ({
+                id: `webrtc-${target}`,
+                name: `WebRTC MIDI (${target})`,
+                manufacturer: 'Network',
+                state: 'connected'
+            }));
+
+            // console.log('[WebRTC MIDI] Created devices:', devices);
+            // console.log('[WebRTC MIDI] Sending webrtcMidiDevicesChanged with', devices.length, 'devices');
+            this.controlChannel.postMessage({
+                type: 'webrtcMidiDevicesChanged',
+                data: devices
+            });
+        };
+
+        // Handle connection state changes
+        this.webrtcMidi.onConnectionStateChange = (state) => {
+            // console.log('[WebRTC MIDI] Connection state:', state);
+            if (state === 'connected') {
+                if (!this.webrtcMidiSource) {
+                    this.initializeWebRTCMIDISource();
+                }
+            } else if (state === 'disconnected' || state === 'closed') {
+                // Only clean up on true disconnect, not on transient 'failed' state
+                // console.log('[WebRTC MIDI] Connection truly closed - cleaning up');
+                this.controlChannel.postMessage({
+                    type: 'webrtcMidiDevicesChanged',
+                    data: []
+                });
+                if (this.webrtcMidiSource) {
+                    this.inputManager.unregisterSource('webrtc-midi');
+                    this.webrtcMidiSource.disconnect();
+                    this.webrtcMidiSource = null;
+                }
+            } else if (state === 'failed') {
+                // Don't destroy everything - data channel might still work
+                console.warn('[WebRTC MIDI] Connection shows failed but keeping setup (data might still flow)');
+            }
+        };
+
+        // Generate answer
+        const answer = await this.webrtcMidi.handleOffer(offerJSON);
+        // console.log('[WebRTC MIDI] Answer generated');
+        return answer;
+    }
+
+    disconnectWebRTCMIDI() {
+        if (this.webrtcMidi) {
+            this.webrtcMidi.close();
+            this.webrtcMidi = null;
+        }
+        if (this.webrtcMidiSource) {
+            this.inputManager.unregisterSource('webrtc-midi');
+            this.webrtcMidiSource.disconnect();
+            this.webrtcMidiSource = null;
+        }
+        this.controlChannel.postMessage({
+            type: 'webrtcMidiDevicesChanged',
+            data: []
+        });
+        // console.log('[WebRTC MIDI] Disconnected');
+    }
+
     setupMIDISynthHandlers() {
         if (!this.midiSynthSource || !this.midiAudioSynth) {
             console.warn('[Revision] Cannot setup MIDI synth handlers - source or synth not available');
@@ -2930,33 +3228,53 @@ class RevisionAppV2 {
 
             // Send MIDI kick notes to MIDI output (if enabled in Reactive Output)
             const reactiveOutputBeatKick = this.settings.get('reactiveOutputBeatKick') === 'true';
-            if (this.midiOutputSource && this.midiOutputSource.isActive && reactiveOutputBeatKick) {
+            const midiOutputId = this.settings.get('midiOutputId');
+
+            if (reactiveOutputBeatKick && midiOutputId) {
                 const kickNote = 36; // C1 - standard kick drum MIDI note
                 const velocity = Math.floor((data.intensity || 1.0) * 127);
 
-                // Send Note ON
-                this.midiOutputSource.sendNoteOn(kickNote, velocity);
-
-                // Auto Note OFF after 100ms (short kick)
-                setTimeout(() => {
-                    this.midiOutputSource.sendNoteOff(kickNote);
-                }, 100);
+                if (midiOutputId.startsWith('webrtc-')) {
+                    // Send via WebRTC
+                    const role = midiOutputId.replace('webrtc-', '');
+                    if (this.webrtcMidi) {
+                        this.webrtcMidi.sendMIDI([0x90, kickNote, velocity], performance.now(), [role], 'Revision');
+                        setTimeout(() => {
+                            this.webrtcMidi.sendMIDI([0x80, kickNote, 0], performance.now(), [role], 'Revision');
+                        }, 100);
+                    }
+                } else if (this.midiOutputSource && this.midiOutputSource.isActive) {
+                    // Send via physical MIDI
+                    this.midiOutputSource.sendNoteOn(kickNote, velocity);
+                    setTimeout(() => {
+                        this.midiOutputSource.sendNoteOff(kickNote);
+                    }, 100);
+                }
             }
 
             // Update position tracking for MIDI interpolation
-            if (data.source === 'midi' && this.midiSource) {
-                const newPosition = this.midiSource.getSongPosition();
+            if (data.source === 'midi' || data.source === 'midi-spp') {
+                // CRITICAL: Check physical MIDI source first, then WebRTC source
+                let newPosition = null;
 
-                this.lastMIDIUpdateTime = performance.now();
-                this.lastMIDIPosition = newPosition;
-                this.currentPosition = newPosition;
+                if (this.midiSource) {
+                    newPosition = this.midiSource.getSongPosition();
+                } else if (this.webrtcMidiSource && this.webrtcMidiSource.midiParser) {
+                    newPosition = this.webrtcMidiSource.midiParser.getSongPosition();
+                }
 
-                // Update position display
-                if (this.positionDisplay) {
-                    const bar = Math.floor(this.currentPosition / 16);
-                    const beat = Math.floor((this.currentPosition % 16) / 4);
-                    const sixteenth = this.currentPosition % 4;
-                    this.positionDisplay.textContent = `${bar}.${beat}.${sixteenth}`;
+                if (newPosition !== null && newPosition !== undefined) {
+                    this.lastMIDIUpdateTime = performance.now();
+                    this.lastMIDIPosition = newPosition;
+                    this.currentPosition = newPosition;
+
+                    // Update position display
+                    if (this.positionDisplay) {
+                        const bar = Math.floor(this.currentPosition / 16);
+                        const beat = Math.floor((this.currentPosition % 16) / 4);
+                        const sixteenth = this.currentPosition % 4;
+                        this.positionDisplay.textContent = `${bar}.${beat}.${sixteenth}`;
+                    }
                 }
             }
 
@@ -2988,12 +3306,23 @@ class RevisionAppV2 {
         this.inputManager.on('note', (data) => {
             // Send audio-frequency notes to MIDI output (if enabled in Reactive Output)
             const reactiveOutputFrequency = this.settings.get('reactiveOutputFrequency') === 'true';
-            if (this.midiOutputSource && this.midiOutputSource.isActive &&
-                data.source === 'audio-frequency' && reactiveOutputFrequency) {
-                if (data.velocity > 0) {
-                    this.midiOutputSource.sendNoteOn(data.note, data.velocity);
-                } else {
-                    this.midiOutputSource.sendNoteOff(data.note);
+            const midiOutputId = this.settings.get('midiOutputId');
+
+            if (reactiveOutputFrequency && midiOutputId && data.source === 'audio-frequency') {
+                if (midiOutputId.startsWith('webrtc-')) {
+                    // Send via WebRTC
+                    const role = midiOutputId.replace('webrtc-', '');
+                    if (this.webrtcMidi) {
+                        const status = data.velocity > 0 ? 0x90 : 0x80;
+                        this.webrtcMidi.sendMIDI([status, data.note, data.velocity], performance.now(), [role], 'Revision');
+                    }
+                } else if (this.midiOutputSource && this.midiOutputSource.isActive) {
+                    // Send via physical MIDI
+                    if (data.velocity > 0) {
+                        this.midiOutputSource.sendNoteOn(data.note, data.velocity);
+                    } else {
+                        this.midiOutputSource.sendNoteOff(data.note);
+                    }
                 }
             }
 
@@ -3059,29 +3388,50 @@ class RevisionAppV2 {
 
         // Transport events
         this.inputManager.on('transport', (data) => {
-            // console.log('[Revision] Transport:', data.state, 'BPM:', data.bpm);
+            console.log('[Revision] ✓ TRANSPORT EVENT RECEIVED:', data.state, 'BPM:', data.bpm, 'source:', data.source);
             if (data.bpm) {
+                console.log('[Revision] Updating BPM to:', data.bpm);
                 this.currentBPM = data.bpm;
                 this.bpmDisplay.textContent = data.bpm;
                 this.renderer.setBPM(data.bpm);
+                console.log('[Revision] BPM display updated to:', data.bpm);
+            }
+            if (data.state === 'bpm') {
+                console.log('[Revision] This is a BPM-only event, BPM:', data.bpm);
             }
 
             // Update position tracking on transport state changes
-            if (data.source === 'midi' && this.midiSource) {
-                this.lastMIDIUpdateTime = performance.now();
-                this.lastMIDIPosition = this.midiSource.getSongPosition();
-                this.currentPosition = this.lastMIDIPosition;
+            if (data.source === 'midi' || data.source === 'midi-spp') {
+                let newPosition = null;
 
-                // Update position display immediately
-                if (this.positionDisplay) {
-                    const bar = Math.floor(this.currentPosition / 16);
-                    const beat = Math.floor((this.currentPosition % 16) / 4);
-                    const sixteenth = this.currentPosition % 4;
-                    this.positionDisplay.textContent = `${bar}.${beat}.${sixteenth}`;
+                // CRITICAL: For SPP events, use position from event data directly
+                if (data.state === 'spp' && data.position !== undefined) {
+                    newPosition = data.position;
+                } else {
+                    // For other transport events, read from MIDI source
+                    if (this.midiSource) {
+                        newPosition = this.midiSource.getSongPosition();
+                    } else if (this.webrtcMidiSource && this.webrtcMidiSource.midiParser) {
+                        newPosition = this.webrtcMidiSource.midiParser.getSongPosition();
+                    }
                 }
 
-                if (data.state === 'play') {
-                    console.log('[Revision] MIDI Start - Position reset to 0');
+                if (newPosition !== null && newPosition !== undefined) {
+                    this.lastMIDIUpdateTime = performance.now();
+                    this.lastMIDIPosition = newPosition;
+                    this.currentPosition = this.lastMIDIPosition;
+
+                    // Update position display immediately
+                    if (this.positionDisplay) {
+                        const bar = Math.floor(this.currentPosition / 16);
+                        const beat = Math.floor((this.currentPosition % 16) / 4);
+                        const sixteenth = this.currentPosition % 4;
+                        this.positionDisplay.textContent = `${bar}.${beat}.${sixteenth}`;
+                    }
+
+                    if (data.state === 'play') {
+                        console.log('[Revision] MIDI Start - Position reset to 0');
+                    }
                 }
             }
         });
@@ -3247,7 +3597,20 @@ class RevisionAppV2 {
 
         // Update position display continuously
         if (this.positionDisplay) {
-            const timeSinceLastSPP = this.midiSource ? (now - (this.midiSource.lastSPPTime || 0)) : Infinity;
+            // CRITICAL: Check ALL MIDI sources (physical + WebRTC) for most recent SPP
+            let mostRecentSPPTime = 0;
+
+            // Check physical MIDI source
+            if (this.midiSource && this.midiSource.lastSPPTime) {
+                mostRecentSPPTime = Math.max(mostRecentSPPTime, this.midiSource.lastSPPTime);
+            }
+
+            // Check WebRTC MIDI source
+            if (this.webrtcMidiSource && this.webrtcMidiSource.midiParser && this.webrtcMidiSource.midiParser.lastSPPTime) {
+                mostRecentSPPTime = Math.max(mostRecentSPPTime, this.webrtcMidiSource.midiParser.lastSPPTime);
+            }
+
+            const timeSinceLastSPP = mostRecentSPPTime > 0 ? (now - mostRecentSPPTime) : Infinity;
 
             // Only update position if SPP has been received recently (within 5 seconds)
             if (timeSinceLastSPP < 5000) {

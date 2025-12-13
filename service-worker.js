@@ -1,8 +1,9 @@
-const CACHE_NAME = 'revision-v113';
+const CACHE_NAME = 'revision-v114';
 const ASSETS = [
     './',
     './index.html',
     './control.html',
+    './midi-bridge.html',
     './app.js',
     './control.js',
     './manifest.json',
@@ -43,6 +44,12 @@ const ASSETS = [
     './utils/settings-manager.js',
     './utils/wake-lock.js',
     './utils/remote-channel.js',
+    // MIDI over RTC
+    './utils/midi-rtc-bridge.js',
+    './utils/midi-rtc/connection.js',
+    './utils/midi-rtc/protocol.js',
+    './utils/midi-rtc/midi-codec.js',
+    './utils/midi-rtc/midi-utils.js',
     // UI Components
     './utils/pad-knob.js',
     './utils/svg-slider.js',

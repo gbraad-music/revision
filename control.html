@@ -828,6 +828,49 @@
     </div>
 
     <div class="section">
+        <h2>MIDI over WebRTC (Network MIDI)</h2>
+        <div class="info" style="margin-bottom: 15px;">
+            Receive MIDI from network with ultra-low latency (&lt;10ms) and role-based routing (Control/Synth/Reactive).
+            <br><br>
+            <a href="midi-bridge.html" target="_blank" style="display: inline-block; padding: 8px 16px; background: #0066FF; color: white; text-decoration: none; border-radius: 4px; font-weight: 600; margin-bottom: 10px;">
+                🌉 Open MIDI Bridge (Configure Roles)
+            </a>
+        </div>
+
+        <div id="webrtc-status" style="padding: 10px; border-radius: 4px; margin-bottom: 15px; background: #0a0a0a; border: 1px solid #2a2a2a; color: #666; font-size: 12px;">
+            ⚪ Not configured
+        </div>
+
+        <label style="display: block; margin-bottom: 10px; font-size: 12px;">
+            <input type="checkbox" id="webrtc-midi-enable" style="width: auto; margin-right: 5px;">
+            Enable MIDI over WebRTC (low latency network MIDI)
+        </label>
+
+        <div id="webrtc-config" style="display: none;">
+            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Step 1: Paste Offer from MIDI Bridge</label>
+            <textarea id="webrtc-offer-input" placeholder="Paste the offer from midi-bridge.html here..." style="width: 100%; height: 150px; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; margin-bottom: 10px;"></textarea>
+
+            <button onclick="generateWebRTCAnswer()" style="width: 100%; padding: 10px; background: #0066FF; border: 1px solid #0088FF; border-radius: 4px; color: white; font-weight: bold; cursor: pointer; margin-bottom: 15px;">Generate Answer</button>
+
+            <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">Step 2: Copy Answer and Paste in MIDI Bridge</label>
+            <textarea id="webrtc-answer-output" readonly placeholder="Answer will appear here..." style="width: 100%; height: 150px; background: #0a0a0a; color: #0f0; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; margin-bottom: 10px;"></textarea>
+
+            <button onclick="navigator.clipboard.writeText(document.getElementById('webrtc-answer-output').value)" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 4px; color: white; cursor: pointer; margin-bottom: 15px;">Copy Answer to Clipboard</button>
+
+            <div class="info" style="margin-top: 10px; padding: 10px; background: rgba(0,102,255,0.1); border: 1px solid rgba(0,102,255,0.3); border-radius: 4px;">
+                <strong>How to use:</strong><br>
+                1. Open <code>midi-bridge.html</code> in another browser window<br>
+                2. Click "Create Offer" in the bridge, copy the offer code<br>
+                3. Paste offer here and click "Generate Answer"<br>
+                4. Copy the answer and paste it back in the bridge<br>
+                5. Connection will establish and auto-reconnect on startup
+            </div>
+
+            <button onclick="disconnectWebRTCMIDI()" style="width: 100%; padding: 10px; background: #cc0000; border: 1px solid #ff0000; border-radius: 4px; color: white; cursor: pointer; margin-top: 15px;">Disconnect WebRTC MIDI</button>
+        </div>
+    </div>
+
+    <div class="section">
         <h2>OSC Server (Optional)</h2>
         <input type="text" id="osc-server" placeholder="ws://localhost:8080" style="width: 100%; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; padding: 10px; border-radius: 4px;" />
         <div class="info">WebSocket OSC server for external control</div>

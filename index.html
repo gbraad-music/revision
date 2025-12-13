@@ -318,6 +318,7 @@
     <script src="inputs/input-manager.js"></script>
     <script src="inputs/midi-input-source.js"></script>
     <script src="inputs/midi-output-source.js"></script>
+    <script src="inputs/webrtc-midi-source.js"></script>
     <script src="effects/regroove_effects.js"></script>
     <script src="inputs/audio-input-source.js"></script>
     <script src="inputs/midi-audio-synth.js"></script>
@@ -343,6 +344,9 @@
 
     <!-- Remote Channel for WebSocket communication -->
     <script src="utils/remote-channel.js"></script>
+
+    <!-- WebRTC MIDI for low-latency MIDI over network -->
+    <script type="module" src="utils/midi-rtc-bridge.js"></script>
 
     <!-- Main Application -->
     <script src="app.js"></script>

@@ -1486,12 +1486,17 @@ let midiOutput = null;
 function sendCommand(command, data) {
     const message = { command, data };
     controlChannel.postMessage(message);
-    console.log('[Control] Sent:', message);
+    // Logging disabled - too spammy during normal operation
 }
 
 // Receive state updates from main tab
 controlChannel.onmessage = (event) => {
     const { type, data } = event.data;
+
+    // Log all non-stateUpdate messages for debugging
+    if (type !== 'stateUpdate') {
+        console.log('[Control] Received message - Type:', type, 'Data:', data);
+    }
 
     switch (type) {
         case 'stateUpdate':
@@ -1563,6 +1568,30 @@ controlChannel.onmessage = (event) => {
                 }, 3000);
             }
             console.log('[Control] Media feed loaded successfully');
+            break;
+        case 'webrtcMidiDevicesChanged':
+            // WebRTC MIDI devices added or removed - update dropdowns ONCE
+            // Only log if devices actually exist (connection established)
+            if (data && data.length > 0) {
+                // console.log('[Control] WebRTC MIDI devices connected:', data.map(d => d.name).join(', '));
+                updateWebRTCStatus('connected');
+            } else {
+                updateWebRTCStatus('disconnected');
+            }
+            updateWebRTCMIDIDevices(data);
+            break;
+        case 'webrtcMidiAnswer':
+            // Answer from app.js - put in UI
+            const answerOutput = document.getElementById('webrtc-answer-output');
+            if (answerOutput) {
+                answerOutput.value = data;
+                console.log('[Control] Answer received - paste in MIDI Bridge');
+            }
+            break;
+        case 'webrtcMidiError':
+            // Error from app.js
+            console.error('[Control] WebRTC error:', data);
+            updateWebRTCStatus('error');
             break;
     }
 };
@@ -1859,10 +1888,15 @@ function updateState(state) {
     // Update MIDI input device
     if (state.midiInputId !== undefined) {
         const midiSelect = document.getElementById('midi-input-select');
-        if (midiSelect && midiSelect.querySelector(`option[value="${state.midiInputId}"]`)) {
+        const option = midiSelect?.querySelector(`option[value="${state.midiInputId}"]`);
+
+        if (midiSelect && option) {
             midiSelect.value = state.midiInputId;
         }
+        // Silently skip if option doesn't exist yet - will be added when webrtcMidiDevicesChanged fires
     }
+
+    // NOTE: WebRTC MIDI devices no longer sent in state - see 'webrtcMidiDevicesChanged' event instead
 
     // Update SysEx setting
     if (state.enableSysEx !== undefined) {
@@ -2214,7 +2248,9 @@ document.getElementById('midi-synth-input-select').addEventListener('change', (e
 
 // MIDI input device selection
 document.getElementById('midi-input-select').addEventListener('change', (e) => {
+    console.log('[Control] ►►► User selected MIDI Input:', e.target.value);
     sendCommand('midiInputSelect', e.target.value);
+    console.log('[Control] ►►► Command sent to app.js');
 });
 
 // SysEx enable
@@ -2883,6 +2919,95 @@ async function loadMIDIOutputDevices() {
     }
 }
 
+// Track current WebRTC MIDI devices to prevent unnecessary updates
+let currentWebRTCDevices = [];
+
+// Update WebRTC MIDI virtual devices in dropdowns
+function updateWebRTCMIDIDevices(devices) {
+    // console.log('[Control] WebRTCMIDIDevices called with:', devices);
+
+    const midiInputSelect = document.getElementById('midi-input-select');
+    const midiSynthSelect = document.getElementById('midi-synth-input-select');
+    const midiOutputSelect = document.getElementById('midi-output-select');
+
+    console.log('[Control] Found dropdowns:', {
+        input: !!midiInputSelect,
+        synth: !!midiSynthSelect,
+        output: !!midiOutputSelect
+    });
+
+    if (!midiInputSelect || !midiSynthSelect || !midiOutputSelect) {
+        console.warn('[Control] MIDI select elements not found');
+        return;
+    }
+
+    // Check if devices actually changed
+    const devicesChanged = !arraysEqual(currentWebRTCDevices, devices);
+    // console.log('[Control] WebRTCDevices, 'New:', devices);
+
+    if (!devicesChanged) {
+        // Devices haven't changed - don't update dropdowns!
+        console.log('[Control] Devices unchanged - skipping update');
+        return;
+    }
+
+    // console.log('[Control] WebRTC MIDI devices CHANGED - updating dropdowns');
+    currentWebRTCDevices = devices ? [...devices] : [];
+
+    // Remove old WebRTC MIDI options from ALL MIDI dropdowns
+    const selects = [midiInputSelect, midiSynthSelect, midiOutputSelect];
+    selects.forEach(select => {
+        const webrtcOptions = select.querySelectorAll('option[data-webrtc="true"]');
+        webrtcOptions.forEach(opt => opt.remove());
+    });
+
+    // Add new WebRTC MIDI devices to all dropdowns
+    if (devices && devices.length > 0) {
+        // console.log('[Control] WebRTC MIDI virtual devices to all MIDI dropdowns');
+
+        devices.forEach(device => {
+            // Add to MIDI Input dropdown (for Clock/SPP)
+            const inputOption = document.createElement('option');
+            inputOption.value = device.id;
+            inputOption.textContent = device.name;
+            inputOption.setAttribute('data-webrtc', 'true');
+            midiInputSelect.appendChild(inputOption);
+
+            // Add to MIDI Synth Input dropdown
+            const synthOption = document.createElement('option');
+            synthOption.value = device.id;
+            synthOption.textContent = device.name;
+            synthOption.setAttribute('data-webrtc', 'true');
+            midiSynthSelect.appendChild(synthOption);
+
+            // Add to MIDI Output dropdown (for reactive output)
+            const outputOption = document.createElement('option');
+            outputOption.value = device.id;
+            outputOption.textContent = device.name;
+            outputOption.setAttribute('data-webrtc', 'true');
+            midiOutputSelect.appendChild(outputOption);
+        });
+
+        // console.log('[Control] WebRTC MIDI devices added to all dropdowns:', devices.map(d => d.name).join(', '));
+    } else {
+        // console.log('[Control] WebRTC MIDI devices removed (disconnected)');
+    }
+}
+
+// Helper to compare device arrays
+function arraysEqual(arr1, arr2) {
+    if (!arr1 && !arr2) return true;
+    if (!arr1 || !arr2) return false;
+    if (arr1.length !== arr2.length) return false;
+
+    for (let i = 0; i < arr1.length; i++) {
+        if (arr1[i].id !== arr2[i].id || arr1[i].name !== arr2[i].name) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Populate video devices
 async function loadVideoDevices() {
     const select = document.getElementById('video-device-select');
@@ -3319,4 +3444,139 @@ setInterval(() => {
         console.log('[Control] Requesting stream stats...');
     }
 }, 2000);
+
+// ============================================================================
+// WebRTC MIDI Configuration
+// ============================================================================
+
+// Initialize WebRTC MIDI checkbox and config visibility
+const webrtcEnableCheckbox = document.getElementById('webrtc-midi-enable');
+const webrtcConfig = document.getElementById('webrtc-config');
+const webrtcStatus = document.getElementById('webrtc-status');
+
+// Load saved state
+const webrtcEnabled = localStorage.getItem('webrtcMidiEnabled') === 'true';
+if (webrtcEnableCheckbox) {
+    webrtcEnableCheckbox.checked = webrtcEnabled;
+    if (webrtcEnabled) {
+        webrtcConfig.style.display = 'block';
+        updateWebRTCStatus('configured');
+    }
+}
+
+// Toggle config section
+if (webrtcEnableCheckbox) {
+    webrtcEnableCheckbox.addEventListener('change', (e) => {
+        const enabled = e.target.checked;
+        localStorage.setItem('webrtcMidiEnabled', enabled);
+        webrtcConfig.style.display = enabled ? 'block' : 'none';
+
+        if (!enabled) {
+            // Disable and disconnect
+            disconnectWebRTCMIDI();
+        }
+
+        // Send command to index.html to enable/disable WebRTC MIDI
+        sendCommand('setWebRTCMIDI', { enabled });
+    });
+}
+
+async function generateWebRTCAnswer() {
+    const offerInput = document.getElementById('webrtc-offer-input');
+    const answerOutput = document.getElementById('webrtc-answer-output');
+
+    const offerText = offerInput.value.trim();
+    if (!offerText) {
+        alert('Please paste the offer from MIDI Bridge first');
+        return;
+    }
+
+    try {
+        updateWebRTCStatus('connecting');
+
+        // Send offer to app.js
+        console.log('[Control WebRTC] Sending offer to app.js...');
+        sendCommand('webrtcMidiConnect', { offer: offerText });
+
+        // Answer will arrive via existing controlChannel.onmessage handler
+        // Don't block here - just update status
+        updateWebRTCStatus('waiting');
+
+    } catch (error) {
+        console.error('[Control WebRTC] Error:', error);
+        alert('Error: ' + error.message);
+        updateWebRTCStatus('error');
+    }
+}
+
+function disconnectWebRTCMIDI() {
+    // Send disconnect command to app.js (connection lives there)
+    sendCommand('webrtcMidiDisconnect');
+
+    // Clear saved connection
+    localStorage.removeItem('webrtcMidiOffer');
+    localStorage.removeItem('webrtcMidiConnected');
+
+    // Clear UI
+    document.getElementById('webrtc-offer-input').value = '';
+    document.getElementById('webrtc-answer-output').value = '';
+
+    updateWebRTCStatus('disconnected');
+
+    console.log('[Control WebRTC] Disconnect requested');
+}
+
+function updateWebRTCStatus(state) {
+    if (!webrtcStatus) return;
+
+    webrtcStatus.className = '';
+
+    switch (state) {
+        case 'configured':
+            webrtcStatus.style.background = '#0a0a0a';
+            webrtcStatus.style.border = '1px solid #2a2a2a';
+            webrtcStatus.style.color = '#0066FF';
+            webrtcStatus.textContent = '🔵 Configured - waiting for connection';
+            break;
+        case 'connecting':
+        case 'waiting':
+            webrtcStatus.style.background = 'rgba(255,165,0,0.1)';
+            webrtcStatus.style.border = '1px solid rgba(255,165,0,0.3)';
+            webrtcStatus.style.color = '#ffaa00';
+            webrtcStatus.textContent = '🔄 Waiting for MIDI Bridge to connect...';
+            break;
+        case 'connected':
+            webrtcStatus.style.background = 'rgba(0,255,0,0.1)';
+            webrtcStatus.style.border = '1px solid rgba(0,255,0,0.3)';
+            webrtcStatus.style.color = '#00ff00';
+            webrtcStatus.textContent = '✅ Connected - MIDI is flowing!';
+            break;
+        case 'failed':
+        case 'error':
+            webrtcStatus.style.background = 'rgba(255,0,0,0.1)';
+            webrtcStatus.style.border = '1px solid rgba(255,0,0,0.3)';
+            webrtcStatus.style.color = '#ff0000';
+            webrtcStatus.textContent = '❌ Connection failed';
+            break;
+        case 'disconnected':
+            webrtcStatus.style.background = '#0a0a0a';
+            webrtcStatus.style.border = '1px solid #2a2a2a';
+            webrtcStatus.style.color = '#666';
+            webrtcStatus.textContent = '⚪ Not configured';
+            break;
+    }
+}
+
+// Auto-reconnect on page load if previously connected
+window.addEventListener('DOMContentLoaded', () => {
+    const savedOffer = localStorage.getItem('webrtcMidiOffer');
+    const wasConnected = localStorage.getItem('webrtcMidiConnected') === 'true';
+
+    if (webrtcEnabled && savedOffer && wasConnected) {
+        console.log('[Control WebRTC] Auto-reconnecting...');
+        document.getElementById('webrtc-offer-input').value = savedOffer;
+        // Don't auto-generate answer - user needs to manually trigger this
+        updateWebRTCStatus('configured');
+    }
+});
 

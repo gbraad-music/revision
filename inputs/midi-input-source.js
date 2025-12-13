@@ -87,12 +87,15 @@ class MIDIInputSource {
     }
 
     handleMIDIMessage(message) {
+        console.log('[MIDIInput] handleMIDIMessage called with:', message);
         const [status, data1, data2] = message.data;
+        console.log('[MIDIInput] Parsed - status:', status, 'data1:', data1, 'data2:', data2);
         const command = status & 0xF0;
         const channel = status & 0x0F;
 
         // Debug: Log all System Real-Time messages
         if (status >= 0xF0) {
+            console.log('[MIDIInput] System message detected, status >= 0xF0');
             if (!this.lastMidiDebugTime || performance.now() - this.lastMidiDebugTime > 2000) {
                 const messageTypes = {
                     0xF0: 'SysEx Start',
@@ -103,8 +106,8 @@ class MIDIInputSource {
                     0xFB: 'Continue',
                     0xFC: 'Stop'
                 };
-                // console.log('[MIDIInput] Received:', messageTypes[status] || `0x${status.toString(16)}`,
-                //     status === 0xF2 ? `Position: ${(data2 << 7) | data1}` : '');
+                console.log('[MIDIInput] Received:', messageTypes[status] || `0x${status.toString(16)}`,
+                    status === 0xF2 ? `Position: ${(data2 << 7) | data1}` : '');
                 this.lastMidiDebugTime = performance.now();
             }
         }
@@ -112,6 +115,7 @@ class MIDIInputSource {
         // IMPORTANT: Handle System Real-Time messages (0xF8-0xFF) FIRST
         // These can appear at ANY time, even in the middle of SysEx, and must be processed immediately
         if (status >= 0xF8) {
+            console.log('[MIDIInput] Real-time message (>= 0xF8)');
             if (status === 0xF8) {
                 this.handleClock();
                 return;
@@ -131,7 +135,9 @@ class MIDIInputSource {
         }
 
         // Handle System Common messages (0xF0-0xF7) that are NOT SysEx
+        console.log('[MIDIInput] Checking if SPP (status === 0xF2):', status === 0xF2, 'status value:', status);
         if (status === 0xF2) {
+            console.log('[MIDIInput] ✓ SPP DETECTED! Calling handleSongPosition with data1:', data1, 'data2:', data2);
             // Song Position Pointer - process immediately, NOT part of SysEx
             this.handleSongPosition(data1, data2);
             return;
@@ -350,17 +356,21 @@ class MIDIInputSource {
         const newPosition = (msb << 7) | lsb;
         const now = performance.now();
 
-        // console.log('[MIDIInput] ►►► SPP RECEIVED ◄◄◄ Position:', newPosition, 'LSB:', lsb, 'MSB:', msb);
+        console.log('[MIDIInput] ►►► SPP RECEIVED ◄◄◄ Position:', newPosition, 'LSB:', lsb, 'MSB:', msb);
 
         // Calculate BPM from SPP changes
         if (this.lastSPPTime > 0) {
             const deltaPosition = newPosition - this.lastSPPPosition;
             const deltaTime = now - this.lastSPPTime;
 
+            console.log('[MIDIInput] SPP BPM calc - deltaPos:', deltaPosition, 'deltaTime:', deltaTime);
+
             if (deltaPosition > 0 && deltaTime > 100 && deltaTime < 5000) {
                 const quarterNotes = deltaPosition / 4;
                 const minutes = deltaTime / 60000;
                 const calculatedBPM = Math.round(quarterNotes / minutes);
+
+                console.log('[MIDIInput] Calculated BPM:', calculatedBPM, 'quarter notes:', quarterNotes, 'minutes:', minutes);
 
                 if (calculatedBPM > 20 && calculatedBPM < 300) {
                     this.sppBPMSamples.push(calculatedBPM);
@@ -372,20 +382,35 @@ class MIDIInputSource {
                         this.sppBPMSamples.reduce((a, b) => a + b, 0) / this.sppBPMSamples.length
                     );
 
+                    console.log('[MIDIInput] Average BPM:', avgBPM, 'current BPM:', this.bpm, 'will emit:', Math.abs(avgBPM - this.bpm) >= 2);
+
                     if (Math.abs(avgBPM - this.bpm) >= 2) {
                         this.bpm = avgBPM;
+                        console.log('[MIDIInput] ✓ EMITTING BPM EVENT:', this.bpm);
                         this.emit('*', {
                             type: 'transport',
                             data: { state: 'bpm', bpm: this.bpm, source: 'midi-spp' }
                         });
                     }
+                } else {
+                    console.log('[MIDIInput] BPM out of range (20-300):', calculatedBPM);
                 }
+            } else {
+                console.log('[MIDIInput] Delta condition failed - deltaPos > 0:', deltaPosition > 0, 'deltaTime in range:', deltaTime > 100 && deltaTime < 5000);
             }
+        } else {
+            console.log('[MIDIInput] First SPP, initializing timing');
         }
 
         this.songPosition = newPosition;
         this.lastSPPPosition = newPosition;
         this.lastSPPTime = now;
+
+        // CRITICAL: Emit transport event for EVERY SPP so position tracking works
+        this.emit('*', {
+            type: 'transport',
+            data: { state: 'spp', position: newPosition, bpm: this.bpm, source: 'midi-spp' }
+        });
     }
 
     handleStateChange(event) {
