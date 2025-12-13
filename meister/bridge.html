@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MIDI WebRTC Bridge - Multi-Role Routing</title>
+    <title>MeisterRTC Bridge - MIDI, Audio, Video & Control</title>
     <style>
         * {
             margin: 0;
@@ -282,14 +282,21 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎹 MIDI WebRTC Bridge</h1>
+        <h1>Meister WebRTC Bridge</h1>
         <p class="subtitle">Send MIDI to Revision with multi-role routing (devices can have multiple roles)</p>
 
         <div class="status disconnected" id="status">
             ⚪ Disconnected
         </div>
 
-        <div class="section">
+        <div class="section" style="margin-bottom: 10px;">
+            <label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">
+                <input type="checkbox" id="enableMidiCheckbox" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                <span style="color: #888;">Enable MIDI over WebRTC</span>
+            </label>
+        </div>
+
+        <div class="section" id="midiSection" style="display: none;">
             <h2>MIDI Multi-Role Configuration</h2>
             <div class="role-info">
                 <h3>Assign Multiple Roles to Each Device:</h3>
@@ -310,11 +317,12 @@
         </div>
 
         <div class="section">
-            <h2>Program Endpoints (Multiple Revision Instances)</h2>
+            <h2>Endpoints</h2>
             <p style="color: #888; font-size: 13px; margin-bottom: 15px;">
-                Each Revision instance needs its own endpoint. Create a new endpoint for each program you want to connect.
+                Connect Revision instances (programs) and remote controllers
             </p>
-            <button onclick="addEndpoint()" style="background: #0066FF; border-color: #0088FF;">➕ Add Program Endpoint</button>
+            <button onclick="addEndpoint('program')" style="background: #0066FF; border-color: #0088FF;">➕ Add Program Endpoint</button>
+            <button onclick="addEndpoint('control')" style="background: #00aa00; border-color: #00cc00;">🎛️ Add Control Endpoint</button>
             <button onclick="disconnectAll()" style="background: #cc0000; border-color: #ff0000;">Disconnect All</button>
 
             <div id="endpoints-list" style="margin-top: 20px;">
@@ -350,18 +358,35 @@
         </div>
     </div>
 
-    <script type="module" src="utils/midi-rtc-bridge.js"></script>
+    <!-- Load appropriate bridge: MIDI-RTC (MIDI only) or MeisterRTC (MIDI + Audio + Video) -->
+    <script type="module" src="../utils/midi-rtc-bridge.js"></script>
+    <script type="module" src="../utils/meister-rtc-bridge.js"></script>
     <script>
+        // CONFIGURATION: Choose bridge mode
+        // 'midi' = MIDI-RTC (MIDI messages only, lightweight)
+        // 'meister' = MeisterRTC (MIDI + audio + video streaming)
+        const BRIDGE_MODE = localStorage.getItem('bridge Mode') || 'midi';
+
         let webrtcMidi = null;
         let midiActivityTimers = {};
-        let endpointCount = 0;
+        let programEndpointCount = 0;
+        let controlEndpointCount = 0;
 
-        // Initialize WebRTC MIDI bridge on load
+        // Initialize WebRTC bridge on load
         async function initializeBridge() {
             if (webrtcMidi) return; // Already initialized
 
             try {
-                webrtcMidi = new WebRTCMIDI('sender');
+                // Use appropriate bridge based on configuration
+                // Both expose the same WebRTCMIDI interface for backward compatibility
+                if (BRIDGE_MODE === 'meister' && typeof MeisterRTC !== 'undefined') {
+                    console.log('[Bridge] Initializing MeisterRTC (MIDI + audio + video)');
+                    webrtcMidi = new MeisterRTC('sender');
+                } else {
+                    console.log('[Bridge] Initializing MIDI-RTC (MIDI only)');
+                    webrtcMidi = new WebRTCMIDI('sender');
+                }
+
                 await webrtcMidi.initialize();
 
                 webrtcMidi.onConnectionStateChange = (state, endpointId) => {
@@ -400,25 +425,120 @@
             }
         }
 
-        // Add new program endpoint
-        async function addEndpoint() {
+        // Add new endpoint
+        async function addEndpoint(type = 'program') {
             if (!webrtcMidi) {
                 await initializeBridge();
             }
 
             try {
-                endpointCount++;
-                const name = `Program ${endpointCount}`;
+                const isControl = type === 'control';
+                const name = isControl ? `Control ${++controlEndpointCount}` : `Program ${++programEndpointCount}`;
 
                 // Create endpoint
                 const endpointId = await webrtcMidi.createEndpoint(name);
-                console.log('[Bridge] Created endpoint:', endpointId, name);
+                console.log('[Bridge] Created endpoint:', endpointId, name, 'type:', type);
+
+                // Setup control channel handlers for both program and control endpoints
+                const connection = webrtcMidi.connections.get(endpointId);
+                if (connection?.controlChannel) {
+                    const originalOnOpen = connection.controlChannel.onopen;
+                    connection.controlChannel.onopen = () => {
+                        console.log('[Bridge] Control channel opened for:', endpointId, name);
+                        if (originalOnOpen) originalOnOpen();
+
+                        const conn = webrtcMidi.connections.get(endpointId);
+                        if (!conn?.controlChannel) return;
+
+                        if (isControl) {
+                            // For control endpoints: set up command routing
+                            console.log('[Bridge] Installing message handler on control channel for:', endpointId);
+                            conn.controlChannel.onmessage = (event) => {
+                                console.log('[Bridge] <<<< MESSAGE RECEIVED FROM CONTROL ENDPOINT:', endpointId, 'data:', event.data);
+                                try {
+                                    const message = JSON.parse(event.data);
+                                    console.log('[Bridge] Command from control endpoint:', message.command || message.type, 'target:', message.targetEndpoint || 'ALL');
+
+                                    // Handle refresh request
+                                    if (message.type === 'requestEndpointList') {
+                                        console.log('[Bridge] Control endpoint requested endpoint list refresh');
+                                        sendEndpointListToEndpoint(endpointId);
+                                        return;
+                                    }
+
+                                    // Check if this is a targeted message
+                                    if (message.targetEndpoint) {
+                                        // One-to-one: Send to specific program endpoint
+                                        const targetConnection = webrtcMidi.connections.get(message.targetEndpoint);
+                                        if (targetConnection?.controlChannel?.readyState === 'open') {
+                                            targetConnection.controlChannel.send(JSON.stringify(message));
+                                            console.log('[Bridge] Routed command to endpoint:', message.targetEndpoint);
+                                        } else {
+                                            console.warn('[Bridge] Target endpoint not connected:', message.targetEndpoint);
+                                        }
+                                    } else {
+                                        // One-to-many: Broadcast to all program endpoints
+                                        for (const [id, c] of webrtcMidi.connections.entries()) {
+                                            // Don't send to control endpoints, only to program endpoints
+                                            if (c.name && !c.name.startsWith('Control ')) {
+                                                if (c.controlChannel?.readyState === 'open') {
+                                                    c.controlChannel.send(JSON.stringify(message));
+                                                    console.log('[Bridge] Broadcast command to:', id);
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (error) {
+                                    console.error('[Bridge] Error handling command from control endpoint:', error);
+                                }
+                            };
+                            console.log('[Bridge] ✓ Command routing handler installed for control endpoint:', endpointId);
+
+                            // Send endpoint list to this control endpoint
+                            setTimeout(() => {
+                                sendEndpointListToEndpoint(endpointId);
+                                console.log('[Bridge] Control endpoint ready, sent endpoint list');
+                            }, 100); // Small delay to ensure channel is fully ready
+                        } else {
+                            // For program endpoints: set up message handler for responses
+                            conn.controlChannel.onmessage = (event) => {
+                                console.log('[Bridge] <<<< MESSAGE RECEIVED FROM PROGRAM ENDPOINT:', endpointId, 'data:', event.data);
+                                try {
+                                    const message = JSON.parse(event.data);
+
+                                    // Route responses back to all control endpoints
+                                    for (const [id, c] of webrtcMidi.connections.entries()) {
+                                        if (c.name && c.name.startsWith('Control ') && c.controlChannel?.readyState === 'open') {
+                                            c.controlChannel.send(JSON.stringify(message));
+                                            console.log('[Bridge] Routed response to control endpoint:', id);
+                                        }
+                                    }
+                                } catch (error) {
+                                    console.error('[Bridge] Error handling message from program endpoint:', error);
+                                }
+                            };
+                            console.log('[Bridge] ✓ Response routing handler installed for program endpoint:', endpointId);
+
+                            // Send their endpoint ID and name
+                            setTimeout(() => {
+                                conn.controlChannel.send(JSON.stringify({
+                                    type: 'endpointInfo',
+                                    endpointId: endpointId,
+                                    endpointName: name
+                                }));
+                                console.log('[Bridge] Sent endpoint info to program:', endpointId, name);
+                            }, 100);
+                        }
+                    };
+                } else {
+                    console.warn('[Bridge] Control channel not found for endpoint:', endpointId);
+                }
 
                 // Generate offer
                 const { endpointId: id, offer } = await webrtcMidi.createOffer(endpointId);
 
                 // Create UI for this endpoint
-                createEndpointUI(id, name, offer);
+                createEndpointUI(id, name, offer, type);
 
                 // Update stats
                 updateStats();
@@ -431,17 +551,21 @@
         }
 
         // Create UI elements for an endpoint
-        function createEndpointUI(endpointId, name, offer) {
+        function createEndpointUI(endpointId, name, offer, type = 'program') {
             const container = document.getElementById('endpoints-list');
+            const isControl = type === 'control';
+            const borderColor = isControl ? '#00aa00' : '#2a2a2a';
+            const titleColor = isControl ? '#00cc00' : '#0066FF';
+            const typeLabel = isControl ? '🎛️ Control' : '📺 Program';
 
             const endpointDiv = document.createElement('div');
             endpointDiv.id = `endpoint-${endpointId}`;
-            endpointDiv.style.cssText = 'background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 4px; padding: 20px; margin-bottom: 15px;';
+            endpointDiv.style.cssText = `background: #0a0a0a; border: 2px solid ${borderColor}; border-radius: 4px; padding: 20px; margin-bottom: 15px;`;
 
             endpointDiv.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <div>
-                        <h3 style="color: #0066FF; margin: 0; font-size: 16px;">${name}</h3>
+                        <h3 style="color: ${titleColor}; margin: 0; font-size: 16px;">${name} <span style="font-size: 11px; color: #666;">${typeLabel}</span></h3>
                         <div style="font-size: 12px; color: #666; margin-top: 5px;">ID: ${endpointId}</div>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center;">
@@ -450,16 +574,18 @@
                     </div>
                 </div>
 
-                <div style="margin-bottom: 15px;">
-                    <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 1: Copy this offer to Revision</div>
-                    <textarea id="offer-${endpointId}" readonly style="min-height: 100px; font-size: 11px;">${offer}</textarea>
-                    <button onclick="copyOffer('${endpointId}')" style="margin-top: 5px;">Copy Offer</button>
-                </div>
+                <div id="setup-${endpointId}" style="margin-bottom: 15px;">
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 1: Copy this offer to ${isControl ? 'Control Interface' : 'Revision'}</div>
+                        <textarea id="offer-${endpointId}" readonly style="min-height: 100px; font-size: 11px;">${offer}</textarea>
+                        <button onclick="copyOffer('${endpointId}')" style="margin-top: 5px;">Copy Offer</button>
+                    </div>
 
-                <div>
-                    <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 2: Paste answer from Revision</div>
-                    <textarea id="answer-${endpointId}" placeholder="Paste answer here..." style="min-height: 80px;"></textarea>
-                    <button onclick="connectEndpoint('${endpointId}')" style="margin-top: 5px; background: #0066FF; border-color: #0088FF;">Connect</button>
+                    <div>
+                        <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 2: Paste answer from ${isControl ? 'Control Interface' : 'Revision'}</div>
+                        <textarea id="answer-${endpointId}" placeholder="Paste answer here..." style="min-height: 80px;"></textarea>
+                        <button onclick="connectEndpoint('${endpointId}')" style="margin-top: 5px; background: #0066FF; border-color: #0088FF;">Connect</button>
+                    </div>
                 </div>
 
                 <div id="stats-${endpointId}" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #2a2a2a; font-size: 12px; color: #666; display: none;">
@@ -517,7 +643,21 @@
         // Remove endpoint
         function removeEndpoint(endpointId) {
             try {
-                webrtcMidi.removeEndpoint(endpointId);
+                // Manually close the connection since removeEndpoint doesn't exist in library
+                const connection = webrtcMidi.connections.get(endpointId);
+                if (connection) {
+                    if (connection.dataChannel) {
+                        connection.dataChannel.close();
+                    }
+                    if (connection.controlChannel) {
+                        connection.controlChannel.close();
+                    }
+                    if (connection.peerConnection) {
+                        connection.peerConnection.close();
+                    }
+                    webrtcMidi.connections.delete(endpointId);
+                }
+
                 const endpointDiv = document.getElementById(`endpoint-${endpointId}`);
                 if (endpointDiv) {
                     endpointDiv.remove();
@@ -555,21 +695,57 @@
             if (state === 'connected') {
                 statusEl.className = 'status connected';
                 statusEl.textContent = '✅ Connected';
+
+                // Hide setup section (offer/answer)
+                const setupDiv = document.getElementById(`setup-${endpointId}`);
+                if (setupDiv) {
+                    setupDiv.style.display = 'none';
+                    console.log('[Bridge] Collapsed setup section for:', endpointId);
+                } else {
+                    console.warn('[Bridge] Setup div not found for:', endpointId);
+                }
+
                 // Show stats for this endpoint
                 const statsDiv = document.getElementById(`stats-${endpointId}`);
                 if (statsDiv) statsDiv.style.display = 'block';
+
+                // Broadcast updated endpoint list to all control endpoints
+                broadcastEndpointListToControlEndpoints();
             } else if (state === 'connecting') {
                 statusEl.className = 'status connecting';
                 statusEl.textContent = '🔄 Connecting...';
             } else if (state === 'failed') {
                 statusEl.className = 'status disconnected';
                 statusEl.textContent = '❌ Failed';
+
+                // Broadcast updated endpoint list (endpoint failed)
+                broadcastEndpointListToControlEndpoints();
             } else if (state === 'disconnected') {
                 statusEl.className = 'status disconnected';
                 statusEl.textContent = '⚪ Disconnected';
+
+                // Broadcast updated endpoint list (endpoint disconnected)
+                broadcastEndpointListToControlEndpoints();
             }
 
             updateStats();
+        }
+
+        // Broadcast endpoint list to all control endpoints
+        function broadcastEndpointListToControlEndpoints() {
+            if (!webrtcMidi || !webrtcMidi.connections) {
+                return;
+            }
+
+            for (const [id, conn] of webrtcMidi.connections.entries()) {
+                // Check if this is a control endpoint by looking at the name
+                if (conn.name && conn.name.startsWith('Control ')) {
+                    if (conn.controlChannel && conn.controlChannel.readyState === 'open') {
+                        sendEndpointListToEndpoint(id);
+                        console.log('[Bridge] Broadcast endpoint list to control endpoint:', id);
+                    }
+                }
+            }
         }
 
         function updateStatus(state) {
@@ -925,13 +1101,77 @@
             }
         }
 
+        // Send endpoint list to a specific endpoint (for control endpoints)
+        function sendEndpointListToEndpoint(endpointId) {
+            if (!webrtcMidi || !webrtcMidi.connections) {
+                return;
+            }
+
+            const connection = webrtcMidi.connections.get(endpointId);
+            if (!connection || !connection.controlChannel || connection.controlChannel.readyState !== 'open') {
+                console.warn('[Bridge] Cannot send endpoint list - control channel not open');
+                return;
+            }
+
+            // Get all endpoints except this one
+            const endpoints = Array.from(webrtcMidi.connections.values())
+                .filter(conn => conn.id !== endpointId)
+                .map(conn => ({
+                    id: conn.id,
+                    name: conn.name || conn.id,
+                    state: conn.peerConnection?.connectionState || conn.state || 'unknown',
+                    identity: conn.identity || null
+                }));
+
+            const message = {
+                type: 'endpointList',
+                endpoints: endpoints
+            };
+
+            try {
+                connection.controlChannel.send(JSON.stringify(message));
+                console.log(`[Bridge] Sent endpoint list to ${endpointId}:`, endpoints);
+            } catch (error) {
+                console.error('[Bridge] Failed to send endpoint list:', error);
+            }
+        }
+
         // Start stats update loop
-        setInterval(updateStats, 100);
+        setInterval(() => {
+            updateStats();
+        }, 100);
 
         // Initialize bridge on page load
         window.addEventListener('DOMContentLoaded', () => {
             console.log('[Bridge] Initializing on page load...');
-            initializeBridge();
+
+            // Handle MIDI enable/disable checkbox
+            const enableMidiCheckbox = document.getElementById('enableMidiCheckbox');
+            const midiSection = document.getElementById('midiSection');
+
+            // Load saved preference (default: false)
+            const midiEnabled = localStorage.getItem('midiEnabled') === 'true';
+            enableMidiCheckbox.checked = midiEnabled;
+            midiSection.style.display = midiEnabled ? 'block' : 'none';
+
+            // Add checkbox change handler
+            enableMidiCheckbox.addEventListener('change', () => {
+                const isEnabled = enableMidiCheckbox.checked;
+                midiSection.style.display = isEnabled ? 'block' : 'none';
+                localStorage.setItem('midiEnabled', isEnabled);
+
+                console.log('[Bridge] MIDI', isEnabled ? 'enabled' : 'disabled');
+
+                // Initialize bridge if enabling MIDI for the first time
+                if (isEnabled && !webrtcMidi) {
+                    initializeBridge();
+                }
+            });
+
+            // Only initialize on load if MIDI is enabled
+            if (midiEnabled) {
+                initializeBridge();
+            }
         });
     </script>
 </body>

@@ -1,5 +1,100 @@
+// Check if launched from Meister control hub
+console.log('[Control] ========== URL DETECTION DEBUG ==========');
+console.log('[Control] Full URL:', window.location.href);
+console.log('[Control] Search string:', window.location.search);
+const urlParams = new URLSearchParams(window.location.search);
+const meisterTarget = urlParams.get('target');
+console.log('[Control] Parsed target parameter:', meisterTarget);
+console.log('[Control] isMeisterMode will be:', !!meisterTarget);
+console.log('[Control] ===========================================');
+const isMeisterMode = !!meisterTarget;
+
 // RemoteChannel for tab-to-tab and remote communication (WebSocket + BroadcastChannel fallback)
-const controlChannel = new RemoteChannel('revision-control');
+const controlChannel = isMeisterMode ? null : new RemoteChannel('revision-control');
+
+if (isMeisterMode) {
+    console.log('[Control] Meister mode detected - target:', meisterTarget);
+    console.log('[Control] Commands will be routed through bridge');
+
+    // Update UI to show meister connection
+    function updateMeisterUI() {
+        console.log('[Control] ========== updateMeisterUI() CALLED ==========');
+        const connectionStatus = document.getElementById('connection-status');
+        const connectionInfoText = document.getElementById('connection-info-text');
+        const meisterTargetInfo = document.getElementById('meister-target-info');
+        const meisterTargetName = document.getElementById('meister-target-name');
+
+        console.log('[Control] DOM elements found:', {
+            connectionStatus: !!connectionStatus,
+            connectionInfoText: !!connectionInfoText,
+            meisterTargetInfo: !!meisterTargetInfo,
+            meisterTargetName: !!meisterTargetName
+        });
+
+        if (connectionStatus) {
+            if (window.opener && window.opener.sendControlCommand) {
+                connectionStatus.classList.remove('disconnected');
+                connectionStatus.classList.add('connected');
+                console.log('[Control] Bridge connection verified - status updated to connected');
+            } else {
+                console.warn('[Control] No bridge connection available - window.opener:', !!window.opener);
+                // Show error state
+                connectionStatus.classList.add('disconnected');
+                connectionStatus.style.background = 'rgba(255, 0, 0, 0.1)';
+                connectionStatus.style.border = '1px solid rgba(255, 0, 0, 0.3)';
+                connectionStatus.style.color = '#ff0000';
+            }
+        } else {
+            console.error('[Control] connection-status element NOT FOUND');
+        }
+
+        if (connectionInfoText) {
+            const oldText = connectionInfoText.textContent;
+            if (window.opener && window.opener.sendControlCommand) {
+                connectionInfoText.textContent = 'Connected via Meister Bridge';
+                connectionInfoText.style.color = '#0066FF';
+            } else {
+                connectionInfoText.textContent = '❌ Not connected to bridge - must launch from meister/index.html';
+                connectionInfoText.style.color = '#ff0000';
+            }
+            console.log('[Control] Updated connection info text from:', oldText, 'to:', connectionInfoText.textContent);
+        } else {
+            console.error('[Control] connection-info-text element NOT FOUND');
+        }
+
+        if (meisterTargetInfo && meisterTargetName) {
+            meisterTargetInfo.style.display = 'block';
+
+            if (meisterTarget === 'all') {
+                meisterTargetName.textContent = '📡 All Endpoints (Broadcast)';
+                meisterTargetName.style.color = '#00ccff';
+            } else {
+                // Try to get the endpoint name from parent window
+                if (window.opener && window.opener.getEndpointName) {
+                    const endpointName = window.opener.getEndpointName(meisterTarget);
+                    meisterTargetName.textContent = endpointName || meisterTarget;
+                } else {
+                    meisterTargetName.textContent = meisterTarget;
+                }
+            }
+            console.log('[Control] Updated target info:', meisterTarget, '→', meisterTargetName.textContent);
+        } else {
+            console.error('[Control] meister target elements NOT FOUND');
+        }
+        console.log('[Control] ========== updateMeisterUI() DONE ==========');
+    }
+
+    // Try to update immediately if DOM is ready, otherwise wait
+    console.log('[Control] Document readyState:', document.readyState);
+    if (document.readyState === 'loading') {
+        console.log('[Control] DOM still loading - waiting for DOMContentLoaded');
+        document.addEventListener('DOMContentLoaded', updateMeisterUI);
+    } else {
+        // DOM already loaded, update immediately
+        console.log('[Control] DOM ready - calling updateMeisterUI immediately');
+        updateMeisterUI();
+    }
+}
 
 // UNIFIED PREVIEW SYSTEM - Single canvas, one renderer at a time
 let currentPreviewMode = 'black'; // Which tab is active: black/builtin/threejs/milkdrop/video/media
@@ -1485,13 +1580,38 @@ let midiOutput = null;
 // Send command to main tab via BroadcastChannel
 function sendCommand(command, data) {
     const message = { command, data };
-    controlChannel.postMessage(message);
-    // Logging disabled - too spammy during normal operation
+
+    if (isMeisterMode) {
+        // Route through meister bridge
+        if (meisterTarget && meisterTarget !== 'all') {
+            message.targetEndpoint = meisterTarget;
+        }
+
+        if (window.opener && window.opener.sendControlCommand) {
+            window.opener.sendControlCommand(message);
+            console.log('[Control] Sent to bridge:', command, '→', meisterTarget || 'ALL');
+        } else {
+            console.error('[Control] ❌ Cannot send - no bridge connection!');
+            console.error('[Control] window.opener:', window.opener);
+            console.error('[Control] This happens when control.html is opened directly instead of via meister/index.html');
+            console.error('[Control] To use meister mode, launch control.html from meister/index.html using the Launch button');
+        }
+    } else {
+        // Normal mode - use RemoteChannel
+        controlChannel.postMessage(message);
+    }
 }
 
 // Receive state updates from main tab
-controlChannel.onmessage = (event) => {
-    const { type, data } = event.data;
+if (controlChannel) {
+    controlChannel.onmessage = (event) => {
+        // Log raw event data to debug format issues
+        if (!event.data || typeof event.data !== 'object') {
+            console.warn('[Control] ⚠️ Received invalid message format:', event.data);
+            return;
+        }
+
+        const { type, data } = event.data;
 
     // Log all non-stateUpdate messages for debugging
     if (type !== 'stateUpdate') {
@@ -1588,13 +1708,81 @@ controlChannel.onmessage = (event) => {
                 console.log('[Control] Answer received - paste in MIDI Bridge');
             }
             break;
+        case 'webrtcEndpointConnected':
+            // Endpoint connected to bridge - update UI with identity
+            if (data && webrtcStatus) {
+                const identity = data.identity || 'Revision Instance';
+                const endpointId = data.endpointId || '';
+                const endpointName = data.endpointName || '';
+
+                // Update WebRTC status section - just show "Connected"
+                webrtcStatus.style.background = 'rgba(0,255,0,0.1)';
+                webrtcStatus.style.border = '1px solid rgba(0,255,0,0.3)';
+                webrtcStatus.style.color = '#00ff00';
+                webrtcStatus.textContent = '✅ Connected';
+
+                // Update CONNECTION INFO section at top with endpoint details
+                const connectionInfoText = document.getElementById('connection-info-text');
+                if (connectionInfoText) {
+                    connectionInfoText.textContent = `Connected to Bridge - ${endpointId}`;
+                    connectionInfoText.style.color = '#0066FF';
+                }
+
+                // Collapse the setup section
+                const setupSection = document.getElementById('webrtc-setup');
+                if (setupSection) {
+                    setupSection.style.display = 'none';
+                }
+
+                console.log('[Control] WebRTC endpoint connected:', endpointId, identity);
+            }
+            break;
+        case 'webrtcEndpointDisconnected':
+            // Endpoint disconnected from bridge - show setup section again
+            if (webrtcStatus) {
+                webrtcStatus.style.background = '#0a0a0a';
+                webrtcStatus.style.border = '1px solid #2a2a2a';
+                webrtcStatus.style.color = '#666';
+                webrtcStatus.textContent = '⚪ Not configured';
+
+                // Show the setup section again
+                const setupSection = document.getElementById('webrtc-setup');
+                if (setupSection) {
+                    setupSection.style.display = 'block';
+                }
+
+                console.log('[Control] WebRTC endpoint disconnected');
+            }
+            break;
         case 'webrtcMidiError':
             // Error from app.js
             console.error('[Control] WebRTC error:', data);
             updateWebRTCStatus('error');
             break;
     }
-};
+    };
+}
+
+// In meister mode, also listen for messages from meister/index.html (forwarded from bridge)
+if (isMeisterMode) {
+    window.addEventListener('message', (event) => {
+        // Only accept messages from our opener (meister/index.html)
+        if (event.source !== window.opener) return;
+
+        const msg = event.data;
+        if (!msg || !msg.type) return;
+
+        console.log('[Control] Received window message from meister:', msg.type);
+
+        // Process the message the same way as controlChannel messages
+        if (controlChannel && controlChannel.onmessage) {
+            // Convert to controlChannel format
+            const syntheticEvent = { data: msg };
+            controlChannel.onmessage(syntheticEvent);
+        }
+    });
+    console.log('[Control] ✓ Listening for window messages from meister');
+}
 
 function updateState(state) {
     // Clear retry interval on first successful state update
@@ -3531,12 +3719,16 @@ function updateWebRTCStatus(state) {
 
     webrtcStatus.className = '';
 
+    // Get setup section to collapse/expand
+    const setupSection = document.getElementById('webrtc-setup');
+
     switch (state) {
         case 'configured':
             webrtcStatus.style.background = '#0a0a0a';
             webrtcStatus.style.border = '1px solid #2a2a2a';
             webrtcStatus.style.color = '#0066FF';
             webrtcStatus.textContent = '🔵 Configured - waiting for connection';
+            if (setupSection) setupSection.style.display = 'block';
             break;
         case 'connecting':
         case 'waiting':
@@ -3544,12 +3736,15 @@ function updateWebRTCStatus(state) {
             webrtcStatus.style.border = '1px solid rgba(255,165,0,0.3)';
             webrtcStatus.style.color = '#ffaa00';
             webrtcStatus.textContent = '🔄 Waiting for MIDI Bridge to connect...';
+            if (setupSection) setupSection.style.display = 'block';
             break;
         case 'connected':
             webrtcStatus.style.background = 'rgba(0,255,0,0.1)';
             webrtcStatus.style.border = '1px solid rgba(0,255,0,0.3)';
             webrtcStatus.style.color = '#00ff00';
             webrtcStatus.textContent = '✅ Connected - MIDI is flowing!';
+            // Collapse setup section when connected
+            if (setupSection) setupSection.style.display = 'none';
             break;
         case 'failed':
         case 'error':
@@ -3557,12 +3752,14 @@ function updateWebRTCStatus(state) {
             webrtcStatus.style.border = '1px solid rgba(255,0,0,0.3)';
             webrtcStatus.style.color = '#ff0000';
             webrtcStatus.textContent = '❌ Connection failed';
+            if (setupSection) setupSection.style.display = 'block';
             break;
         case 'disconnected':
             webrtcStatus.style.background = '#0a0a0a';
             webrtcStatus.style.border = '1px solid #2a2a2a';
             webrtcStatus.style.color = '#666';
             webrtcStatus.textContent = '⚪ Not configured';
+            if (setupSection) setupSection.style.display = 'block';
             break;
     }
 }

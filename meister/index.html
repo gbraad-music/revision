@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Revision Meister - Remote Control Hub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            background: #0a0a0a;
+            color: #ffffff;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #888;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .panel {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .panel h2 {
+            font-size: 14px;
+            color: #0066FF;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+            border: 1px solid #2a2a2a;
+        }
+        .status.disconnected {
+            background: #1a1a1a;
+            color: #888;
+        }
+        .status.connecting {
+            background: rgba(255,165,0,0.1);
+            color: #ffaa00;
+            border: 1px solid rgba(255,165,0,0.3);
+        }
+        .status.connected {
+            background: rgba(0,255,0,0.1);
+            color: #00ff00;
+            border: 1px solid rgba(0,255,0,0.3);
+        }
+        textarea {
+            width: 100%;
+            height: 120px;
+            background: #0a0a0a;
+            color: #0f0;
+            border: 1px solid #2a2a2a;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 11px;
+            resize: vertical;
+        }
+        button {
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #3a3a3a;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 5px 5px 0;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #3a3a3a;
+        }
+        button.primary {
+            background: #0066FF;
+            border-color: #0088FF;
+        }
+        button.primary:hover {
+            background: #0088FF;
+        }
+        button:disabled {
+            background: #1a1a1a;
+            color: #555;
+            cursor: not-allowed;
+        }
+        .target-selector {
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .target-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            background: #1a1a1a;
+            border: 2px solid #2a2a2a;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+        .target-item:hover {
+            background: #2a2a2a;
+        }
+        .target-item.selected {
+            border-color: #0066FF;
+            background: #1a2a3a;
+        }
+        .target-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .target-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #444;
+        }
+        .target-status.connected {
+            background: #00ff00;
+            box-shadow: 0 0 8px #00ff00;
+        }
+        .launch-btn {
+            background: #00aa00;
+            border: 2px solid #00cc00;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            padding: 20px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .launch-btn:hover {
+            background: #00cc00;
+        }
+        .launch-btn:disabled {
+            background: #1a1a1a;
+            border-color: #2a2a2a;
+            color: #555;
+        }
+        .info {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎛️ Revision Meister</h1>
+        <p class="subtitle">Remote Control Hub for Revision over MeisterRTC</p>
+
+        <!-- Connection Settings -->
+        <div class="panel">
+            <h2>⚙️ Connection Settings</h2>
+            <div id="status" class="status disconnected">⚪ Disconnected from Bridge</div>
+
+            <div id="connection-setup">
+                <p class="info" style="margin-bottom: 15px;">
+                    Connect to the MeisterRTC Bridge to control Revision instances
+                </p>
+
+                <h3 style="font-size: 12px; color: #888; margin-bottom: 5px; margin-top: 15px;">Step 1: Get Offer from Bridge</h3>
+                <p class="info" style="margin-bottom: 8px;">In bridge.html, click "🎛️ Add Control Endpoint" and copy the offer</p>
+                <textarea id="offer-input" placeholder="Paste offer from bridge here..."></textarea>
+
+                <button id="connect-btn" class="primary">Connect to Bridge</button>
+
+                <div id="answer-section" class="hidden">
+                    <h3 style="font-size: 12px; color: #888; margin-bottom: 5px; margin-top: 20px;">Step 2: Send Answer Back to Bridge</h3>
+                    <p class="info" style="margin-bottom: 8px;">Copy the answer below and paste it in the bridge</p>
+                    <textarea id="answer-output" readonly placeholder="Answer will appear here..."></textarea>
+                    <button id="copy-answer-btn">📋 Copy Answer</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Target Selector -->
+        <div class="panel" id="target-panel" style="display: none;">
+            <h2>🎯 Target Selection</h2>
+            <p class="info" style="margin-bottom: 15px;">Select which Revision instance(s) to control</p>
+
+            <button id="refresh-targets-btn" style="margin-bottom: 10px; background: #2a2a2a; border-color: #3a3a3a;">🔄 Refresh Target List</button>
+
+            <div class="target-selector" id="target-selector">
+                <p style="color: #666;">Waiting for endpoint list from bridge...</p>
+            </div>
+
+            <button class="launch-btn" id="launch-control-btn" disabled>
+                ▶️ Launch Control Interface
+            </button>
+            <p class="info" style="margin-top: 10px; text-align: center;">
+                Opens control.html with selected target
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let peerConnection = null;
+        let controlChannel = null;
+        let endpoints = [];
+        let selectedTarget = null;
+
+        // DOM Elements
+        const statusEl = document.getElementById('status');
+        const offerInput = document.getElementById('offer-input');
+        const answerOutput = document.getElementById('answer-output');
+        const answerSection = document.getElementById('answer-section');
+        const connectBtn = document.getElementById('connect-btn');
+        const copyAnswerBtn = document.getElementById('copy-answer-btn');
+        const targetPanel = document.getElementById('target-panel');
+        const targetSelector = document.getElementById('target-selector');
+        const launchBtn = document.getElementById('launch-control-btn');
+
+        // Connect to bridge
+        connectBtn.addEventListener('click', async () => {
+            const offerText = offerInput.value.trim();
+            if (!offerText) {
+                alert('Please paste an offer from the bridge first');
+                return;
+            }
+
+            try {
+                statusEl.textContent = '🔄 Connecting...';
+                statusEl.className = 'status connecting';
+
+                // Create peer connection
+                peerConnection = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                });
+
+                // Handle incoming data channels
+                peerConnection.ondatachannel = (event) => {
+                    const channel = event.channel;
+                    console.log('[Meister] Data channel received:', channel.label, 'readyState:', channel.readyState);
+
+                    if (channel.label === 'midi') {
+                        console.log('[Meister] MIDI channel received (not used in hub)');
+                        // MIDI channel not needed in control hub
+                    } else if (channel.label === 'control') {
+                        controlChannel = channel;
+                        console.log('[Meister] Control channel received, waiting for open...');
+
+                        controlChannel.onopen = () => {
+                            console.log('[Meister] Control channel opened');
+                            statusEl.textContent = '✅ Connected to Bridge';
+                            statusEl.className = 'status connected';
+                            targetPanel.style.display = 'block';
+
+                            // Send identity
+                            controlChannel.send(JSON.stringify({
+                                type: 'setIdentity',
+                                identity: 'Meister Control Hub'
+                            }));
+                        };
+
+                        controlChannel.onmessage = (e) => {
+                            try {
+                                const msg = JSON.parse(e.data);
+                                console.log('[Meister] Control message:', msg.type, msg);
+
+                                if (msg.type === 'endpointList') {
+                                    endpoints = msg.endpoints || [];
+                                    console.log('[Meister] ===== ENDPOINT LIST UPDATE =====');
+                                    console.log('[Meister] Received', endpoints.length, 'endpoints:', endpoints);
+                                    updateTargetSelector();
+                                    console.log('[Meister] ===== UI UPDATED =====');
+                                }
+
+                                // Forward ALL messages to control.html windows
+                                launchedControlWindows.forEach((win, target) => {
+                                    if (win && !win.closed && win.postMessage) {
+                                        try {
+                                            win.postMessage(msg, '*');
+                                            console.log('[Meister] Forwarded message to control window:', msg.type);
+                                        } catch (err) {
+                                            console.error('[Meister] Failed to forward to control window:', err);
+                                        }
+                                    }
+                                });
+                            } catch (err) {
+                                console.error('[Meister] Parse error:', err);
+                            }
+                        };
+
+                        controlChannel.onclose = () => {
+                            console.log('[Meister] Control channel closed');
+                            statusEl.textContent = '⚪ Disconnected from Bridge';
+                            statusEl.className = 'status disconnected';
+                            targetPanel.style.display = 'none';
+                        };
+
+                        controlChannel.onerror = (err) => {
+                            console.error('[Meister] Control channel error:', err);
+                        };
+                    } else {
+                        console.warn('[Meister] Unknown data channel:', channel.label);
+                    }
+                };
+
+                // Handle connection state
+                peerConnection.onconnectionstatechange = () => {
+                    const state = peerConnection.connectionState;
+                    console.log('[Meister] Connection state:', state);
+
+                    if (state === 'connected') {
+                        statusEl.textContent = '✅ Connected to Bridge';
+                        statusEl.className = 'status connected';
+                        targetPanel.style.display = 'block';
+                    } else if (state === 'failed' || state === 'disconnected') {
+                        statusEl.textContent = '❌ Connection ' + state;
+                        statusEl.className = 'status disconnected';
+                        targetPanel.style.display = 'none';
+                    } else if (state === 'connecting') {
+                        statusEl.textContent = '🔄 Connecting...';
+                        statusEl.className = 'status connecting';
+                    }
+                };
+
+                // Handle ICE connection state for debugging
+                peerConnection.oniceconnectionstatechange = () => {
+                    console.log('[Meister] ICE connection state:', peerConnection.iceConnectionState);
+                };
+
+                // Parse offer and create answer
+                const offer = JSON.parse(offerText);
+                await peerConnection.setRemoteDescription(offer);
+
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                // Wait for ICE gathering
+                await new Promise((resolve) => {
+                    if (peerConnection.iceGatheringState === 'complete') {
+                        resolve();
+                    } else {
+                        peerConnection.onicegatheringstatechange = () => {
+                            if (peerConnection.iceGatheringState === 'complete') {
+                                resolve();
+                            }
+                        };
+                    }
+                });
+
+                // Display answer
+                const answerJSON = JSON.stringify(peerConnection.localDescription);
+                answerOutput.value = answerJSON;
+                answerSection.classList.remove('hidden');
+
+                // Auto-copy answer
+                answerOutput.select();
+                document.execCommand('copy');
+
+                console.log('[Meister] Answer ready and copied');
+
+            } catch (error) {
+                console.error('[Meister] Error:', error);
+                alert('Error: ' + error.message);
+                statusEl.textContent = '❌ Error: ' + error.message;
+                statusEl.className = 'status disconnected';
+            }
+        });
+
+        // Copy answer button
+        copyAnswerBtn.addEventListener('click', () => {
+            answerOutput.select();
+            document.execCommand('copy');
+            console.log('[Meister] Answer copied');
+        });
+
+        // Update target selector
+        function updateTargetSelector() {
+            if (endpoints.length === 0) {
+                targetSelector.innerHTML = '<p style="color: #666;">No Revision endpoints connected to bridge</p>';
+                launchBtn.disabled = true;
+                return;
+            }
+
+            targetSelector.innerHTML = '';
+
+            // Add "All Endpoints" option
+            const allItem = createTargetItem({
+                id: 'all',
+                name: '📡 All Endpoints (Broadcast)',
+                state: 'connected'
+            });
+            targetSelector.appendChild(allItem);
+
+            // Add individual endpoints
+            endpoints.forEach(endpoint => {
+                const item = createTargetItem(endpoint);
+                targetSelector.appendChild(item);
+            });
+
+            console.log('[Meister] Updated target selector with', endpoints.length, 'endpoints');
+        }
+
+        // Create target item
+        function createTargetItem(endpoint) {
+            const div = document.createElement('div');
+            div.className = 'target-item';
+            div.dataset.targetId = endpoint.id;
+
+            const info = document.createElement('div');
+            info.className = 'target-info';
+
+            const status = document.createElement('div');
+            status.className = 'target-status';
+            if (endpoint.state === 'connected') {
+                status.classList.add('connected');
+            }
+
+            const name = document.createElement('span');
+            name.textContent = endpoint.identity || endpoint.name || endpoint.id;
+            name.style.color = '#fff';
+            name.style.fontWeight = '600';
+
+            info.appendChild(status);
+            info.appendChild(name);
+            div.appendChild(info);
+
+            // Click to select
+            div.addEventListener('click', () => {
+                // Remove selection from all
+                document.querySelectorAll('.target-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+
+                // Select this one
+                div.classList.add('selected');
+                selectedTarget = endpoint.id;
+                launchBtn.disabled = false;
+
+                console.log('[Meister] Selected target:', endpoint.id);
+            });
+
+            return div;
+        }
+
+        // Refresh target list
+        const refreshBtn = document.getElementById('refresh-targets-btn');
+        refreshBtn.addEventListener('click', () => {
+            if (!controlChannel || controlChannel.readyState !== 'open') {
+                console.warn('[Meister] Cannot refresh - not connected to bridge');
+                return;
+            }
+
+            console.log('[Meister] Requesting endpoint list refresh...');
+            controlChannel.send(JSON.stringify({
+                type: 'requestEndpointList'
+            }));
+        });
+
+        // Launch control interface
+        launchBtn.addEventListener('click', () => {
+            if (!selectedTarget) return;
+
+            const url = `../control.html?target=${encodeURIComponent(selectedTarget)}`;
+            window.open(url, '_blank');
+            console.log('[Meister] Launched control interface:', url);
+        });
+
+        // Expose functions for control.html to call back
+        window.getControlChannel = function() {
+            return controlChannel;
+        };
+
+        window.sendControlCommand = function(message) {
+            if (!controlChannel || controlChannel.readyState !== 'open') {
+                console.error('[Meister] Cannot send command - not connected');
+                return false;
+            }
+
+            try {
+                controlChannel.send(JSON.stringify(message));
+                console.log('[Meister] Command sent:', message.command || message.type, 'target:', message.targetEndpoint || 'ALL');
+                return true;
+            } catch (error) {
+                console.error('[Meister] Failed to send command:', error);
+                return false;
+            }
+        };
+
+        window.getEndpointName = function(endpointId) {
+            const endpoint = endpoints.find(ep => ep.id === endpointId);
+            if (endpoint) {
+                return endpoint.identity || endpoint.name || endpointId;
+            }
+            return endpointId;
+        };
+    </script>
+</body>
+</html>

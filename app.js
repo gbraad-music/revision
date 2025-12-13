@@ -841,7 +841,7 @@ class RevisionAppV2 {
         this.controlChannel.onmessage = async (event) => {
             const { command, data } = event.data;
 
-            // console.log('[BroadcastChannel] Received command:', command, 'data:', data);
+            console.log('[BroadcastChannel] Received command:', command, 'data:', data);
 
             // Flash remote indicator when receiving command from control.html
             const remoteIndicator = document.getElementById('remote-indicator');
@@ -1964,15 +1964,18 @@ class RevisionAppV2 {
                     break;
                 case 'webrtcMidiConnect':
                     // Control panel sent WebRTC offer - create connection
-                    // console.log('[WebRTC MIDI] Received offer from control panel:', data);
+                    console.log('[WebRTC MIDI] Received offer from control panel');
                     this.handleWebRTCOffer(data.offer).then(answer => {
+                        console.log('[WebRTC MIDI] Answer ready, sending back to control panel');
                         // Send answer back to control panel
                         this.controlChannel.postMessage({
                             type: 'webrtcMidiAnswer',
                             data: answer
                         });
+                        console.log('[WebRTC MIDI] Answer sent');
                     }).catch(error => {
                         console.error('[WebRTC MIDI] Error handling offer:', error);
+                        console.error('[WebRTC MIDI] Error stack:', error.stack);
                         this.controlChannel.postMessage({
                             type: 'webrtcMidiError',
                             data: error.message
@@ -2950,6 +2953,14 @@ class RevisionAppV2 {
             data: state
         });
 
+        // Also send via WebRTC control channel if connected to bridge
+        if (this.webrtcMidi && this.webrtcMidi.controlChannel && this.webrtcMidi.controlChannel.readyState === 'open') {
+            this.webrtcMidi.controlChannel.send(JSON.stringify({
+                type: 'stateUpdate',
+                data: state
+            }));
+        }
+
         // Update local display
         const audioSourceDisplay = document.getElementById('audio-source-display');
         if (audioSourceDisplay) {
@@ -3083,18 +3094,20 @@ class RevisionAppV2 {
     }
 
     async handleWebRTCOffer(offerJSON) {
-        // console.log('[WebRTC MIDI] Handling offer in app.js...');
+        console.log('[WebRTC MIDI] Handling offer in app.js...');
 
         // Close existing connection if any
         if (this.webrtcMidi) {
-            // console.log('[WebRTC MIDI] Closing existing connection');
+            console.log('[WebRTC MIDI] Closing existing connection');
             this.webrtcMidi.close();
             this.webrtcMidi = null;
         }
 
-        // Create WebRTC MIDI receiver
+        // Create WebRTC MIDI receiver (MeisterRTC if available, else MIDI-RTC)
+        console.log('[WebRTC MIDI] Creating receiver...');
         this.webrtcMidi = new WebRTCMIDI('receiver');
         await this.webrtcMidi.initialize();
+        console.log('[WebRTC MIDI] Receiver initialized');
 
         // Forward MIDI messages to virtual source
         this.webrtcMidi.onMIDIMessage = (message) => {
@@ -3135,6 +3148,77 @@ class RevisionAppV2 {
             });
         };
 
+        // Handle control messages from remote control (via MeisterRTC)
+        this.webrtcMidi.onControlMessage = (message, endpointId) => {
+            console.log('[WebRTC Control] Received control message:', message, 'from endpoint:', endpointId);
+
+            // Handle endpointInfo message
+            if (message.type === 'endpointInfo') {
+                console.log('[WebRTC Control] Received endpoint info:', message.endpointId, message.endpointName);
+
+                const identity = this.settings.get('endpointIdentity') || 'Revision Instance';
+
+                // Update status bar
+                const statusBarTitle = document.querySelector('.status-bar > div:first-child');
+                if (statusBarTitle) {
+                    statusBarTitle.textContent = `REVISION - ID: ${message.endpointId} (${identity})`;
+                    statusBarTitle.style.color = '#00ff00';
+                }
+
+                // Send to control.html
+                this.controlChannel.postMessage({
+                    type: 'webrtcEndpointConnected',
+                    data: {
+                        endpointId: message.endpointId,
+                        endpointName: message.endpointName,
+                        identity: identity
+                    }
+                });
+                console.log('[WebRTC Control] Sent endpoint info to control.html');
+                return;
+            }
+
+            // Handle special commands directly
+            if (message.type === 'flashIdentity' || message.command === 'flashIdentity') {
+                this.flashIdentity();
+                return;
+            }
+
+            // Process command directly - same as if it came from control.html
+            // Control messages can have either 'command' or 'type' property
+            const messageType = message.command || message.type;
+            if (messageType) {
+                // Extract just the data payload, not the whole message
+                const messageData = message.data;
+
+                console.log('[WebRTC Control] Processing command directly - command:', messageType, 'data:', messageData);
+
+                // Create synthetic event matching BroadcastChannel format
+                const syntheticEvent = {
+                    data: {
+                        command: messageType,
+                        data: messageData
+                    }
+                };
+
+                // Call the handler directly
+                if (this.controlChannel && this.controlChannel.onmessage) {
+                    console.log('[WebRTC Control] Calling controlChannel.onmessage with synthetic event');
+                    try {
+                        this.controlChannel.onmessage(syntheticEvent);
+                        console.log('[WebRTC Control] ✓ Handler called successfully');
+                    } catch (error) {
+                        console.error('[WebRTC Control] ✗ Error calling handler:', error);
+                    }
+                } else {
+                    console.error('[WebRTC Control] ✗ No onmessage handler found!', {
+                        hasControlChannel: !!this.controlChannel,
+                        hasOnMessage: !!(this.controlChannel?.onmessage)
+                    });
+                }
+            }
+        };
+
         // Handle connection state changes
         this.webrtcMidi.onConnectionStateChange = (state) => {
             // console.log('[WebRTC MIDI] Connection state:', state);
@@ -3142,12 +3226,52 @@ class RevisionAppV2 {
                 if (!this.webrtcMidiSource) {
                     this.initializeWebRTCMIDISource();
                 }
+
+                const identity = this.settings.get('endpointIdentity') || 'Revision Instance';
+
+                // Send identity to bridge
+                if (this.webrtcMidi && this.webrtcMidi.controlChannel && this.webrtcMidi.controlChannel.readyState === 'open') {
+                    this.webrtcMidi.controlChannel.send(JSON.stringify({
+                        type: 'setIdentity',
+                        identity: identity
+                    }));
+                    console.log('[WebRTC MIDI] Sent identity to bridge:', identity);
+                }
+
+                // Update status bar to show endpoint ID and name
+                const statusBarTitle = document.querySelector('.status-bar > div:first-child');
+                if (statusBarTitle && this.webrtcMidi.endpointId && this.webrtcMidi.endpointName) {
+                    statusBarTitle.textContent = `REVISION - ID: ${this.webrtcMidi.endpointId} (${this.webrtcMidi.endpointName})`;
+                    statusBarTitle.style.color = '#00ff00';
+                    console.log('[WebRTC MIDI] Status bar updated with endpoint info:', this.webrtcMidi.endpointId, this.webrtcMidi.endpointName);
+                }
+
+                // Send endpoint info to control.html
+                this.controlChannel.postMessage({
+                    type: 'webrtcEndpointConnected',
+                    data: {
+                        endpointId: this.webrtcMidi.endpointId,
+                        endpointName: this.webrtcMidi.endpointName,
+                        identity: identity
+                    }
+                });
+                console.log('[WebRTC MIDI] Sent endpoint info to control.html');
             } else if (state === 'disconnected' || state === 'closed') {
+                // Reset status bar to default
+                const statusBarTitle = document.querySelector('.status-bar > div:first-child');
+                if (statusBarTitle) {
+                    statusBarTitle.textContent = 'REVISION';
+                    statusBarTitle.style.color = '#888888';
+                }
                 // Only clean up on true disconnect, not on transient 'failed' state
                 // console.log('[WebRTC MIDI] Connection truly closed - cleaning up');
                 this.controlChannel.postMessage({
                     type: 'webrtcMidiDevicesChanged',
                     data: []
+                });
+                // Notify control.html of disconnection
+                this.controlChannel.postMessage({
+                    type: 'webrtcEndpointDisconnected'
                 });
                 if (this.webrtcMidiSource) {
                     this.inputManager.unregisterSource('webrtc-midi');
@@ -3161,8 +3285,9 @@ class RevisionAppV2 {
         };
 
         // Generate answer
+        console.log('[WebRTC MIDI] Calling handleOffer...');
         const answer = await this.webrtcMidi.handleOffer(offerJSON);
-        // console.log('[WebRTC MIDI] Answer generated');
+        console.log('[WebRTC MIDI] Answer generated, length:', answer ? answer.length : 0);
         return answer;
     }
 
@@ -3181,6 +3306,80 @@ class RevisionAppV2 {
             data: []
         });
         // console.log('[WebRTC MIDI] Disconnected');
+    }
+
+    /**
+     * Flash identity overlay on screen (for remote identification)
+     */
+    flashIdentity() {
+        // Get endpoint identity from settings or generate default
+        const identity = this.settings.get('endpointIdentity') || 'Revision Instance';
+
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 999999;
+            animation: fadeIn 0.3s ease-in-out;
+        `;
+
+        const identityText = document.createElement('div');
+        identityText.textContent = identity;
+        identityText.style.cssText = `
+            font-size: 72px;
+            font-weight: bold;
+            color: #0066FF;
+            text-shadow: 0 0 30px rgba(0, 102, 255, 0.8);
+            margin-bottom: 20px;
+            animation: pulse 2s ease-in-out infinite;
+        `;
+
+        const subtitle = document.createElement('div');
+        subtitle.textContent = 'MeisterRTC Endpoint';
+        subtitle.style.cssText = `
+            font-size: 24px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+        `;
+
+        // Add CSS animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+            }
+        `;
+
+        document.head.appendChild(style);
+        overlay.appendChild(identityText);
+        overlay.appendChild(subtitle);
+        document.body.appendChild(overlay);
+
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            overlay.style.animation = 'fadeIn 0.3s ease-in-out reverse';
+            setTimeout(() => {
+                document.body.removeChild(overlay);
+                document.head.removeChild(style);
+            }, 300);
+        }, 3000);
+
+        console.log('[Revision] Flashed identity:', identity);
     }
 
     setupMIDISynthHandlers() {

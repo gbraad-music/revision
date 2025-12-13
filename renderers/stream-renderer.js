@@ -151,9 +151,21 @@ class StreamRenderer {
     }
 
     async loadWebRTC(url) {
-        // WebRTC implementation would go here
-        // This is a placeholder - would need WebRTC signaling server
-        throw new Error('WebRTC streaming not yet implemented. Use HLS or direct stream.');
+        // WebRTC can accept either:
+        // 1. MediaStream object directly (from MeisterRTC)
+        // 2. URL string (for future signaling server integration)
+
+        if (url instanceof MediaStream) {
+            // Direct MediaStream from MeisterRTC
+            console.log('[StreamRenderer] Loading MediaStream from MeisterRTC');
+            this.videoElement.srcObject = url;
+            await this.videoElement.play();
+            console.log('[StreamRenderer] MediaStream playing');
+            return;
+        }
+
+        // URL-based WebRTC (future: signaling server)
+        throw new Error('WebRTC signaling server not yet implemented. Pass MediaStream directly or use HLS.');
     }
 
     setupHLSStatsTracking() {

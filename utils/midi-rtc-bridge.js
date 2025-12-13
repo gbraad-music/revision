@@ -23,6 +23,7 @@ class BrowserMIDIRTC {
         this.onMIDIMessage = null;
         this.onConnectionStateChange = null;
         this.onActiveTargets = null;
+        this.onControlMessage = null;
         this.onError = null;
 
         // Global stats (aggregates all connections in sender mode)
@@ -78,7 +79,7 @@ class BrowserMIDIRTC {
             }
         };
 
-        // Create data channel
+        // Create MIDI data channel (unordered, low latency)
         const dataChannel = peerConnection.createDataChannel('midi', DATA_CHANNEL_CONFIG);
 
         dataChannel.onopen = () => {
@@ -95,11 +96,19 @@ class BrowserMIDIRTC {
             this.handleIncomingMessage(event.data);
         };
 
+        // Create Control data channel (ordered, reliable) for control messages
+        const controlChannel = peerConnection.createDataChannel('control', { ordered: true });
+
+        controlChannel.onopen = () => {
+            console.log(`[MIDI-RTC] [${endpointId}] Control channel opened`);
+        };
+
         // Store connection
         this.connections.set(endpointId, {
             name: displayName,
             peerConnection,
             dataChannel,
+            controlChannel,
             state: 'new',
             stats: {
                 messagesSent: 0,
@@ -443,32 +452,86 @@ class BrowserMIDIRTC {
             }
         };
 
-        // Handle incoming data channel
+        // Handle incoming data channels (both MIDI and control)
         peerConnection.ondatachannel = (event) => {
-            console.log('[MIDI-RTC] Receiver: Data channel received');
-            const dataChannel = event.channel;
+            const channel = event.channel;
+            console.log('[MIDI-RTC] Receiver: Data channel received:', channel.label);
 
-            dataChannel.onopen = () => {
-                console.log('[MIDI-RTC] Receiver: Data channel opened, requesting active targets');
-                // Request active targets from bridge
-                dataChannel.send(JSON.stringify({ type: 'request_targets' }));
-            };
+            if (channel.label === 'midi') {
+                // MIDI data channel
+                channel.onopen = () => {
+                    console.log('[MIDI-RTC] Receiver: MIDI channel opened, requesting active targets');
+                    // Request active targets from bridge
+                    channel.send(JSON.stringify({ type: 'request_targets' }));
+                };
 
-            dataChannel.onmessage = (event) => {
-                this.handleIncomingMessage(event.data);
-            };
+                channel.onmessage = (event) => {
+                    this.handleIncomingMessage(event.data);
+                };
 
-            // Store connection
-            this.connections.set('bridge', {
-                name: 'MIDI Bridge',
-                peerConnection,
-                dataChannel,
-                state: 'connected',
-                stats: {
-                    messagesReceived: 0,
-                    byRole: {}
+                // Store or update connection with MIDI channel
+                const existingConn = this.connections.get('bridge');
+                if (existingConn) {
+                    existingConn.dataChannel = channel;
+                } else {
+                    this.connections.set('bridge', {
+                        name: 'MIDI Bridge',
+                        peerConnection,
+                        dataChannel: channel,
+                        controlChannel: null,
+                        state: 'connected',
+                        stats: {
+                            messagesReceived: 0,
+                            byRole: {}
+                        }
+                    });
                 }
-            });
+            } else if (channel.label === 'control') {
+                // Control data channel
+                channel.onopen = () => {
+                    console.log('[MIDI-RTC] Receiver: Control channel opened');
+                };
+
+                channel.onmessage = (event) => {
+                    // Parse and forward control messages to app
+                    try {
+                        const message = JSON.parse(event.data);
+                        console.log('[MIDI-RTC] Receiver: Control message received:', message);
+
+                        // Handle endpointInfo message internally
+                        if (message.type === 'endpointInfo') {
+                            this.endpointId = message.endpointId;
+                            this.endpointName = message.endpointName;
+                            console.log('[MIDI-RTC] Endpoint info received:', this.endpointId, this.endpointName);
+                            // Also forward to app via callback
+                        }
+
+                        if (this.onControlMessage) {
+                            this.onControlMessage(message, 'bridge');
+                        }
+                    } catch (error) {
+                        console.error('[MIDI-RTC] Error parsing control message:', error);
+                    }
+                };
+
+                // Store or update connection with control channel
+                const existingConn = this.connections.get('bridge');
+                if (existingConn) {
+                    existingConn.controlChannel = channel;
+                } else {
+                    this.connections.set('bridge', {
+                        name: 'MIDI Bridge',
+                        peerConnection,
+                        dataChannel: null,
+                        controlChannel: channel,
+                        state: 'connected',
+                        stats: {
+                            messagesReceived: 0,
+                            byRole: {}
+                        }
+                    });
+                }
+            }
         };
 
         const offer = JSON.parse(offerJSON);
@@ -544,6 +607,14 @@ class BrowserMIDIRTC {
             }
         }
         this.connections.clear();
+    }
+
+    /**
+     * Get control channel (for receiver mode)
+     */
+    get controlChannel() {
+        const conn = this.connections.get('bridge');
+        return conn?.controlChannel || null;
     }
 
     /**
