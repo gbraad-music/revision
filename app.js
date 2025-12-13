@@ -1964,15 +1964,18 @@ class RevisionAppV2 {
                     break;
                 case 'webrtcMidiConnect':
                     // Control panel sent WebRTC offer - create connection
-                    // console.log('[WebRTC MIDI] Received offer from control panel:', data);
+                    console.log('[WebRTC MIDI] Received offer from control panel');
                     this.handleWebRTCOffer(data.offer).then(answer => {
+                        console.log('[WebRTC MIDI] Answer ready, sending back to control panel');
                         // Send answer back to control panel
                         this.controlChannel.postMessage({
                             type: 'webrtcMidiAnswer',
                             data: answer
                         });
+                        console.log('[WebRTC MIDI] Answer sent');
                     }).catch(error => {
                         console.error('[WebRTC MIDI] Error handling offer:', error);
+                        console.error('[WebRTC MIDI] Error stack:', error.stack);
                         this.controlChannel.postMessage({
                             type: 'webrtcMidiError',
                             data: error.message
@@ -3083,18 +3086,20 @@ class RevisionAppV2 {
     }
 
     async handleWebRTCOffer(offerJSON) {
-        // console.log('[WebRTC MIDI] Handling offer in app.js...');
+        console.log('[WebRTC MIDI] Handling offer in app.js...');
 
         // Close existing connection if any
         if (this.webrtcMidi) {
-            // console.log('[WebRTC MIDI] Closing existing connection');
+            console.log('[WebRTC MIDI] Closing existing connection');
             this.webrtcMidi.close();
             this.webrtcMidi = null;
         }
 
-        // Create WebRTC MIDI receiver
+        // Create WebRTC MIDI receiver (MeisterRTC if available, else MIDI-RTC)
+        console.log('[WebRTC MIDI] Creating receiver...');
         this.webrtcMidi = new WebRTCMIDI('receiver');
         await this.webrtcMidi.initialize();
+        console.log('[WebRTC MIDI] Receiver initialized');
 
         // Forward MIDI messages to virtual source
         this.webrtcMidi.onMIDIMessage = (message) => {
@@ -3161,8 +3166,9 @@ class RevisionAppV2 {
         };
 
         // Generate answer
+        console.log('[WebRTC MIDI] Calling handleOffer...');
         const answer = await this.webrtcMidi.handleOffer(offerJSON);
-        // console.log('[WebRTC MIDI] Answer generated');
+        console.log('[WebRTC MIDI] Answer generated, length:', answer ? answer.length : 0);
         return answer;
     }
 

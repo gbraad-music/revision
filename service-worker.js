@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v114';
+const CACHE_NAME = 'revision-v115';
 const ASSETS = [
     './',
     './index.html',
@@ -19,6 +19,7 @@ const ASSETS = [
     './inputs/midi-audio-synth.js',
     './inputs/midi-input-source.js',
     './inputs/midi-output-source.js',
+    './inputs/webrtc-midi-source.js',
     // Presets and renderers
     './presets/preset-manager.js',
     // Three.js Presets
@@ -44,12 +45,17 @@ const ASSETS = [
     './utils/settings-manager.js',
     './utils/wake-lock.js',
     './utils/remote-channel.js',
-    // MIDI over RTC
+    // MIDI-RTC (MIDI only)
     './utils/midi-rtc-bridge.js',
     './utils/midi-rtc/connection.js',
     './utils/midi-rtc/protocol.js',
     './utils/midi-rtc/midi-codec.js',
     './utils/midi-rtc/midi-utils.js',
+    // MeisterRTC (MIDI + Audio + Video)
+    './utils/meister-rtc-bridge.js',
+    './utils/meister-rtc/connection.js',
+    './utils/meister-rtc/protocol.js',
+    './utils/meister-rtc/control-channel.js',
     // UI Components
     './utils/pad-knob.js',
     './utils/svg-slider.js',

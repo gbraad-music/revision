@@ -350,18 +350,34 @@
         </div>
     </div>
 
+    <!-- Load appropriate bridge: MIDI-RTC (MIDI only) or MeisterRTC (MIDI + Audio + Video) -->
     <script type="module" src="utils/midi-rtc-bridge.js"></script>
+    <script type="module" src="utils/meister-rtc-bridge.js"></script>
     <script>
+        // CONFIGURATION: Choose bridge mode
+        // 'midi' = MIDI-RTC (MIDI messages only, lightweight)
+        // 'meister' = MeisterRTC (MIDI + audio + video streaming)
+        const BRIDGE_MODE = localStorage.getItem('bridge Mode') || 'midi';
+
         let webrtcMidi = null;
         let midiActivityTimers = {};
         let endpointCount = 0;
 
-        // Initialize WebRTC MIDI bridge on load
+        // Initialize WebRTC bridge on load
         async function initializeBridge() {
             if (webrtcMidi) return; // Already initialized
 
             try {
-                webrtcMidi = new WebRTCMIDI('sender');
+                // Use appropriate bridge based on configuration
+                // Both expose the same WebRTCMIDI interface for backward compatibility
+                if (BRIDGE_MODE === 'meister' && typeof MeisterRTC !== 'undefined') {
+                    console.log('[Bridge] Initializing MeisterRTC (MIDI + audio + video)');
+                    webrtcMidi = new MeisterRTC('sender');
+                } else {
+                    console.log('[Bridge] Initializing MIDI-RTC (MIDI only)');
+                    webrtcMidi = new WebRTCMIDI('sender');
+                }
+
                 await webrtcMidi.initialize();
 
                 webrtcMidi.onConnectionStateChange = (state, endpointId) => {

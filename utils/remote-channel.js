@@ -1,17 +1,23 @@
 /**
- * Remote Channel - WebSocket-based replacement for BroadcastChannel
- * Enables communication between index.html and control.html across different devices
+ * Remote Channel - Multi-transport control channel
+ * Supports: WebRTC data channel > WebSocket > BroadcastChannel
+ * Enables communication between index.html and control.html
  *
- * Falls back to BroadcastChannel for local-only usage
+ * Priority: WebRTC (remote over existing connection) > WebSocket (remote with server) > BroadcastChannel (local only)
  */
 
 class RemoteChannel {
-    constructor(channelName) {
+    constructor(channelName, options = {}) {
         this.channelName = channelName;
         this.role = null; // 'program' or 'control'
         this.onmessage = null;
+
+        // Transport options
         this.ws = null;
         this.fallbackChannel = null;
+        this.webrtcDataChannel = null;  // WebRTC data channel for control
+        this.meisterRTC = options.meisterRTC || null;  // MeisterRTC connection
+
         this.reconnectInterval = 2000;
         this.reconnectTimer = null;
         this.hasLoggedFallback = false;
@@ -19,8 +25,13 @@ class RemoteChannel {
         // Auto-detect role from URL
         this.detectRole();
 
-        // Try WebSocket first, fallback to BroadcastChannel if no server
-        this.initWebSocket();
+        // Try transports in order: WebRTC > WebSocket > BroadcastChannel
+        if (this.meisterRTC) {
+            this.initWebRTCDataChannel();
+        } else {
+            // Try WebSocket first, fallback to BroadcastChannel if no server
+            this.initWebSocket();
+        }
     }
 
     detectRole() {
@@ -107,9 +118,87 @@ class RemoteChannel {
         return;
     }
 
+    /**
+     * Initialize WebRTC data channel for control messages
+     */
+    initWebRTCDataChannel() {
+        if (!this.meisterRTC) return;
+
+        console.log('[RemoteChannel] Setting up WebRTC data channel control');
+
+        // Create or listen for dedicated control data channel
+        if (this.meisterRTC.peerConnection) {
+            // If sender (bridge), create control channel
+            if (this.meisterRTC.mode === 'sender') {
+                this.webrtcDataChannel = this.meisterRTC.peerConnection.createDataChannel(
+                    `${this.channelName}-control`,
+                    { ordered: true }  // Control needs ordering
+                );
+                this.setupWebRTCDataChannel();
+            }
+            // If receiver (Revision), listen for channel
+            else {
+                this.meisterRTC.peerConnection.addEventListener('datachannel', (event) => {
+                    if (event.channel.label === `${this.channelName}-control`) {
+                        this.webrtcDataChannel = event.channel;
+                        this.setupWebRTCDataChannel();
+                    }
+                });
+            }
+        }
+
+        // Fallback to WebSocket if WebRTC not ready
+        if (!this.webrtcDataChannel) {
+            this.initWebSocket();
+        }
+    }
+
+    /**
+     * Setup WebRTC data channel event handlers
+     */
+    setupWebRTCDataChannel() {
+        if (!this.webrtcDataChannel) return;
+
+        this.webrtcDataChannel.onopen = () => {
+            console.log('[RemoteChannel] WebRTC data channel opened - remote mode active');
+
+            // Disable WebSocket and BroadcastChannel
+            if (this.ws) {
+                this.ws.close();
+                this.ws = null;
+            }
+            if (this.fallbackChannel) {
+                this.fallbackChannel.close();
+                this.fallbackChannel = null;
+            }
+        };
+
+        this.webrtcDataChannel.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (this.onmessage) {
+                    this.onmessage({ data });
+                }
+            } catch (error) {
+                console.error('[RemoteChannel] Failed to parse WebRTC message:', error);
+            }
+        };
+
+        this.webrtcDataChannel.onclose = () => {
+            console.log('[RemoteChannel] WebRTC data channel closed');
+            this.webrtcDataChannel = null;
+            // Fallback to WebSocket/BroadcastChannel
+            this.initWebSocket();
+        };
+
+        this.webrtcDataChannel.onerror = (error) => {
+            console.error('[RemoteChannel] WebRTC data channel error:', error);
+        };
+    }
+
     fallbackToBroadcastChannel() {
         // Only create fallback if WebSocket failed and we don't already have one
-        if (this.fallbackChannel || this.ws) return;
+        if (this.fallbackChannel || this.ws || this.webrtcDataChannel) return;
 
         try {
             if (!this.hasLoggedFallback) {
@@ -130,8 +219,12 @@ class RemoteChannel {
     }
 
     postMessage(message) {
-        // Try WebSocket first
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        // Try WebRTC data channel first (highest priority)
+        if (this.webrtcDataChannel && this.webrtcDataChannel.readyState === 'open') {
+            this.webrtcDataChannel.send(JSON.stringify(message));
+        }
+        // Try WebSocket second
+        else if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(message));
         }
         // Fallback to BroadcastChannel
@@ -143,7 +236,27 @@ class RemoteChannel {
         }
     }
 
+    /**
+     * Get current transport mode
+     */
+    getTransportMode() {
+        if (this.webrtcDataChannel && this.webrtcDataChannel.readyState === 'open') {
+            return 'webrtc';
+        }
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            return 'websocket';
+        }
+        if (this.fallbackChannel) {
+            return 'broadcast';
+        }
+        return 'none';
+    }
+
     close() {
+        if (this.webrtcDataChannel) {
+            this.webrtcDataChannel.close();
+            this.webrtcDataChannel = null;
+        }
         if (this.ws) {
             this.ws.close();
             this.ws = null;
@@ -156,6 +269,8 @@ class RemoteChannel {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
+        // Don't close meisterRTC - it's managed externally
+        this.meisterRTC = null;
     }
 }
 
