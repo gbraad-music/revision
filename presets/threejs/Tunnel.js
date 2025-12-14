@@ -1,5 +1,5 @@
 // Tunnel - Audio-reactive tunnel visualization (CLASSIC AMIGA STYLE)
-class TunnelPreset extends ThreeJSBasePreset {
+window.TunnelPreset = class extends ThreeJSBasePreset {
     initialize() {
         console.log('[ThreeJS Preset] Initializing Tunnel');
 
@@ -132,6 +132,4 @@ class TunnelPreset extends ThreeJSBasePreset {
         });
         this.scene.remove(this.pointLight);
     }
-}
-
-window.TunnelPreset = TunnelPreset;
+};

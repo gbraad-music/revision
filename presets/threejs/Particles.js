@@ -1,5 +1,5 @@
 // Particles - Audio-reactive particle field
-class ParticlesPreset extends ThreeJSBasePreset {
+window.ParticlesPreset = class extends ThreeJSBasePreset {
     initialize() {
         console.log('[ThreeJS Preset] Initializing Particles');
 
@@ -141,6 +141,4 @@ class ParticlesPreset extends ThreeJSBasePreset {
         this.particles.geometry.dispose();
         this.particles.material.dispose();
     }
-}
-
-window.ParticlesPreset = ParticlesPreset;
+};

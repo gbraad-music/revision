@@ -1,5 +1,5 @@
 // GeometricShapes - Beat-reactive geometric shapes (ORIGINAL)
-class GeometricShapesPreset extends ThreeJSBasePreset {
+window.GeometricShapesPreset = class extends ThreeJSBasePreset {
     initialize() {
         console.log('[ThreeJS Preset] Initializing Geometric Shapes');
 
@@ -90,6 +90,4 @@ class GeometricShapesPreset extends ThreeJSBasePreset {
         this.particles.geometry.dispose();
         this.particles.material.dispose();
     }
-}
-
-window.GeometricShapesPreset = GeometricShapesPreset;
+};

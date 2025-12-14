@@ -1,5 +1,5 @@
 // GBLogo - Gerard Braad logo using pre-clipped SVG layers
-class GBLogoPreset extends ThreeJSBasePreset {
+window.GBLogoPreset = class extends ThreeJSBasePreset {
     initialize() {
         console.log('[ThreeJS Preset] Initializing GB Logo');
 
@@ -142,6 +142,4 @@ class GBLogoPreset extends ThreeJSBasePreset {
         this.ringMesh = null;
         this.lettersPlane = null;
     }
-}
-
-window.GBLogoPreset = GBLogoPreset;
+};
