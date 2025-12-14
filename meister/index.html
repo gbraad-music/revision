@@ -204,6 +204,8 @@
             <h2>🎯 Target Selection</h2>
             <p class="info" style="margin-bottom: 15px;">Select which Revision instance(s) to control</p>
 
+            <button id="refresh-targets-btn" style="margin-bottom: 10px; background: #2a2a2a; border-color: #3a3a3a;">🔄 Refresh Target List</button>
+
             <div class="target-selector" id="target-selector">
                 <p style="color: #666;">Waiting for endpoint list from bridge...</p>
             </div>
@@ -286,7 +288,10 @@
 
                                 if (msg.type === 'endpointList') {
                                     endpoints = msg.endpoints || [];
+                                    console.log('[Meister] ===== ENDPOINT LIST UPDATE =====');
+                                    console.log('[Meister] Received', endpoints.length, 'endpoints:', endpoints);
                                     updateTargetSelector();
+                                    console.log('[Meister] ===== UI UPDATED =====');
                                 }
                             } catch (err) {
                                 console.error('[Meister] Parse error:', err);
@@ -446,6 +451,20 @@
 
             return div;
         }
+
+        // Refresh target list
+        const refreshBtn = document.getElementById('refresh-targets-btn');
+        refreshBtn.addEventListener('click', () => {
+            if (!controlChannel || controlChannel.readyState !== 'open') {
+                console.warn('[Meister] Cannot refresh - not connected to bridge');
+                return;
+            }
+
+            console.log('[Meister] Requesting endpoint list refresh...');
+            controlChannel.send(JSON.stringify({
+                type: 'requestEndpointList'
+            }));
+        });
 
         // Launch control interface
         launchBtn.addEventListener('click', () => {

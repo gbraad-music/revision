@@ -282,14 +282,21 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎹 MIDI WebRTC Bridge</h1>
+        <h1>Meister WebRTC Bridge</h1>
         <p class="subtitle">Send MIDI to Revision with multi-role routing (devices can have multiple roles)</p>
 
         <div class="status disconnected" id="status">
             ⚪ Disconnected
         </div>
 
-        <div class="section">
+        <div class="section" style="margin-bottom: 10px;">
+            <label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">
+                <input type="checkbox" id="enableMidiCheckbox" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                <span style="color: #888;">Enable MIDI over WebRTC</span>
+            </label>
+        </div>
+
+        <div class="section" id="midiSection" style="display: none;">
             <h2>MIDI Multi-Role Configuration</h2>
             <div class="role-info">
                 <h3>Assign Multiple Roles to Each Device:</h3>
@@ -320,29 +327,6 @@
 
             <div id="endpoints-list" style="margin-top: 20px;">
                 <!-- Endpoints will be added here dynamically -->
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>Remote Control Connections</h2>
-            <p style="color: #888; font-size: 13px; margin-bottom: 15px;">
-                Accept connections from remote control interfaces (revision-meister/control.html)
-            </p>
-
-            <div style="margin-bottom: 15px;">
-                <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 1: Paste offer from remote control</div>
-                <textarea id="remote-control-offer" placeholder="Paste offer from revision-meister/control.html..." style="min-height: 100px;"></textarea>
-                <button onclick="acceptRemoteControl()" style="margin-top: 5px; background: #0066FF; border-color: #0088FF;">Accept Remote Control</button>
-            </div>
-
-            <div id="remote-control-answer-section" style="display: none;">
-                <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 2: Copy this answer back to remote control</div>
-                <textarea id="remote-control-answer" readonly style="min-height: 80px;"></textarea>
-                <button onclick="copyRemoteControlAnswer()" style="margin-top: 5px;">Copy Answer</button>
-            </div>
-
-            <div id="remote-control-status" style="margin-top: 15px; padding: 10px; border-radius: 4px; background: #0a0a0a; border: 1px solid #2a2a2a; color: #666; display: none;">
-                Remote control: <span id="remote-control-state">Not connected</span>
             </div>
         </div>
 
@@ -455,25 +439,80 @@
                 const endpointId = await webrtcMidi.createEndpoint(name);
                 console.log('[Bridge] Created endpoint:', endpointId, name, 'type:', type);
 
-                // For control endpoints, send endpoint list when control channel opens
-                if (isControl) {
-                    const connection = webrtcMidi.connections.get(endpointId);
-                    if (connection?.controlChannel) {
-                        console.log('[Bridge] Setting up control endpoint:', endpointId);
-                        const originalOnOpen = connection.controlChannel.onopen;
-                        connection.controlChannel.onopen = () => {
-                            console.log('[Bridge] Control endpoint control channel opened:', endpointId);
-                            if (originalOnOpen) originalOnOpen();
+                // Setup control channel handlers for both program and control endpoints
+                const connection = webrtcMidi.connections.get(endpointId);
+                if (connection?.controlChannel) {
+                    const originalOnOpen = connection.controlChannel.onopen;
+                    connection.controlChannel.onopen = () => {
+                        console.log('[Bridge] Control channel opened for:', endpointId, name);
+                        if (originalOnOpen) originalOnOpen();
+
+                        const conn = webrtcMidi.connections.get(endpointId);
+                        if (!conn?.controlChannel) return;
+
+                        if (isControl) {
+                            // For control endpoints: set up command routing
+                            console.log('[Bridge] Installing message handler on control channel for:', endpointId);
+                            conn.controlChannel.onmessage = (event) => {
+                                console.log('[Bridge] <<<< MESSAGE RECEIVED FROM CONTROL ENDPOINT:', endpointId, 'data:', event.data);
+                                try {
+                                    const message = JSON.parse(event.data);
+                                    console.log('[Bridge] Command from control endpoint:', message.command || message.type, 'target:', message.targetEndpoint || 'ALL');
+
+                                    // Handle refresh request
+                                    if (message.type === 'requestEndpointList') {
+                                        console.log('[Bridge] Control endpoint requested endpoint list refresh');
+                                        sendEndpointListToEndpoint(endpointId);
+                                        return;
+                                    }
+
+                                    // Check if this is a targeted message
+                                    if (message.targetEndpoint) {
+                                        // One-to-one: Send to specific program endpoint
+                                        const targetConnection = webrtcMidi.connections.get(message.targetEndpoint);
+                                        if (targetConnection?.controlChannel?.readyState === 'open') {
+                                            targetConnection.controlChannel.send(JSON.stringify(message));
+                                            console.log('[Bridge] Routed command to endpoint:', message.targetEndpoint);
+                                        } else {
+                                            console.warn('[Bridge] Target endpoint not connected:', message.targetEndpoint);
+                                        }
+                                    } else {
+                                        // One-to-many: Broadcast to all program endpoints
+                                        for (const [id, c] of webrtcMidi.connections.entries()) {
+                                            // Don't send to control endpoints, only to program endpoints
+                                            if (c.name && !c.name.startsWith('Control ')) {
+                                                if (c.controlChannel?.readyState === 'open') {
+                                                    c.controlChannel.send(JSON.stringify(message));
+                                                    console.log('[Bridge] Broadcast command to:', id);
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (error) {
+                                    console.error('[Bridge] Error handling command from control endpoint:', error);
+                                }
+                            };
+                            console.log('[Bridge] ✓ Command routing handler installed for control endpoint:', endpointId);
 
                             // Send endpoint list to this control endpoint
                             setTimeout(() => {
                                 sendEndpointListToEndpoint(endpointId);
                                 console.log('[Bridge] Control endpoint ready, sent endpoint list');
                             }, 100); // Small delay to ensure channel is fully ready
-                        };
-                    } else {
-                        console.warn('[Bridge] Control channel not found for control endpoint:', endpointId);
-                    }
+                        } else {
+                            // For program endpoints: send their endpoint ID and name
+                            setTimeout(() => {
+                                conn.controlChannel.send(JSON.stringify({
+                                    type: 'endpointInfo',
+                                    endpointId: endpointId,
+                                    endpointName: name
+                                }));
+                                console.log('[Bridge] Sent endpoint info to program:', endpointId, name);
+                            }, 100);
+                        }
+                    };
+                } else {
+                    console.warn('[Bridge] Control channel not found for endpoint:', endpointId);
                 }
 
                 // Generate offer
@@ -640,7 +679,12 @@
 
                 // Hide setup section (offer/answer)
                 const setupDiv = document.getElementById(`setup-${endpointId}`);
-                if (setupDiv) setupDiv.style.display = 'none';
+                if (setupDiv) {
+                    setupDiv.style.display = 'none';
+                    console.log('[Bridge] Collapsed setup section for:', endpointId);
+                } else {
+                    console.warn('[Bridge] Setup div not found for:', endpointId);
+                }
 
                 // Show stats for this endpoint
                 const statsDiv = document.getElementById(`stats-${endpointId}`);
@@ -666,9 +710,6 @@
             }
 
             updateStats();
-
-            // Notify remote control of endpoint list changes
-            sendEndpointListToRemote();
         }
 
         // Broadcast endpoint list to all control endpoints
@@ -1041,226 +1082,6 @@
             }
         }
 
-        // Remote control connection handling
-        let remoteControlConnection = null;
-        let remoteControlChannel = null;
-
-        window.acceptRemoteControl = async function() {
-            const offerText = document.getElementById('remote-control-offer').value.trim();
-            if (!offerText) {
-                alert('Please paste the offer from remote control first');
-                return;
-            }
-
-            if (!webrtcMidi) {
-                await initializeBridge();
-            }
-
-            try {
-                // Create peer connection for remote control
-                remoteControlConnection = new RTCPeerConnection({
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' }
-                    ]
-                });
-
-                // Handle incoming data channels from remote control
-                remoteControlConnection.ondatachannel = (event) => {
-                    const channel = event.channel;
-
-                    if (channel.label === 'midi') {
-                        // MIDI data channel from remote control
-                        channel.onopen = () => {
-                            console.log('[Bridge] Remote MIDI channel opened');
-                            document.getElementById('remote-control-status').style.display = 'block';
-                            document.getElementById('remote-control-state').textContent = 'Connected (MIDI + Control)';
-                            document.getElementById('remote-control-state').style.color = '#00ff00';
-                        };
-
-                        channel.onclose = () => {
-                            console.log('[Bridge] Remote MIDI channel closed');
-                        };
-
-                        channel.onmessage = (event) => {
-                            try {
-                                const message = JSON.parse(event.data);
-                                console.log('[Bridge] MIDI from remote control:', message.roles, message.data);
-
-                                // Forward MIDI to all connected Revision endpoints
-                                if (webrtcMidi && webrtcMidi.connections) {
-                                    // Send to all endpoints
-                                    for (const [endpointId, connection] of webrtcMidi.connections.entries()) {
-                                        if (connection.dataChannel?.readyState === 'open') {
-                                            connection.dataChannel.send(JSON.stringify(message));
-                                            console.log('[Bridge] Forwarded MIDI to endpoint:', endpointId);
-                                        }
-                                    }
-                                }
-                            } catch (error) {
-                                console.error('[Bridge] Error handling remote MIDI:', error);
-                            }
-                        };
-                    } else if (channel.label === 'control') {
-                        // Control data channel from remote control
-                        remoteControlChannel = channel;
-
-                        remoteControlChannel.onopen = () => {
-                            console.log('[Bridge] Remote control channel opened');
-                            document.getElementById('remote-control-status').style.display = 'block';
-                            document.getElementById('remote-control-state').textContent = 'Connected';
-                            document.getElementById('remote-control-state').style.color = '#00ff00';
-
-                            // Send current endpoint list to remote control
-                            sendEndpointListToRemote();
-                        };
-
-                        remoteControlChannel.onclose = () => {
-                            console.log('[Bridge] Remote control channel closed');
-                            document.getElementById('remote-control-state').textContent = 'Disconnected';
-                            document.getElementById('remote-control-state').style.color = '#666';
-                        };
-
-                        remoteControlChannel.onmessage = (event) => {
-                            try {
-                                const message = JSON.parse(event.data);
-                                console.log('[Bridge] Control message from remote:', message);
-
-                                // Check if this is a targeted message
-                                if (message.targetEndpoint) {
-                                    // One-to-one: Send to specific endpoint
-                                    if (webrtcMidi && webrtcMidi.connections) {
-                                        webrtcMidi.sendControlMessage(message, message.targetEndpoint);
-                                        console.log('[Bridge] Forwarded control message to endpoint:', message.targetEndpoint);
-                                    }
-                                } else {
-                                    // One-to-many: Broadcast to all endpoints
-                                    if (webrtcMidi && webrtcMidi.connections) {
-                                        webrtcMidi.sendControlMessage(message);
-                                        console.log('[Bridge] Broadcast control message to all Revision endpoints');
-                                    }
-                                }
-                            } catch (error) {
-                                console.error('[Bridge] Error handling remote control message:', error);
-                            }
-                        };
-                    }
-                };
-
-                // Handle connection state
-                remoteControlConnection.onconnectionstatechange = () => {
-                    const state = remoteControlConnection.connectionState;
-                    console.log('[Bridge] Remote control connection state:', state);
-                };
-
-                // Set remote description (offer from remote control)
-                const offer = JSON.parse(offerText);
-                await remoteControlConnection.setRemoteDescription(offer);
-
-                // Create answer
-                const answer = await remoteControlConnection.createAnswer();
-                await remoteControlConnection.setLocalDescription(answer);
-
-                // Wait for ICE gathering
-                await new Promise((resolve) => {
-                    if (remoteControlConnection.iceGatheringState === 'complete') {
-                        resolve();
-                    } else {
-                        remoteControlConnection.addEventListener('icegatheringstatechange', function checkState() {
-                            if (remoteControlConnection.iceGatheringState === 'complete') {
-                                remoteControlConnection.removeEventListener('icegatheringstatechange', checkState);
-                                resolve();
-                            }
-                        });
-                    }
-                });
-
-                // Display answer
-                const answerJSON = JSON.stringify(remoteControlConnection.localDescription);
-                document.getElementById('remote-control-answer').value = answerJSON;
-                document.getElementById('remote-control-answer-section').style.display = 'block';
-
-                // Auto-copy answer
-                copyRemoteControlAnswer();
-
-                console.log('[Bridge] Remote control answer ready');
-            } catch (error) {
-                console.error('[Bridge] Error accepting remote control:', error);
-                alert('Error: ' + error.message);
-            }
-        };
-
-        window.copyRemoteControlAnswer = function() {
-            const textarea = document.getElementById('remote-control-answer');
-            textarea.select();
-            document.execCommand('copy');
-            console.log('[Bridge] Remote control answer copied to clipboard');
-        };
-
-        // Set up MeisterRTC control message handler to forward to remote control
-        let lastIdentityUpdateTime = 0;
-        function setupControlMessageForwarding() {
-            if (webrtcMidi && webrtcMidi.onControlMessage === null) {
-                webrtcMidi.onControlMessage = (message, endpointId) => {
-                    console.log('[Bridge] Control message from Revision:', message, 'endpoint:', endpointId);
-
-                    // Check if identity was updated (throttle updates to avoid spam)
-                    const now = performance.now();
-                    if (now - lastIdentityUpdateTime > 500) {
-                        // Check if any endpoint has identity set
-                        let identityChanged = false;
-                        for (const conn of webrtcMidi.connections.values()) {
-                            if (conn.identity) {
-                                identityChanged = true;
-                                break;
-                            }
-                        }
-
-                        if (identityChanged) {
-                            lastIdentityUpdateTime = now;
-                            sendEndpointListToRemote();
-                        }
-                    }
-
-                    // Forward to remote control if connected
-                    if (remoteControlChannel && remoteControlChannel.readyState === 'open') {
-                        remoteControlChannel.send(JSON.stringify(message));
-                        console.log('[Bridge] Forwarded to remote control');
-                    }
-                };
-            }
-        }
-
-        // Send endpoint list to remote control
-        function sendEndpointListToRemote() {
-            if (!remoteControlChannel || remoteControlChannel.readyState !== 'open') {
-                return;
-            }
-
-            if (!webrtcMidi || !webrtcMidi.connections) {
-                return;
-            }
-
-            const endpoints = Array.from(webrtcMidi.connections.values()).map(conn => ({
-                id: conn.id,
-                name: conn.name || conn.id,
-                state: conn.state,
-                identity: conn.identity || null  // Will be set when Revision sends identity
-            }));
-
-            const message = {
-                type: 'endpointList',
-                endpoints: endpoints
-            };
-
-            try {
-                remoteControlChannel.send(JSON.stringify(message));
-                console.log('[Bridge] Sent endpoint list to remote control:', endpoints);
-            } catch (error) {
-                console.error('[Bridge] Failed to send endpoint list:', error);
-            }
-        }
-
         // Send endpoint list to a specific endpoint (for control endpoints)
         function sendEndpointListToEndpoint(endpointId) {
             if (!webrtcMidi || !webrtcMidi.connections) {
@@ -1279,7 +1100,7 @@
                 .map(conn => ({
                     id: conn.id,
                     name: conn.name || conn.id,
-                    state: conn.state,
+                    state: conn.peerConnection?.connectionState || conn.state || 'unknown',
                     identity: conn.identity || null
                 }));
 
@@ -1299,13 +1120,39 @@
         // Start stats update loop
         setInterval(() => {
             updateStats();
-            setupControlMessageForwarding();
         }, 100);
 
         // Initialize bridge on page load
         window.addEventListener('DOMContentLoaded', () => {
             console.log('[Bridge] Initializing on page load...');
-            initializeBridge();
+
+            // Handle MIDI enable/disable checkbox
+            const enableMidiCheckbox = document.getElementById('enableMidiCheckbox');
+            const midiSection = document.getElementById('midiSection');
+
+            // Load saved preference (default: false)
+            const midiEnabled = localStorage.getItem('midiEnabled') === 'true';
+            enableMidiCheckbox.checked = midiEnabled;
+            midiSection.style.display = midiEnabled ? 'block' : 'none';
+
+            // Add checkbox change handler
+            enableMidiCheckbox.addEventListener('change', () => {
+                const isEnabled = enableMidiCheckbox.checked;
+                midiSection.style.display = isEnabled ? 'block' : 'none';
+                localStorage.setItem('midiEnabled', isEnabled);
+
+                console.log('[Bridge] MIDI', isEnabled ? 'enabled' : 'disabled');
+
+                // Initialize bridge if enabling MIDI for the first time
+                if (isEnabled && !webrtcMidi) {
+                    initializeBridge();
+                }
+            });
+
+            // Only initialize on load if MIDI is enabled
+            if (midiEnabled) {
+                initializeBridge();
+            }
         });
     </script>
 </body>

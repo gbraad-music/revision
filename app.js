@@ -841,7 +841,7 @@ class RevisionAppV2 {
         this.controlChannel.onmessage = async (event) => {
             const { command, data } = event.data;
 
-            // console.log('[BroadcastChannel] Received command:', command, 'data:', data);
+            console.log('[BroadcastChannel] Received command:', command, 'data:', data);
 
             // Flash remote indicator when receiving command from control.html
             const remoteIndicator = document.getElementById('remote-indicator');
@@ -3144,23 +3144,49 @@ class RevisionAppV2 {
         this.webrtcMidi.onControlMessage = (message, endpointId) => {
             console.log('[WebRTC Control] Received control message:', message, 'from endpoint:', endpointId);
 
+            // Handle endpointInfo message
+            if (message.type === 'endpointInfo') {
+                console.log('[WebRTC Control] Received endpoint info:', message.endpointId, message.endpointName);
+
+                const identity = this.settings.get('endpointIdentity') || 'Revision Instance';
+
+                // Update status bar
+                const statusBarTitle = document.querySelector('.status-bar > div:first-child');
+                if (statusBarTitle) {
+                    statusBarTitle.textContent = `REVISION - ID: ${message.endpointId} (${identity})`;
+                    statusBarTitle.style.color = '#00ff00';
+                }
+
+                // Send to control.html
+                this.controlChannel.postMessage({
+                    type: 'webrtcEndpointConnected',
+                    data: {
+                        endpointId: message.endpointId,
+                        endpointName: message.endpointName,
+                        identity: identity
+                    }
+                });
+                console.log('[WebRTC Control] Sent endpoint info to control.html');
+                return;
+            }
+
             // Handle special commands directly
-            if (message.type === 'flashIdentity') {
+            if (message.type === 'flashIdentity' || message.command === 'flashIdentity') {
                 this.flashIdentity();
                 return;
             }
 
             // Forward to control panel (BroadcastChannel) - same as if it came from control.html
-            if (this.controlChannel && message.type) {
-                // Extract the data from the message
-                const messageType = message.type;
+            // Control messages can have either 'command' or 'type' property
+            const messageType = message.command || message.type;
+            if (this.controlChannel && messageType) {
                 const messageData = message.data !== undefined ? message.data : message;
 
-                console.log('[WebRTC Control] Forwarding to BroadcastChannel:', messageType, messageData);
+                console.log('[WebRTC Control] Forwarding to BroadcastChannel - command:', messageType, 'data:', messageData);
 
                 // Post to control channel as if it came from local control.html
                 this.controlChannel.postMessage({
-                    type: messageType,
+                    command: messageType,
                     data: messageData
                 });
             }
@@ -3174,8 +3200,9 @@ class RevisionAppV2 {
                     this.initializeWebRTCMIDISource();
                 }
 
-                // Send identity to bridge
                 const identity = this.settings.get('endpointIdentity') || 'Revision Instance';
+
+                // Send identity to bridge
                 if (this.webrtcMidi && this.webrtcMidi.controlChannel && this.webrtcMidi.controlChannel.readyState === 'open') {
                     this.webrtcMidi.controlChannel.send(JSON.stringify({
                         type: 'setIdentity',
@@ -3183,12 +3210,41 @@ class RevisionAppV2 {
                     }));
                     console.log('[WebRTC MIDI] Sent identity to bridge:', identity);
                 }
+
+                // Update status bar to show endpoint ID and name
+                const statusBarTitle = document.querySelector('.status-bar > div:first-child');
+                if (statusBarTitle && this.webrtcMidi.endpointId && this.webrtcMidi.endpointName) {
+                    statusBarTitle.textContent = `REVISION - ID: ${this.webrtcMidi.endpointId} (${this.webrtcMidi.endpointName})`;
+                    statusBarTitle.style.color = '#00ff00';
+                    console.log('[WebRTC MIDI] Status bar updated with endpoint info:', this.webrtcMidi.endpointId, this.webrtcMidi.endpointName);
+                }
+
+                // Send endpoint info to control.html
+                this.controlChannel.postMessage({
+                    type: 'webrtcEndpointConnected',
+                    data: {
+                        endpointId: this.webrtcMidi.endpointId,
+                        endpointName: this.webrtcMidi.endpointName,
+                        identity: identity
+                    }
+                });
+                console.log('[WebRTC MIDI] Sent endpoint info to control.html');
             } else if (state === 'disconnected' || state === 'closed') {
+                // Reset status bar to default
+                const statusBarTitle = document.querySelector('.status-bar > div:first-child');
+                if (statusBarTitle) {
+                    statusBarTitle.textContent = 'REVISION';
+                    statusBarTitle.style.color = '#888888';
+                }
                 // Only clean up on true disconnect, not on transient 'failed' state
                 // console.log('[WebRTC MIDI] Connection truly closed - cleaning up');
                 this.controlChannel.postMessage({
                     type: 'webrtcMidiDevicesChanged',
                     data: []
+                });
+                // Notify control.html of disconnection
+                this.controlChannel.postMessage({
+                    type: 'webrtcEndpointDisconnected'
                 });
                 if (this.webrtcMidiSource) {
                     this.inputManager.unregisterSource('webrtc-midi');

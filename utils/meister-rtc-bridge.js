@@ -633,7 +633,7 @@ class BrowserMeisterRTC {
             const message = JSON.parse(data);
             console.log('[MeisterRTC] Control message received:', message.command || message.type);
 
-            // Handle setIdentity internally
+            // Handle setIdentity internally (from receiver to sender)
             if (message.type === 'setIdentity' && endpointId) {
                 const connection = this.connections.get(endpointId);
                 if (connection) {
@@ -641,6 +641,15 @@ class BrowserMeisterRTC {
                     console.log(`[MeisterRTC] Endpoint ${endpointId} identity set to:`, message.identity);
                 }
                 return; // Don't forward to callback
+            }
+
+            // Handle endpointInfo internally (from sender to receiver)
+            if (message.type === 'endpointInfo' && !endpointId) {
+                // Receiver mode - store our endpoint info
+                this.endpointId = message.endpointId;
+                this.endpointName = message.endpointName;
+                console.log('[MeisterRTC] Endpoint info received:', this.endpointId, this.endpointName);
+                // Forward to callback so app can update UI
             }
 
             // Forward to callback
