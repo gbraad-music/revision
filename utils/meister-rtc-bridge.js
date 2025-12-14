@@ -28,8 +28,9 @@ class BrowserMeisterRTC {
         this.onAudioStream = null;
         this.onVideoStream = null;
         this.onConnectionStateChange = null;
+        this.onControlMessage = null;  // Control messages from remote control
 
-        console.log(`[MeisterRTC] Created ${mode} bridge (MIDI + A/V)`);
+        console.log(`[MeisterRTC] Created ${mode} bridge (MIDI + A/V + Control)`);
     }
 
     /**
@@ -163,13 +164,19 @@ class BrowserMeisterRTC {
     async createEndpoint(name = '') {
         const endpointId = `endpoint-${this.nextEndpointId++}`;
         const peerConnection = new RTCPeerConnection(ICE_CONFIG);
+
+        // Create MIDI data channel (unordered, low latency)
         const dataChannel = peerConnection.createDataChannel('midi', DATA_CHANNEL_CONFIG);
+
+        // Create Control data channel (ordered, reliable)
+        const controlChannel = peerConnection.createDataChannel('control', { ordered: true });
 
         const connection = {
             id: endpointId,
             name: name,
             peerConnection: peerConnection,
             dataChannel: dataChannel,
+            controlChannel: controlChannel,
             state: 'new',
             stats: { messagesSent: 0 }
         };
@@ -194,6 +201,19 @@ class BrowserMeisterRTC {
 
         dataChannel.onmessage = (event) => {
             this.handleDataChannelMessage(event.data, endpointId);
+        };
+
+        // Handle control channel
+        controlChannel.onopen = () => {
+            console.log(`[MeisterRTC] Control channel opened: ${endpointId}`);
+        };
+
+        controlChannel.onclose = () => {
+            console.log(`[MeisterRTC] Control channel closed: ${endpointId}`);
+        };
+
+        controlChannel.onmessage = (event) => {
+            this.handleControlMessage(event.data, endpointId);
         };
 
         // Handle ICE candidates
@@ -299,22 +319,38 @@ class BrowserMeisterRTC {
         // Create peer connection
         this.peerConnection = new RTCPeerConnection(ICE_CONFIG);
 
-        // Handle data channel from sender
+        // Handle data channels from sender
         this.peerConnection.ondatachannel = (event) => {
-            this.dataChannel = event.channel;
+            const channel = event.channel;
 
-            this.dataChannel.onopen = () => {
-                console.log('[MeisterRTC] Data channel opened (receiver)');
+            if (channel.label === 'midi') {
+                // MIDI data channel
+                this.dataChannel = channel;
 
-                // Request active targets
-                this.dataChannel.send(JSON.stringify({
-                    type: 'request_targets'
-                }));
-            };
+                this.dataChannel.onopen = () => {
+                    console.log('[MeisterRTC] MIDI channel opened (receiver)');
 
-            this.dataChannel.onmessage = (event) => {
-                this.handleDataChannelMessage(event.data);
-            };
+                    // Request active targets
+                    this.dataChannel.send(JSON.stringify({
+                        type: 'request_targets'
+                    }));
+                };
+
+                this.dataChannel.onmessage = (event) => {
+                    this.handleDataChannelMessage(event.data);
+                };
+            } else if (channel.label === 'control') {
+                // Control data channel
+                this.controlChannel = channel;
+
+                this.controlChannel.onopen = () => {
+                    console.log('[MeisterRTC] Control channel opened (receiver)');
+                };
+
+                this.controlChannel.onmessage = (event) => {
+                    this.handleControlMessage(event.data);
+                };
+            }
         };
 
         // Handle incoming audio/video tracks
@@ -586,6 +622,56 @@ class BrowserMeisterRTC {
                     reactive: 0
                 }
             };
+        }
+    }
+
+    /**
+     * Handle control message
+     */
+    handleControlMessage(data, endpointId = null) {
+        try {
+            const message = JSON.parse(data);
+            console.log('[MeisterRTC] Control message received:', message.command || message.type);
+
+            // Handle setIdentity internally
+            if (message.type === 'setIdentity' && endpointId) {
+                const connection = this.connections.get(endpointId);
+                if (connection) {
+                    connection.identity = message.identity;
+                    console.log(`[MeisterRTC] Endpoint ${endpointId} identity set to:`, message.identity);
+                }
+                return; // Don't forward to callback
+            }
+
+            // Forward to callback
+            if (this.onControlMessage) {
+                this.onControlMessage(message, endpointId);
+            }
+        } catch (error) {
+            console.error('[MeisterRTC] Failed to parse control message:', error);
+        }
+    }
+
+    /**
+     * Send control message to endpoint
+     */
+    sendControlMessage(message, endpointId = null) {
+        const data = JSON.stringify(message);
+
+        if (endpointId) {
+            // Send to specific endpoint
+            const connection = this.connections.get(endpointId);
+            if (connection?.controlChannel?.readyState === 'open') {
+                connection.controlChannel.send(data);
+                console.log('[MeisterRTC] Control message sent to', endpointId);
+            }
+        } else {
+            // Broadcast to all endpoints
+            for (const connection of this.connections.values()) {
+                if (connection.controlChannel?.readyState === 'open') {
+                    connection.controlChannel.send(data);
+                }
+            }
         }
     }
 

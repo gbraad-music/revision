@@ -3140,12 +3140,48 @@ class RevisionAppV2 {
             });
         };
 
+        // Handle control messages from remote control (via MeisterRTC)
+        this.webrtcMidi.onControlMessage = (message, endpointId) => {
+            console.log('[WebRTC Control] Received control message:', message, 'from endpoint:', endpointId);
+
+            // Handle special commands directly
+            if (message.type === 'flashIdentity') {
+                this.flashIdentity();
+                return;
+            }
+
+            // Forward to control panel (BroadcastChannel) - same as if it came from control.html
+            if (this.controlChannel && message.type) {
+                // Extract the data from the message
+                const messageType = message.type;
+                const messageData = message.data !== undefined ? message.data : message;
+
+                console.log('[WebRTC Control] Forwarding to BroadcastChannel:', messageType, messageData);
+
+                // Post to control channel as if it came from local control.html
+                this.controlChannel.postMessage({
+                    type: messageType,
+                    data: messageData
+                });
+            }
+        };
+
         // Handle connection state changes
         this.webrtcMidi.onConnectionStateChange = (state) => {
             // console.log('[WebRTC MIDI] Connection state:', state);
             if (state === 'connected') {
                 if (!this.webrtcMidiSource) {
                     this.initializeWebRTCMIDISource();
+                }
+
+                // Send identity to bridge
+                const identity = this.settings.get('endpointIdentity') || 'Revision Instance';
+                if (this.webrtcMidi && this.webrtcMidi.controlChannel && this.webrtcMidi.controlChannel.readyState === 'open') {
+                    this.webrtcMidi.controlChannel.send(JSON.stringify({
+                        type: 'setIdentity',
+                        identity: identity
+                    }));
+                    console.log('[WebRTC MIDI] Sent identity to bridge:', identity);
                 }
             } else if (state === 'disconnected' || state === 'closed') {
                 // Only clean up on true disconnect, not on transient 'failed' state
@@ -3187,6 +3223,80 @@ class RevisionAppV2 {
             data: []
         });
         // console.log('[WebRTC MIDI] Disconnected');
+    }
+
+    /**
+     * Flash identity overlay on screen (for remote identification)
+     */
+    flashIdentity() {
+        // Get endpoint identity from settings or generate default
+        const identity = this.settings.get('endpointIdentity') || 'Revision Instance';
+
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 999999;
+            animation: fadeIn 0.3s ease-in-out;
+        `;
+
+        const identityText = document.createElement('div');
+        identityText.textContent = identity;
+        identityText.style.cssText = `
+            font-size: 72px;
+            font-weight: bold;
+            color: #0066FF;
+            text-shadow: 0 0 30px rgba(0, 102, 255, 0.8);
+            margin-bottom: 20px;
+            animation: pulse 2s ease-in-out infinite;
+        `;
+
+        const subtitle = document.createElement('div');
+        subtitle.textContent = 'MeisterRTC Endpoint';
+        subtitle.style.cssText = `
+            font-size: 24px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+        `;
+
+        // Add CSS animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+            }
+        `;
+
+        document.head.appendChild(style);
+        overlay.appendChild(identityText);
+        overlay.appendChild(subtitle);
+        document.body.appendChild(overlay);
+
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            overlay.style.animation = 'fadeIn 0.3s ease-in-out reverse';
+            setTimeout(() => {
+                document.body.removeChild(overlay);
+                document.head.removeChild(style);
+            }, 300);
+        }, 3000);
+
+        console.log('[Revision] Flashed identity:', identity);
     }
 
     setupMIDISynthHandlers() {
