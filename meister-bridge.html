@@ -310,11 +310,12 @@
         </div>
 
         <div class="section">
-            <h2>Program Endpoints (Multiple Revision Instances)</h2>
+            <h2>Endpoints</h2>
             <p style="color: #888; font-size: 13px; margin-bottom: 15px;">
-                Each Revision instance needs its own endpoint. Create a new endpoint for each program you want to connect.
+                Connect Revision instances (programs) and remote controllers
             </p>
-            <button onclick="addEndpoint()" style="background: #0066FF; border-color: #0088FF;">➕ Add Program Endpoint</button>
+            <button onclick="addEndpoint('program')" style="background: #0066FF; border-color: #0088FF;">➕ Add Program Endpoint</button>
+            <button onclick="addEndpoint('control')" style="background: #00aa00; border-color: #00cc00;">🎛️ Add Control Endpoint</button>
             <button onclick="disconnectAll()" style="background: #cc0000; border-color: #ff0000;">Disconnect All</button>
 
             <div id="endpoints-list" style="margin-top: 20px;">
@@ -384,7 +385,8 @@
 
         let webrtcMidi = null;
         let midiActivityTimers = {};
-        let endpointCount = 0;
+        let programEndpointCount = 0;
+        let controlEndpointCount = 0;
 
         // Initialize WebRTC bridge on load
         async function initializeBridge() {
@@ -439,25 +441,40 @@
             }
         }
 
-        // Add new program endpoint
-        async function addEndpoint() {
+        // Add new endpoint
+        async function addEndpoint(type = 'program') {
             if (!webrtcMidi) {
                 await initializeBridge();
             }
 
             try {
-                endpointCount++;
-                const name = `Program ${endpointCount}`;
+                const isControl = type === 'control';
+                const name = isControl ? `Control ${++controlEndpointCount}` : `Program ${++programEndpointCount}`;
 
                 // Create endpoint
                 const endpointId = await webrtcMidi.createEndpoint(name);
-                console.log('[Bridge] Created endpoint:', endpointId, name);
+                console.log('[Bridge] Created endpoint:', endpointId, name, 'type:', type);
+
+                // For control endpoints, send endpoint list when control channel opens
+                if (isControl) {
+                    const connection = webrtcMidi.connections.get(endpointId);
+                    if (connection?.controlChannel) {
+                        const originalOnOpen = connection.controlChannel.onopen;
+                        connection.controlChannel.onopen = () => {
+                            if (originalOnOpen) originalOnOpen();
+
+                            // Send endpoint list to this control endpoint
+                            sendEndpointListToEndpoint(endpointId);
+                            console.log('[Bridge] Control endpoint ready, sent endpoint list');
+                        };
+                    }
+                }
 
                 // Generate offer
                 const { endpointId: id, offer } = await webrtcMidi.createOffer(endpointId);
 
                 // Create UI for this endpoint
-                createEndpointUI(id, name, offer);
+                createEndpointUI(id, name, offer, type);
 
                 // Update stats
                 updateStats();
@@ -470,17 +487,21 @@
         }
 
         // Create UI elements for an endpoint
-        function createEndpointUI(endpointId, name, offer) {
+        function createEndpointUI(endpointId, name, offer, type = 'program') {
             const container = document.getElementById('endpoints-list');
+            const isControl = type === 'control';
+            const borderColor = isControl ? '#00aa00' : '#2a2a2a';
+            const titleColor = isControl ? '#00cc00' : '#0066FF';
+            const typeLabel = isControl ? '🎛️ Control' : '📺 Program';
 
             const endpointDiv = document.createElement('div');
             endpointDiv.id = `endpoint-${endpointId}`;
-            endpointDiv.style.cssText = 'background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 4px; padding: 20px; margin-bottom: 15px;';
+            endpointDiv.style.cssText = `background: #0a0a0a; border: 2px solid ${borderColor}; border-radius: 4px; padding: 20px; margin-bottom: 15px;`;
 
             endpointDiv.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <div>
-                        <h3 style="color: #0066FF; margin: 0; font-size: 16px;">${name}</h3>
+                        <h3 style="color: ${titleColor}; margin: 0; font-size: 16px;">${name} <span style="font-size: 11px; color: #666;">${typeLabel}</span></h3>
                         <div style="font-size: 12px; color: #666; margin-top: 5px;">ID: ${endpointId}</div>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center;">
@@ -489,16 +510,18 @@
                     </div>
                 </div>
 
-                <div style="margin-bottom: 15px;">
-                    <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 1: Copy this offer to Revision</div>
-                    <textarea id="offer-${endpointId}" readonly style="min-height: 100px; font-size: 11px;">${offer}</textarea>
-                    <button onclick="copyOffer('${endpointId}')" style="margin-top: 5px;">Copy Offer</button>
-                </div>
+                <div id="setup-${endpointId}" style="margin-bottom: 15px;">
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 1: Copy this offer to ${isControl ? 'Control Interface' : 'Revision'}</div>
+                        <textarea id="offer-${endpointId}" readonly style="min-height: 100px; font-size: 11px;">${offer}</textarea>
+                        <button onclick="copyOffer('${endpointId}')" style="margin-top: 5px;">Copy Offer</button>
+                    </div>
 
-                <div>
-                    <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 2: Paste answer from Revision</div>
-                    <textarea id="answer-${endpointId}" placeholder="Paste answer here..." style="min-height: 80px;"></textarea>
-                    <button onclick="connectEndpoint('${endpointId}')" style="margin-top: 5px; background: #0066FF; border-color: #0088FF;">Connect</button>
+                    <div>
+                        <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 2: Paste answer from ${isControl ? 'Control Interface' : 'Revision'}</div>
+                        <textarea id="answer-${endpointId}" placeholder="Paste answer here..." style="min-height: 80px;"></textarea>
+                        <button onclick="connectEndpoint('${endpointId}')" style="margin-top: 5px; background: #0066FF; border-color: #0088FF;">Connect</button>
+                    </div>
                 </div>
 
                 <div id="stats-${endpointId}" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #2a2a2a; font-size: 12px; color: #666; display: none;">
@@ -594,6 +617,11 @@
             if (state === 'connected') {
                 statusEl.className = 'status connected';
                 statusEl.textContent = '✅ Connected';
+
+                // Hide setup section (offer/answer)
+                const setupDiv = document.getElementById(`setup-${endpointId}`);
+                if (setupDiv) setupDiv.style.display = 'none';
+
                 // Show stats for this endpoint
                 const statsDiv = document.getElementById(`stats-${endpointId}`);
                 if (statsDiv) statsDiv.style.display = 'block';
@@ -1182,6 +1210,41 @@
             try {
                 remoteControlChannel.send(JSON.stringify(message));
                 console.log('[Bridge] Sent endpoint list to remote control:', endpoints);
+            } catch (error) {
+                console.error('[Bridge] Failed to send endpoint list:', error);
+            }
+        }
+
+        // Send endpoint list to a specific endpoint (for control endpoints)
+        function sendEndpointListToEndpoint(endpointId) {
+            if (!webrtcMidi || !webrtcMidi.connections) {
+                return;
+            }
+
+            const connection = webrtcMidi.connections.get(endpointId);
+            if (!connection || !connection.controlChannel || connection.controlChannel.readyState !== 'open') {
+                console.warn('[Bridge] Cannot send endpoint list - control channel not open');
+                return;
+            }
+
+            // Get all endpoints except this one
+            const endpoints = Array.from(webrtcMidi.connections.values())
+                .filter(conn => conn.id !== endpointId)
+                .map(conn => ({
+                    id: conn.id,
+                    name: conn.name || conn.id,
+                    state: conn.state,
+                    identity: conn.identity || null
+                }));
+
+            const message = {
+                type: 'endpointList',
+                endpoints: endpoints
+            };
+
+            try {
+                connection.controlChannel.send(JSON.stringify(message));
+                console.log(`[Bridge] Sent endpoint list to ${endpointId}:`, endpoints);
             } catch (error) {
                 console.error('[Bridge] Failed to send endpoint list:', error);
             }
