@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeisterRTC Bridge - MIDI, Audio, Video & Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 40px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #888;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: 500;
+            border: 1px solid #2a2a2a;
+        }
+        .status.disconnected {
+            background: #1a1a1a;
+            color: #888;
+            border: 1px solid #2a2a2a;
+        }
+        .status.connecting {
+            background: rgba(255,165,0,0.1);
+            color: #ffaa00;
+            border: 1px solid rgba(255,165,0,0.3);
+        }
+        .status.connected {
+            background: rgba(0,255,0,0.1);
+            color: #00ff00;
+            border: 1px solid rgba(0,255,0,0.3);
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        .section h2 {
+            font-size: 14px;
+            color: #0066FF;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .role-info {
+            background: #0a0a0a;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            line-height: 1.6;
+            border: 1px solid #2a2a2a;
+        }
+        .role-info h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #888;
+        }
+        .role-info ul {
+            margin-left: 20px;
+        }
+        .role-info li {
+            margin-bottom: 5px;
+            color: #666;
+        }
+        .role-info strong {
+            color: #0066FF;
+        }
+        .device-list {
+            background: #0a0a0a;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #2a2a2a;
+        }
+        .device-item {
+            padding: 15px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            border: 2px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .device-item.enabled {
+            border-color: #0066FF;
+            background: #1a1a2a;
+        }
+        .device-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .device-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .device-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 3px;
+        }
+        .device-manufacturer {
+            font-size: 12px;
+            color: #666;
+        }
+        .device-roles {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .role-checkbox-group {
+            display: flex;
+            gap: 12px;
+        }
+        .role-checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 13px;
+            color: #555;
+            cursor: pointer;
+            user-select: none;
+        }
+        .role-checkbox-label input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        .role-checkbox-label input[type="checkbox"]:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        .custom-role-input {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        .custom-role-input input[type="text"] {
+            width: 100px;
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .custom-role-input input[type="text"]:disabled {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+        .custom-role-input button {
+            padding: 4px 10px;
+            font-size: 11px;
+            margin: 0;
+        }
+        .role-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .role-badge.control {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .role-badge.synth {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+        .role-badge.reactive {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        .activity {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ccc;
+            flex-shrink: 0;
+        }
+        .activity.active {
+            background: #28a745;
+            box-shadow: 0 0 10px #28a745;
+        }
+        textarea {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            resize: vertical;
+            min-height: 120px;
+            background: #0a0a0a;
+            color: #ffffff;
+        }
+        button {
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #3a3a3a;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #3a3a3a;
+            border-color: #4a4a4a;
+        }
+        button:active {
+            background: #0066FF;
+        }
+        button:disabled {
+            background: #1a1a1a;
+            color: #555;
+            cursor: not-allowed;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat {
+            background: #0a0a0a;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #2a2a2a;
+        }
+        .stat-label {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #888;
+        }
+        .no-devices {
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+            padding: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎹 MIDI WebRTC Bridge</h1>
+        <p class="subtitle">Send MIDI to Revision with multi-role routing (devices can have multiple roles)</p>
+
+        <div class="status disconnected" id="status">
+            ⚪ Disconnected
+        </div>
+
+        <div class="section">
+            <h2>MIDI Multi-Role Configuration</h2>
+            <div class="role-info">
+                <h3>Assign Multiple Roles to Each Device:</h3>
+                <ul>
+                    <li><strong>Control:</strong> Visual parameter control (trigger scenes, adjust parameters)</li>
+                    <li><strong>Synth:</strong> Audio synthesis (musical notes, synth control)</li>
+                    <li><strong>Reactive:</strong> Reactive visual effects (beat detection, audio-reactive visuals)</li>
+                    <li><strong>Custom:</strong> Add your own role names (e.g., 'drums', 'bass', 'lighting')</li>
+                </ul>
+                <p style="margin-top: 10px; font-style: italic;">
+                    Example: A keyboard can be Control + Synth + drums (multiple roles + custom name)
+                </p>
+            </div>
+
+            <div class="device-list" id="deviceList">
+                <div class="no-devices">Waiting for MIDI access...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Endpoints</h2>
+            <p style="color: #888; font-size: 13px; margin-bottom: 15px;">
+                Connect Revision instances (programs) and remote controllers
+            </p>
+            <button onclick="addEndpoint('program')" style="background: #0066FF; border-color: #0088FF;">➕ Add Program Endpoint</button>
+            <button onclick="addEndpoint('control')" style="background: #00aa00; border-color: #00cc00;">🎛️ Add Control Endpoint</button>
+            <button onclick="disconnectAll()" style="background: #cc0000; border-color: #ff0000;">Disconnect All</button>
+
+            <div id="endpoints-list" style="margin-top: 20px;">
+                <!-- Endpoints will be added here dynamically -->
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Remote Control Connections</h2>
+            <p style="color: #888; font-size: 13px; margin-bottom: 15px;">
+                Accept connections from remote control interfaces (revision-meister/control.html)
+            </p>
+
+            <div style="margin-bottom: 15px;">
+                <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 1: Paste offer from remote control</div>
+                <textarea id="remote-control-offer" placeholder="Paste offer from revision-meister/control.html..." style="min-height: 100px;"></textarea>
+                <button onclick="acceptRemoteControl()" style="margin-top: 5px; background: #0066FF; border-color: #0088FF;">Accept Remote Control</button>
+            </div>
+
+            <div id="remote-control-answer-section" style="display: none;">
+                <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 2: Copy this answer back to remote control</div>
+                <textarea id="remote-control-answer" readonly style="min-height: 80px;"></textarea>
+                <button onclick="copyRemoteControlAnswer()" style="margin-top: 5px;">Copy Answer</button>
+            </div>
+
+            <div id="remote-control-status" style="margin-top: 15px; padding: 10px; border-radius: 4px; background: #0a0a0a; border: 1px solid #2a2a2a; color: #666; display: none;">
+                Remote control: <span id="remote-control-state">Not connected</span>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-label">Total Endpoints</div>
+                <div class="stat-value" id="totalEndpoints">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Connected</div>
+                <div class="stat-value" id="connectedEndpoints">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Total Sent</div>
+                <div class="stat-value" id="messagesSent">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Control</div>
+                <div class="stat-value" id="controlSent">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Synth</div>
+                <div class="stat-value" id="synthSent">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Reactive</div>
+                <div class="stat-value" id="reactiveSent">0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load appropriate bridge: MIDI-RTC (MIDI only) or MeisterRTC (MIDI + Audio + Video) -->
+    <script type="module" src="../utils/midi-rtc-bridge.js"></script>
+    <script type="module" src="../utils/meister-rtc-bridge.js"></script>
+    <script>
+        // CONFIGURATION: Choose bridge mode
+        // 'midi' = MIDI-RTC (MIDI messages only, lightweight)
+        // 'meister' = MeisterRTC (MIDI + audio + video streaming)
+        const BRIDGE_MODE = localStorage.getItem('bridge Mode') || 'midi';
+
+        let webrtcMidi = null;
+        let midiActivityTimers = {};
+        let programEndpointCount = 0;
+        let controlEndpointCount = 0;
+
+        // Initialize WebRTC bridge on load
+        async function initializeBridge() {
+            if (webrtcMidi) return; // Already initialized
+
+            try {
+                // Use appropriate bridge based on configuration
+                // Both expose the same WebRTCMIDI interface for backward compatibility
+                if (BRIDGE_MODE === 'meister' && typeof MeisterRTC !== 'undefined') {
+                    console.log('[Bridge] Initializing MeisterRTC (MIDI + audio + video)');
+                    webrtcMidi = new MeisterRTC('sender');
+                } else {
+                    console.log('[Bridge] Initializing MIDI-RTC (MIDI only)');
+                    webrtcMidi = new WebRTCMIDI('sender');
+                }
+
+                await webrtcMidi.initialize();
+
+                webrtcMidi.onConnectionStateChange = (state, endpointId) => {
+                    updateEndpointStatus(endpointId, state);
+                };
+
+                // Handle incoming MIDI from WebRTC (Revision → Bridge → Physical MIDI)
+                webrtcMidi.onMIDIMessage = (message) => {
+                    // console.log('[Bridge] Received MIDI from WebRTC:', message.roles, message.data);
+
+                    // Find physical device(s) with matching role
+                    const roles = message.roles || [];
+                    webrtcMidi.midiAccess.outputs.forEach((output) => {
+                        const deviceRoles = webrtcMidi.deviceRoles.get(output.id) || [];
+
+                        // Send to device if it has ANY of the message roles
+                        const hasMatchingRole = roles.some(role => deviceRoles.includes(role));
+                        if (hasMatchingRole && output.state === 'connected') {
+                            try {
+                                output.send(message.data);
+                                // console.log(`[Bridge] Sent to ${output.name}:`, message.data);
+                            } catch (error) {
+                                console.error(`[Bridge] Failed to send to ${output.name}:`, error);
+                            }
+                        }
+                    });
+                };
+
+                displayMIDIDevices();
+                console.log('[Bridge] ✓ WebRTC MIDI bridge initialized (bidirectional)');
+            } catch (error) {
+                console.error('[Bridge] Failed to initialize:', error);
+                const statusEl = document.getElementById('status');
+                statusEl.className = 'status disconnected';
+                statusEl.textContent = '❌ Failed to initialize: ' + error.message;
+            }
+        }
+
+        // Add new endpoint
+        async function addEndpoint(type = 'program') {
+            if (!webrtcMidi) {
+                await initializeBridge();
+            }
+
+            try {
+                const isControl = type === 'control';
+                const name = isControl ? `Control ${++controlEndpointCount}` : `Program ${++programEndpointCount}`;
+
+                // Create endpoint
+                const endpointId = await webrtcMidi.createEndpoint(name);
+                console.log('[Bridge] Created endpoint:', endpointId, name, 'type:', type);
+
+                // For control endpoints, send endpoint list when control channel opens
+                if (isControl) {
+                    const connection = webrtcMidi.connections.get(endpointId);
+                    if (connection?.controlChannel) {
+                        console.log('[Bridge] Setting up control endpoint:', endpointId);
+                        const originalOnOpen = connection.controlChannel.onopen;
+                        connection.controlChannel.onopen = () => {
+                            console.log('[Bridge] Control endpoint control channel opened:', endpointId);
+                            if (originalOnOpen) originalOnOpen();
+
+                            // Send endpoint list to this control endpoint
+                            setTimeout(() => {
+                                sendEndpointListToEndpoint(endpointId);
+                                console.log('[Bridge] Control endpoint ready, sent endpoint list');
+                            }, 100); // Small delay to ensure channel is fully ready
+                        };
+                    } else {
+                        console.warn('[Bridge] Control channel not found for control endpoint:', endpointId);
+                    }
+                }
+
+                // Generate offer
+                const { endpointId: id, offer } = await webrtcMidi.createOffer(endpointId);
+
+                // Create UI for this endpoint
+                createEndpointUI(id, name, offer, type);
+
+                // Update stats
+                updateStats();
+
+                console.log('[Bridge] ✓ Endpoint created:', name);
+            } catch (error) {
+                console.error('[Bridge] Error adding endpoint:', error);
+                console.error('[Bridge] Error details:', error.message);
+            }
+        }
+
+        // Create UI elements for an endpoint
+        function createEndpointUI(endpointId, name, offer, type = 'program') {
+            const container = document.getElementById('endpoints-list');
+            const isControl = type === 'control';
+            const borderColor = isControl ? '#00aa00' : '#2a2a2a';
+            const titleColor = isControl ? '#00cc00' : '#0066FF';
+            const typeLabel = isControl ? '🎛️ Control' : '📺 Program';
+
+            const endpointDiv = document.createElement('div');
+            endpointDiv.id = `endpoint-${endpointId}`;
+            endpointDiv.style.cssText = `background: #0a0a0a; border: 2px solid ${borderColor}; border-radius: 4px; padding: 20px; margin-bottom: 15px;`;
+
+            endpointDiv.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <div>
+                        <h3 style="color: ${titleColor}; margin: 0; font-size: 16px;">${name} <span style="font-size: 11px; color: #666;">${typeLabel}</span></h3>
+                        <div style="font-size: 12px; color: #666; margin-top: 5px;">ID: ${endpointId}</div>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <div id="status-${endpointId}" class="status disconnected" style="padding: 8px 12px; font-size: 12px;">⚪ Waiting</div>
+                        <button onclick="removeEndpoint('${endpointId}')" style="background: #cc0000; border-color: #ff0000; padding: 8px 16px; margin: 0;">Remove</button>
+                    </div>
+                </div>
+
+                <div id="setup-${endpointId}" style="margin-bottom: 15px;">
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 1: Copy this offer to ${isControl ? 'Control Interface' : 'Revision'}</div>
+                        <textarea id="offer-${endpointId}" readonly style="min-height: 100px; font-size: 11px;">${offer}</textarea>
+                        <button onclick="copyOffer('${endpointId}')" style="margin-top: 5px;">Copy Offer</button>
+                    </div>
+
+                    <div>
+                        <div style="font-size: 13px; color: #888; margin-bottom: 5px;">Step 2: Paste answer from ${isControl ? 'Control Interface' : 'Revision'}</div>
+                        <textarea id="answer-${endpointId}" placeholder="Paste answer here..." style="min-height: 80px;"></textarea>
+                        <button onclick="connectEndpoint('${endpointId}')" style="margin-top: 5px; background: #0066FF; border-color: #0088FF;">Connect</button>
+                    </div>
+                </div>
+
+                <div id="stats-${endpointId}" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #2a2a2a; font-size: 12px; color: #666; display: none;">
+                    <span>Sent: <span id="sent-${endpointId}">0</span></span>
+                </div>
+            `;
+
+            container.appendChild(endpointDiv);
+
+            // Auto-copy offer
+            copyOffer(endpointId);
+        }
+
+        // Copy offer to clipboard
+        function copyOffer(endpointId) {
+            const textarea = document.getElementById(`offer-${endpointId}`);
+            textarea.select();
+            document.execCommand('copy');
+
+            const status = document.getElementById(`status-${endpointId}`);
+            const originalText = status.textContent;
+            status.textContent = '📋 Offer copied!';
+            setTimeout(() => {
+                if (status.textContent === '📋 Offer copied!') {
+                    status.textContent = originalText;
+                }
+            }, 2000);
+        }
+
+        // Connect endpoint with answer
+        async function connectEndpoint(endpointId) {
+            const answerText = document.getElementById(`answer-${endpointId}`).value.trim();
+            if (!answerText) {
+                const status = document.getElementById(`status-${endpointId}`);
+                status.className = 'status disconnected';
+                status.textContent = '⚠️ Paste answer first';
+                setTimeout(() => {
+                    status.textContent = '⚪ Waiting';
+                }, 2000);
+                return;
+            }
+
+            try {
+                await webrtcMidi.handleAnswer(endpointId, answerText);
+                console.log('[Bridge] Answer processed for', endpointId);
+                updateEndpointStatus(endpointId, 'connecting');
+            } catch (error) {
+                console.error('[Bridge] Error connecting endpoint:', error);
+                const status = document.getElementById(`status-${endpointId}`);
+                status.className = 'status disconnected';
+                status.textContent = '❌ Connection error';
+            }
+        }
+
+        // Remove endpoint
+        function removeEndpoint(endpointId) {
+            try {
+                // Manually close the connection since removeEndpoint doesn't exist in library
+                const connection = webrtcMidi.connections.get(endpointId);
+                if (connection) {
+                    if (connection.dataChannel) {
+                        connection.dataChannel.close();
+                    }
+                    if (connection.controlChannel) {
+                        connection.controlChannel.close();
+                    }
+                    if (connection.peerConnection) {
+                        connection.peerConnection.close();
+                    }
+                    webrtcMidi.connections.delete(endpointId);
+                }
+
+                const endpointDiv = document.getElementById(`endpoint-${endpointId}`);
+                if (endpointDiv) {
+                    endpointDiv.remove();
+                }
+                updateStats();
+                console.log('[Bridge] Removed endpoint:', endpointId);
+            } catch (error) {
+                console.error('[Bridge] Error removing endpoint:', error);
+            }
+        }
+
+        // Disconnect all endpoints
+        function disconnectAll() {
+            if (!webrtcMidi) return;
+
+            try {
+                webrtcMidi.close();
+                webrtcMidi = null;
+                document.getElementById('endpoints-list').innerHTML = '';
+                updateStatus('disconnected');
+                updateStats();
+                console.log('[Bridge] All endpoints disconnected');
+            } catch (error) {
+                console.error('[Bridge] Error disconnecting:', error);
+            }
+        }
+
+        // Update endpoint status
+        function updateEndpointStatus(endpointId, state) {
+            const statusEl = document.getElementById(`status-${endpointId}`);
+            if (!statusEl) return;
+
+            statusEl.className = 'status';
+
+            if (state === 'connected') {
+                statusEl.className = 'status connected';
+                statusEl.textContent = '✅ Connected';
+
+                // Hide setup section (offer/answer)
+                const setupDiv = document.getElementById(`setup-${endpointId}`);
+                if (setupDiv) setupDiv.style.display = 'none';
+
+                // Show stats for this endpoint
+                const statsDiv = document.getElementById(`stats-${endpointId}`);
+                if (statsDiv) statsDiv.style.display = 'block';
+
+                // Broadcast updated endpoint list to all control endpoints
+                broadcastEndpointListToControlEndpoints();
+            } else if (state === 'connecting') {
+                statusEl.className = 'status connecting';
+                statusEl.textContent = '🔄 Connecting...';
+            } else if (state === 'failed') {
+                statusEl.className = 'status disconnected';
+                statusEl.textContent = '❌ Failed';
+
+                // Broadcast updated endpoint list (endpoint failed)
+                broadcastEndpointListToControlEndpoints();
+            } else if (state === 'disconnected') {
+                statusEl.className = 'status disconnected';
+                statusEl.textContent = '⚪ Disconnected';
+
+                // Broadcast updated endpoint list (endpoint disconnected)
+                broadcastEndpointListToControlEndpoints();
+            }
+
+            updateStats();
+
+            // Notify remote control of endpoint list changes
+            sendEndpointListToRemote();
+        }
+
+        // Broadcast endpoint list to all control endpoints
+        function broadcastEndpointListToControlEndpoints() {
+            if (!webrtcMidi || !webrtcMidi.connections) {
+                return;
+            }
+
+            for (const [id, conn] of webrtcMidi.connections.entries()) {
+                // Check if this is a control endpoint by looking at the name
+                if (conn.name && conn.name.startsWith('Control ')) {
+                    if (conn.controlChannel && conn.controlChannel.readyState === 'open') {
+                        sendEndpointListToEndpoint(id);
+                        console.log('[Bridge] Broadcast endpoint list to control endpoint:', id);
+                    }
+                }
+            }
+        }
+
+        function updateStatus(state) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = 'status';
+
+            if (state === 'connected') {
+                statusEl.className = 'status connected';
+                statusEl.textContent = '✅ Connected - MIDI is flowing with multi-role routing!';
+            } else if (state === 'connecting' || state === 'waiting') {
+                statusEl.className = 'status connecting';
+                statusEl.textContent = '🔄 Waiting for connection...';
+            } else if (state === 'failed' || state === 'disconnected') {
+                statusEl.className = 'status disconnected';
+                statusEl.textContent = '⚪ Disconnected';
+            }
+        }
+
+        function displayMIDIDevices() {
+            if (!webrtcMidi || !webrtcMidi.midiAccess) return;
+
+            const container = document.getElementById('deviceList');
+            container.innerHTML = '';
+
+            const devices = webrtcMidi.getDevices();
+
+            if (devices.length === 0) {
+                container.innerHTML = '<div class="no-devices">No MIDI devices found. Connect a MIDI device and refresh.</div>';
+                return;
+            }
+
+            // Load saved device roles
+            const savedRoles = loadDeviceRoles();
+
+            devices.forEach((device) => {
+                // Restore saved roles for this device
+                if (savedRoles && savedRoles[device.name]) {
+                    const restoredRoles = savedRoles[device.name];
+                    console.log('[Bridge] Restoring roles for', device.name, ':', restoredRoles);
+                    webrtcMidi.setDeviceRoles(device.id, restoredRoles);
+                    device.roles = restoredRoles; // Update local device object
+                }
+
+                const div = document.createElement('div');
+                div.className = 'device-item';
+                div.id = `device-${device.id}`;
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'device-checkbox';
+                checkbox.checked = device.roles.length > 0;
+                checkbox.onchange = (e) => {
+                    const roleCheckboxes = div.querySelectorAll('.role-checkbox');
+                    const customInput = div.querySelector('.custom-role-text');
+                    const customBtn = div.querySelector('.custom-role-input button');
+
+                    if (e.target.checked) {
+                        // Enable role checkboxes and custom input
+                        roleCheckboxes.forEach(cb => cb.disabled = false);
+                        if (customInput) customInput.disabled = false;
+                        if (customBtn) customBtn.disabled = false;
+                        div.classList.add('enabled');
+                        // If no roles selected, default to control
+                        if (!Array.from(roleCheckboxes).some(cb => cb.checked)) {
+                            roleCheckboxes[0].checked = true;
+                            updateDeviceRoles(device.id, div);
+                        }
+                    } else {
+                        // Disable all roles
+                        roleCheckboxes.forEach(cb => {
+                            cb.disabled = true;
+                            cb.checked = false;
+                        });
+                        if (customInput) customInput.disabled = true;
+                        if (customBtn) customBtn.disabled = true;
+                        webrtcMidi.setDeviceRoles(device.id, []);
+                        div.classList.remove('enabled');
+                    }
+                };
+
+                const info = document.createElement('div');
+                info.className = 'device-info';
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'device-name';
+                nameDiv.textContent = device.name;
+
+                const manufacturerDiv = document.createElement('div');
+                manufacturerDiv.className = 'device-manufacturer';
+                manufacturerDiv.textContent = device.manufacturer || 'Unknown manufacturer';
+
+                info.appendChild(nameDiv);
+                info.appendChild(manufacturerDiv);
+
+                const rolesDiv = document.createElement('div');
+                rolesDiv.className = 'device-roles';
+
+                const roleGroup = document.createElement('div');
+                roleGroup.className = 'role-checkbox-group';
+
+                // Control checkbox
+                const controlLabel = document.createElement('label');
+                controlLabel.className = 'role-checkbox-label';
+                const controlCheckbox = document.createElement('input');
+                controlCheckbox.type = 'checkbox';
+                controlCheckbox.className = 'role-checkbox';
+                controlCheckbox.value = 'control';
+                controlCheckbox.checked = device.roles.includes('control');
+                controlCheckbox.disabled = device.roles.length === 0;
+                controlCheckbox.onchange = () => updateDeviceRoles(device.id, div);
+                controlLabel.appendChild(controlCheckbox);
+                controlLabel.appendChild(document.createTextNode('Control'));
+                roleGroup.appendChild(controlLabel);
+
+                // Synth checkbox
+                const synthLabel = document.createElement('label');
+                synthLabel.className = 'role-checkbox-label';
+                const synthCheckbox = document.createElement('input');
+                synthCheckbox.type = 'checkbox';
+                synthCheckbox.className = 'role-checkbox';
+                synthCheckbox.value = 'synth';
+                synthCheckbox.checked = device.roles.includes('synth');
+                synthCheckbox.disabled = device.roles.length === 0;
+                synthCheckbox.onchange = () => updateDeviceRoles(device.id, div);
+                synthLabel.appendChild(synthCheckbox);
+                synthLabel.appendChild(document.createTextNode('Synth'));
+                roleGroup.appendChild(synthLabel);
+
+                // Reactive checkbox
+                const reactiveLabel = document.createElement('label');
+                reactiveLabel.className = 'role-checkbox-label';
+                const reactiveCheckbox = document.createElement('input');
+                reactiveCheckbox.type = 'checkbox';
+                reactiveCheckbox.className = 'role-checkbox';
+                reactiveCheckbox.value = 'reactive';
+                reactiveCheckbox.checked = device.roles.includes('reactive');
+                reactiveCheckbox.disabled = device.roles.length === 0;
+                reactiveCheckbox.onchange = () => updateDeviceRoles(device.id, div);
+                reactiveLabel.appendChild(reactiveCheckbox);
+                reactiveLabel.appendChild(document.createTextNode('Reactive'));
+                roleGroup.appendChild(reactiveLabel);
+
+                rolesDiv.appendChild(roleGroup);
+
+                // Custom role input
+                const customRoleDiv = document.createElement('div');
+                customRoleDiv.className = 'custom-role-input';
+
+                const customInput = document.createElement('input');
+                customInput.type = 'text';
+                customInput.placeholder = 'custom-role';
+                customInput.className = 'custom-role-text';
+                customInput.disabled = device.roles.length === 0;
+                customInput.dataset.deviceId = device.id;
+
+                const addCustomBtn = document.createElement('button');
+                addCustomBtn.textContent = '+';
+                addCustomBtn.title = 'Add custom role';
+                addCustomBtn.disabled = device.roles.length === 0;
+                addCustomBtn.onclick = () => {
+                    const customRole = customInput.value.trim();
+                    if (customRole) {
+                        const roleCheckboxes = div.querySelectorAll('.role-checkbox');
+                        const standardRoles = Array.from(roleCheckboxes)
+                            .filter(cb => cb.checked)
+                            .map(cb => cb.value);
+
+                        // Get existing custom roles
+                        const customBadges = Array.from(div.querySelectorAll('.custom-role-badge'));
+                        const existingCustom = customBadges.map(badge => badge.dataset.role);
+
+                        if (!existingCustom.includes(customRole)) {
+                            // Add custom role badge
+                            const badge = createCustomRoleBadge(customRole, device.id, div);
+                            customRoleDiv.parentNode.insertBefore(badge, customRoleDiv);
+                            customInput.value = '';
+
+                            // Update device roles
+                            updateDeviceRoles(device.id, div);
+                        }
+                    }
+                };
+
+                customRoleDiv.appendChild(customInput);
+                customRoleDiv.appendChild(addCustomBtn);
+                rolesDiv.appendChild(customRoleDiv);
+
+                // Add existing custom roles as badges
+                const standardRoles = ['control', 'synth', 'reactive'];
+                device.roles.filter(r => !standardRoles.includes(r)).forEach(customRole => {
+                    const badge = createCustomRoleBadge(customRole, device.id, div);
+                    rolesDiv.insertBefore(badge, customRoleDiv);
+                });
+
+                const activity = document.createElement('span');
+                activity.className = 'activity';
+                activity.id = `activity-${device.id}`;
+                rolesDiv.appendChild(activity);
+
+                div.appendChild(checkbox);
+                div.appendChild(info);
+                div.appendChild(rolesDiv);
+
+                if (device.roles.length > 0) {
+                    div.classList.add('enabled');
+                }
+
+                container.appendChild(div);
+            });
+
+            // Setup activity indicators
+            // CRITICAL: Don't overwrite input.onmidimessage - WebRTCMIDI already set it up!
+            // Instead, wrap the existing handler to also update activity indicators
+            webrtcMidi.midiAccess.inputs.forEach((input) => {
+                // Store the original handler set by WebRTCMIDI
+                const originalHandler = input.onmidimessage;
+
+                // Create wrapper that calls both original handler AND updates activity
+                input.onmidimessage = (message) => {
+                    // Call original handler first (MIDI sending)
+                    if (originalHandler) {
+                        originalHandler.call(input, message);
+                    }
+
+                    // Update activity indicator
+                    const activityEl = document.getElementById(`activity-${input.id}`);
+                    if (activityEl) {
+                        activityEl.classList.add('active');
+
+                        if (midiActivityTimers[input.id]) {
+                            clearTimeout(midiActivityTimers[input.id]);
+                        }
+
+                        midiActivityTimers[input.id] = setTimeout(() => {
+                            activityEl.classList.remove('active');
+                        }, 100);
+                    }
+                };
+            });
+        }
+
+        function createCustomRoleBadge(roleName, deviceId, deviceDiv) {
+            const badge = document.createElement('span');
+            badge.className = 'role-badge custom-role-badge';
+            badge.dataset.role = roleName;
+            badge.textContent = roleName;
+            badge.style.background = '#ffe0b2';
+            badge.style.color = '#e65100';
+            badge.style.cursor = 'pointer';
+            badge.title = 'Click to remove';
+            badge.onclick = () => {
+                badge.remove();
+                updateDeviceRoles(deviceId, deviceDiv);
+            };
+            return badge;
+        }
+
+        function updateDeviceRoles(deviceId, deviceDiv) {
+            const roleCheckboxes = deviceDiv.querySelectorAll('.role-checkbox');
+            const standardRoles = Array.from(roleCheckboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+
+            // Get custom roles from badges
+            const customBadges = Array.from(deviceDiv.querySelectorAll('.custom-role-badge'));
+            const customRoles = customBadges.map(badge => badge.dataset.role);
+
+            const allRoles = [...standardRoles, ...customRoles];
+
+            webrtcMidi.setDeviceRoles(deviceId, allRoles);
+
+            if (allRoles.length > 0) {
+                deviceDiv.classList.add('enabled');
+            } else {
+                deviceDiv.classList.remove('enabled');
+            }
+
+            // Save device roles to localStorage
+            saveDeviceRoles();
+        }
+
+        function saveDeviceRoles() {
+            const devices = webrtcMidi.getDevices();
+            const config = {};
+            devices.forEach(device => {
+                if (device.roles.length > 0) {
+                    config[device.name] = device.roles; // Use name as key (ID changes on reconnect)
+                }
+            });
+            localStorage.setItem('midiDeviceRoles', JSON.stringify(config));
+            console.log('[Bridge] Saved device roles:', config);
+        }
+
+        function loadDeviceRoles() {
+            const saved = localStorage.getItem('midiDeviceRoles');
+            if (!saved) return null;
+            try {
+                return JSON.parse(saved);
+            } catch (e) {
+                console.error('[Bridge] Failed to load device roles:', e);
+                return null;
+            }
+        }
+
+        function updateStats() {
+            if (!webrtcMidi) {
+                // Clear stats when disconnected
+                document.getElementById('totalEndpoints').textContent = '0';
+                document.getElementById('connectedEndpoints').textContent = '0';
+                document.getElementById('messagesSent').textContent = '0';
+                document.getElementById('controlSent').textContent = '0';
+                document.getElementById('synthSent').textContent = '0';
+                document.getElementById('reactiveSent').textContent = '0';
+                return;
+            }
+
+            const stats = webrtcMidi.getStats();
+
+            // Update global stats
+            document.getElementById('totalEndpoints').textContent = stats.totalEndpoints || 0;
+            document.getElementById('connectedEndpoints').textContent = stats.connected || 0;
+            document.getElementById('messagesSent').textContent = stats.messagesSent || 0;
+            document.getElementById('controlSent').textContent = stats.byRole.control || 0;
+            document.getElementById('synthSent').textContent = stats.byRole.synth || 0;
+            document.getElementById('reactiveSent').textContent = stats.byRole.reactive || 0;
+
+            // Update per-endpoint stats
+            const endpoints = webrtcMidi.getEndpoints();
+            endpoints.forEach(endpoint => {
+                const sentEl = document.getElementById(`sent-${endpoint.id}`);
+                if (sentEl) {
+                    sentEl.textContent = endpoint.stats.messagesSent || 0;
+                }
+            });
+
+            // Update global status based on connection count
+            const statusEl = document.getElementById('status');
+            if (stats.connected > 0) {
+                statusEl.className = 'status connected';
+                statusEl.textContent = `✅ ${stats.connected} endpoint(s) connected - MIDI flowing!`;
+            } else if (stats.totalEndpoints > 0) {
+                statusEl.className = 'status connecting';
+                statusEl.textContent = `🔄 ${stats.totalEndpoints} endpoint(s) waiting for connection...`;
+            } else {
+                statusEl.className = 'status disconnected';
+                statusEl.textContent = '⚪ No endpoints - click "Add Program Endpoint" to start';
+            }
+
+            // Display custom role stats in console
+            const customRoles = Object.keys(stats.byRole).filter(r => !['control', 'synth', 'reactive'].includes(r));
+            if (customRoles.length > 0) {
+                console.log('[Custom Roles]', customRoles.map(r => `${r}: ${stats.byRole[r]}`).join(', '));
+            }
+        }
+
+        // Remote control connection handling
+        let remoteControlConnection = null;
+        let remoteControlChannel = null;
+
+        window.acceptRemoteControl = async function() {
+            const offerText = document.getElementById('remote-control-offer').value.trim();
+            if (!offerText) {
+                alert('Please paste the offer from remote control first');
+                return;
+            }
+
+            if (!webrtcMidi) {
+                await initializeBridge();
+            }
+
+            try {
+                // Create peer connection for remote control
+                remoteControlConnection = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                });
+
+                // Handle incoming data channels from remote control
+                remoteControlConnection.ondatachannel = (event) => {
+                    const channel = event.channel;
+
+                    if (channel.label === 'midi') {
+                        // MIDI data channel from remote control
+                        channel.onopen = () => {
+                            console.log('[Bridge] Remote MIDI channel opened');
+                            document.getElementById('remote-control-status').style.display = 'block';
+                            document.getElementById('remote-control-state').textContent = 'Connected (MIDI + Control)';
+                            document.getElementById('remote-control-state').style.color = '#00ff00';
+                        };
+
+                        channel.onclose = () => {
+                            console.log('[Bridge] Remote MIDI channel closed');
+                        };
+
+                        channel.onmessage = (event) => {
+                            try {
+                                const message = JSON.parse(event.data);
+                                console.log('[Bridge] MIDI from remote control:', message.roles, message.data);
+
+                                // Forward MIDI to all connected Revision endpoints
+                                if (webrtcMidi && webrtcMidi.connections) {
+                                    // Send to all endpoints
+                                    for (const [endpointId, connection] of webrtcMidi.connections.entries()) {
+                                        if (connection.dataChannel?.readyState === 'open') {
+                                            connection.dataChannel.send(JSON.stringify(message));
+                                            console.log('[Bridge] Forwarded MIDI to endpoint:', endpointId);
+                                        }
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('[Bridge] Error handling remote MIDI:', error);
+                            }
+                        };
+                    } else if (channel.label === 'control') {
+                        // Control data channel from remote control
+                        remoteControlChannel = channel;
+
+                        remoteControlChannel.onopen = () => {
+                            console.log('[Bridge] Remote control channel opened');
+                            document.getElementById('remote-control-status').style.display = 'block';
+                            document.getElementById('remote-control-state').textContent = 'Connected';
+                            document.getElementById('remote-control-state').style.color = '#00ff00';
+
+                            // Send current endpoint list to remote control
+                            sendEndpointListToRemote();
+                        };
+
+                        remoteControlChannel.onclose = () => {
+                            console.log('[Bridge] Remote control channel closed');
+                            document.getElementById('remote-control-state').textContent = 'Disconnected';
+                            document.getElementById('remote-control-state').style.color = '#666';
+                        };
+
+                        remoteControlChannel.onmessage = (event) => {
+                            try {
+                                const message = JSON.parse(event.data);
+                                console.log('[Bridge] Control message from remote:', message);
+
+                                // Check if this is a targeted message
+                                if (message.targetEndpoint) {
+                                    // One-to-one: Send to specific endpoint
+                                    if (webrtcMidi && webrtcMidi.connections) {
+                                        webrtcMidi.sendControlMessage(message, message.targetEndpoint);
+                                        console.log('[Bridge] Forwarded control message to endpoint:', message.targetEndpoint);
+                                    }
+                                } else {
+                                    // One-to-many: Broadcast to all endpoints
+                                    if (webrtcMidi && webrtcMidi.connections) {
+                                        webrtcMidi.sendControlMessage(message);
+                                        console.log('[Bridge] Broadcast control message to all Revision endpoints');
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('[Bridge] Error handling remote control message:', error);
+                            }
+                        };
+                    }
+                };
+
+                // Handle connection state
+                remoteControlConnection.onconnectionstatechange = () => {
+                    const state = remoteControlConnection.connectionState;
+                    console.log('[Bridge] Remote control connection state:', state);
+                };
+
+                // Set remote description (offer from remote control)
+                const offer = JSON.parse(offerText);
+                await remoteControlConnection.setRemoteDescription(offer);
+
+                // Create answer
+                const answer = await remoteControlConnection.createAnswer();
+                await remoteControlConnection.setLocalDescription(answer);
+
+                // Wait for ICE gathering
+                await new Promise((resolve) => {
+                    if (remoteControlConnection.iceGatheringState === 'complete') {
+                        resolve();
+                    } else {
+                        remoteControlConnection.addEventListener('icegatheringstatechange', function checkState() {
+                            if (remoteControlConnection.iceGatheringState === 'complete') {
+                                remoteControlConnection.removeEventListener('icegatheringstatechange', checkState);
+                                resolve();
+                            }
+                        });
+                    }
+                });
+
+                // Display answer
+                const answerJSON = JSON.stringify(remoteControlConnection.localDescription);
+                document.getElementById('remote-control-answer').value = answerJSON;
+                document.getElementById('remote-control-answer-section').style.display = 'block';
+
+                // Auto-copy answer
+                copyRemoteControlAnswer();
+
+                console.log('[Bridge] Remote control answer ready');
+            } catch (error) {
+                console.error('[Bridge] Error accepting remote control:', error);
+                alert('Error: ' + error.message);
+            }
+        };
+
+        window.copyRemoteControlAnswer = function() {
+            const textarea = document.getElementById('remote-control-answer');
+            textarea.select();
+            document.execCommand('copy');
+            console.log('[Bridge] Remote control answer copied to clipboard');
+        };
+
+        // Set up MeisterRTC control message handler to forward to remote control
+        let lastIdentityUpdateTime = 0;
+        function setupControlMessageForwarding() {
+            if (webrtcMidi && webrtcMidi.onControlMessage === null) {
+                webrtcMidi.onControlMessage = (message, endpointId) => {
+                    console.log('[Bridge] Control message from Revision:', message, 'endpoint:', endpointId);
+
+                    // Check if identity was updated (throttle updates to avoid spam)
+                    const now = performance.now();
+                    if (now - lastIdentityUpdateTime > 500) {
+                        // Check if any endpoint has identity set
+                        let identityChanged = false;
+                        for (const conn of webrtcMidi.connections.values()) {
+                            if (conn.identity) {
+                                identityChanged = true;
+                                break;
+                            }
+                        }
+
+                        if (identityChanged) {
+                            lastIdentityUpdateTime = now;
+                            sendEndpointListToRemote();
+                        }
+                    }
+
+                    // Forward to remote control if connected
+                    if (remoteControlChannel && remoteControlChannel.readyState === 'open') {
+                        remoteControlChannel.send(JSON.stringify(message));
+                        console.log('[Bridge] Forwarded to remote control');
+                    }
+                };
+            }
+        }
+
+        // Send endpoint list to remote control
+        function sendEndpointListToRemote() {
+            if (!remoteControlChannel || remoteControlChannel.readyState !== 'open') {
+                return;
+            }
+
+            if (!webrtcMidi || !webrtcMidi.connections) {
+                return;
+            }
+
+            const endpoints = Array.from(webrtcMidi.connections.values()).map(conn => ({
+                id: conn.id,
+                name: conn.name || conn.id,
+                state: conn.state,
+                identity: conn.identity || null  // Will be set when Revision sends identity
+            }));
+
+            const message = {
+                type: 'endpointList',
+                endpoints: endpoints
+            };
+
+            try {
+                remoteControlChannel.send(JSON.stringify(message));
+                console.log('[Bridge] Sent endpoint list to remote control:', endpoints);
+            } catch (error) {
+                console.error('[Bridge] Failed to send endpoint list:', error);
+            }
+        }
+
+        // Send endpoint list to a specific endpoint (for control endpoints)
+        function sendEndpointListToEndpoint(endpointId) {
+            if (!webrtcMidi || !webrtcMidi.connections) {
+                return;
+            }
+
+            const connection = webrtcMidi.connections.get(endpointId);
+            if (!connection || !connection.controlChannel || connection.controlChannel.readyState !== 'open') {
+                console.warn('[Bridge] Cannot send endpoint list - control channel not open');
+                return;
+            }
+
+            // Get all endpoints except this one
+            const endpoints = Array.from(webrtcMidi.connections.values())
+                .filter(conn => conn.id !== endpointId)
+                .map(conn => ({
+                    id: conn.id,
+                    name: conn.name || conn.id,
+                    state: conn.state,
+                    identity: conn.identity || null
+                }));
+
+            const message = {
+                type: 'endpointList',
+                endpoints: endpoints
+            };
+
+            try {
+                connection.controlChannel.send(JSON.stringify(message));
+                console.log(`[Bridge] Sent endpoint list to ${endpointId}:`, endpoints);
+            } catch (error) {
+                console.error('[Bridge] Failed to send endpoint list:', error);
+            }
+        }
+
+        // Start stats update loop
+        setInterval(() => {
+            updateStats();
+            setupControlMessageForwarding();
+        }, 100);
+
+        // Initialize bridge on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('[Bridge] Initializing on page load...');
+            initializeBridge();
+        });
+    </script>
+</body>
+</html>

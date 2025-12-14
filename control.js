@@ -1,5 +1,66 @@
+// Check if launched from Meister control hub
+const urlParams = new URLSearchParams(window.location.search);
+const meisterTarget = urlParams.get('target');
+const isMeisterMode = !!meisterTarget;
+
 // RemoteChannel for tab-to-tab and remote communication (WebSocket + BroadcastChannel fallback)
-const controlChannel = new RemoteChannel('revision-control');
+const controlChannel = isMeisterMode ? null : new RemoteChannel('revision-control');
+
+if (isMeisterMode) {
+    console.log('[Control] Meister mode detected - target:', meisterTarget);
+    console.log('[Control] Commands will be routed through bridge');
+
+    // Update UI to show meister connection
+    function updateMeisterUI() {
+        const connectionStatus = document.getElementById('connection-status');
+        const connectionInfoText = document.getElementById('connection-info-text');
+        const meisterTargetInfo = document.getElementById('meister-target-info');
+        const meisterTargetName = document.getElementById('meister-target-name');
+
+        console.log('[Control] Updating UI for meister mode');
+
+        if (connectionStatus) {
+            if (window.opener && window.opener.sendControlCommand) {
+                connectionStatus.classList.remove('disconnected');
+                connectionStatus.classList.add('connected');
+                console.log('[Control] Bridge connection verified');
+            } else {
+                console.warn('[Control] No bridge connection available');
+            }
+        }
+
+        if (connectionInfoText) {
+            connectionInfoText.textContent = 'Connected via Meister Bridge';
+            console.log('[Control] Updated connection info text');
+        }
+
+        if (meisterTargetInfo && meisterTargetName) {
+            meisterTargetInfo.style.display = 'block';
+
+            if (meisterTarget === 'all') {
+                meisterTargetName.textContent = '📡 All Endpoints (Broadcast)';
+                meisterTargetName.style.color = '#00ccff';
+            } else {
+                // Try to get the endpoint name from parent window
+                if (window.opener && window.opener.getEndpointName) {
+                    const endpointName = window.opener.getEndpointName(meisterTarget);
+                    meisterTargetName.textContent = endpointName || meisterTarget;
+                } else {
+                    meisterTargetName.textContent = meisterTarget;
+                }
+            }
+            console.log('[Control] Updated target info:', meisterTarget);
+        }
+    }
+
+    // Try to update immediately if DOM is ready, otherwise wait
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', updateMeisterUI);
+    } else {
+        // DOM already loaded, update immediately
+        updateMeisterUI();
+    }
+}
 
 // UNIFIED PREVIEW SYSTEM - Single canvas, one renderer at a time
 let currentPreviewMode = 'black'; // Which tab is active: black/builtin/threejs/milkdrop/video/media
@@ -1485,13 +1546,29 @@ let midiOutput = null;
 // Send command to main tab via BroadcastChannel
 function sendCommand(command, data) {
     const message = { command, data };
-    controlChannel.postMessage(message);
-    // Logging disabled - too spammy during normal operation
+
+    if (isMeisterMode) {
+        // Route through meister bridge
+        if (meisterTarget && meisterTarget !== 'all') {
+            message.targetEndpoint = meisterTarget;
+        }
+
+        if (window.opener && window.opener.sendControlCommand) {
+            window.opener.sendControlCommand(message);
+            console.log('[Control] Sent to bridge:', command, '→', meisterTarget || 'ALL');
+        } else {
+            console.error('[Control] Cannot send - no bridge connection');
+        }
+    } else {
+        // Normal mode - use RemoteChannel
+        controlChannel.postMessage(message);
+    }
 }
 
 // Receive state updates from main tab
-controlChannel.onmessage = (event) => {
-    const { type, data } = event.data;
+if (controlChannel) {
+    controlChannel.onmessage = (event) => {
+        const { type, data } = event.data;
 
     // Log all non-stateUpdate messages for debugging
     if (type !== 'stateUpdate') {
@@ -1594,7 +1671,8 @@ controlChannel.onmessage = (event) => {
             updateWebRTCStatus('error');
             break;
     }
-};
+    };
+}
 
 function updateState(state) {
     // Clear retry interval on first successful state update

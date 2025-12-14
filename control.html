@@ -230,7 +230,10 @@
 
     <div class="section">
         <h2>Connection <span class="status" id="connection-status" title="Connection Status"></span> <span class="status" id="spp-indicator" title="SPP Activity"></span></h2>
-        <div class="info">Connected to program (WebSocket or BroadcastChannel)</div>
+        <div class="info" id="connection-info-text">Connected to program (WebSocket or BroadcastChannel)</div>
+        <div class="info" id="meister-target-info" style="display: none; margin-top: 5px; color: #00ff00; font-weight: bold;">
+            Target: <span id="meister-target-name">-</span>
+        </div>
         <div class="info" style="margin-top: 5px;">BPM: <span id="current-bpm" style="color: #0066FF;">-</span> | Position: <span id="current-position" style="color: #0066FF;">-</span></div>
         <div class="info" style="margin-top: 5px;">Audio Source: <span id="current-audio-device" style="color: #0066FF;">-</span></div>
         <div class="info" style="margin-top: 5px;">Reactive Input: <span id="current-reactive-input" style="color: #0066FF;">-</span></div>
