@@ -711,6 +711,26 @@ class RevisionAppV2 {
             console.log('[Revision] Wake Lock API not supported - screen may sleep during performance');
         }
 
+        // Handle URL parameter for auto-loading presets
+        if (urlParams.has('program')) {
+            const programParam = urlParams.get('program');
+            console.log('[Revision] URL program parameter:', programParam);
+
+            // Parse format: "mode:value" (e.g., "threejs:GBLogo", "milkdrop:0", "stream:https://...")
+            const colonIndex = programParam.indexOf(':');
+            if (colonIndex > 0) {
+                const mode = programParam.substring(0, colonIndex);
+                const value = decodeURIComponent(programParam.substring(colonIndex + 1));
+
+                // Use setTimeout to allow initialization to complete fully
+                setTimeout(() => {
+                    this.loadProgramFromURL(mode, value);
+                }, 500);
+            } else {
+                console.warn('[Revision] Invalid program parameter format. Expected "mode:value"');
+            }
+        }
+
         console.log('[Revision] Initialized - Mode:', this.currentPresetType);
     }
 
@@ -4815,6 +4835,108 @@ class RevisionAppV2 {
         }
 
         // No need to resize - overlays don't affect canvas size
+    }
+
+    async loadProgramFromURL(mode, value) {
+        console.log('[Revision] Loading program from URL:', mode, value);
+
+        switch (mode.toLowerCase()) {
+            case 'builtin':
+                // Load built-in scene by index
+                const sceneIndex = parseInt(value);
+                if (!isNaN(sceneIndex) && sceneIndex >= 0) {
+                    this.switchPresetType('builtin');
+                    this.switchScene(sceneIndex);
+                    console.log('[Revision] URL: Loaded builtin scene', sceneIndex);
+                }
+                break;
+
+            case 'threejs':
+                // Load Three.js preset by name (case-insensitive)
+                this.switchPresetType('threejs');
+                if (this.threeJSRenderer) {
+                    const presetName = value.toLowerCase();
+                    const loaded = await this.loadThreeJSPreset(presetName, true);
+                    if (loaded) {
+                        this.threeJSRenderer.loadPreset(presetName);
+                        console.log('[Revision] URL: Loaded Three.js preset', presetName);
+                    } else {
+                        console.error('[Revision] URL: Failed to load Three.js preset', presetName);
+                    }
+                }
+                break;
+
+            case 'milkdrop':
+                // Load Milkdrop preset by index
+                const milkdropIndex = parseInt(value);
+                if (!isNaN(milkdropIndex) && milkdropIndex >= 0) {
+                    this.switchPresetType('milkdrop');
+                    this.loadMilkdropPreset(milkdropIndex);
+                    console.log('[Revision] URL: Loaded Milkdrop preset', milkdropIndex);
+                }
+                break;
+
+            case 'stream':
+                // Load stream URL
+                this.switchPresetType('stream');
+                if (this.streamRenderer) {
+                    this.streamRenderer.loadStream(value, 'auto', {
+                        fitMode: 'cover',
+                        audioOutput: false
+                    }).then(() => {
+                        console.log('[Revision] URL: Loaded stream', value);
+                    }).catch(err => {
+                        console.error('[Revision] URL: Failed to load stream:', err);
+                    });
+                }
+                break;
+
+            case 'webpage':
+                // Load webpage URL
+                this.switchPresetType('webpage');
+                if (this.webpageRenderer) {
+                    this.webpageRenderer.loadPage(value);
+                    console.log('[Revision] URL: Loaded webpage', value);
+                }
+                break;
+
+            case 'media':
+                // Load media file URL (auto-detect image vs video)
+                this.switchPresetType('media');
+                const isVideo = /\.(mp4|webm|ogg|mov)$/i.test(value);
+                const mediaType = isVideo ? 'video' : 'image';
+                this.mediaRenderer.loadMedia(value, mediaType, {
+                    fitMode: 'cover',
+                    loop: true,
+                    audioOutput: false
+                });
+                console.log('[Revision] URL: Loaded media', mediaType, value);
+                break;
+
+            case 'video':
+                // Load video camera by device ID (or 'default' for default camera)
+                this.switchPresetType('video');
+                if (this.videoRenderer) {
+                    // Request camera permission and load
+                    const deviceId = value === 'default' ? null : value;
+                    this.videoRenderer.initialize(deviceId).then(() => {
+                        this.videoRenderer.start();
+                        console.log('[Revision] URL: Loaded camera', value);
+                    }).catch(err => {
+                        console.error('[Revision] URL: Failed to load camera:', err);
+                    });
+                }
+                break;
+
+            case 'black':
+                // Load black screen
+                this.switchPresetType(null);
+                console.log('[Revision] URL: Black screen');
+                break;
+
+            default:
+                console.warn('[Revision] Unknown program mode:', mode);
+        }
     }
 }
 
