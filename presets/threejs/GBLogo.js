@@ -44,6 +44,8 @@ window.GBLogoPreset = class extends ThreeJSBasePreset {
             this.lettersPlane = plane;
         });
 
+        this.logoGroup.scale.setScalar(1.5);
+
         this.camera.position.z = 50;
         this.camera.lookAt(0, 0, 0);
 
