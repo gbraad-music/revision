@@ -4548,42 +4548,63 @@ class RevisionAppV2 {
             return false;
         }
 
-        try {
-            console.log(`[Revision] Loading Three.js preset on-demand: ${presetName}${cacheBust ? ' (fresh)' : ''}`);
-
-            // CRITICAL: ALWAYS delete old class first to prevent "already declared" errors
-            // This must happen regardless of cacheBust to handle reload scenarios
-            if (window[presetInfo.className]) {
-                delete window[presetInfo.className];
-                console.log(`[Revision] Deleted old class: ${presetInfo.className}`);
-            }
-
-            if (cacheBust) {
-                // Remove ALL old script tags for this preset first
-                const oldScripts = document.querySelectorAll(`script[data-preset-src="${presetInfo.file}"]`);
-                console.log(`[Revision] Removing ${oldScripts.length} old script tag(s) for ${presetName}`);
-                oldScripts.forEach(s => s.remove());
-
-                // Wait a tick to ensure scripts are fully removed from DOM
-                await new Promise(resolve => setTimeout(resolve, 10));
-            }
-
-            // Dynamically load the script with cache busting
-            await this.loadScript(presetInfo.file, cacheBust);
-
-            // Check if the class is now available
-            if (typeof window[presetInfo.className] !== 'undefined') {
-                this.threeJSRenderer.registerPreset(presetName, window[presetInfo.className]);
-                console.log(`[Revision] ✓ Loaded Three.js preset: ${presetName}`);
-                return true;
-            } else {
-                console.warn(`[Revision] ✗ Preset class ${presetInfo.className} not found after loading ${presetInfo.file}`);
-                return false;
-            }
-        } catch (error) {
-            console.error(`[Revision] Failed to load preset ${presetName}:`, error);
-            return false;
+        // Track loading state per preset to prevent race conditions
+        if (!this.threeJSPresetLoading) {
+            this.threeJSPresetLoading = {};
         }
+
+        // If this preset is already loading, wait for it
+        if (this.threeJSPresetLoading[presetName]) {
+            console.log(`[Revision] Preset ${presetName} is already loading, waiting...`);
+            return this.threeJSPresetLoading[presetName];
+        }
+
+        // Create loading promise and store it
+        const loadingPromise = (async () => {
+            try {
+                console.log(`[Revision] Loading Three.js preset on-demand: ${presetName}${cacheBust ? ' (fresh)' : ''}`);
+
+                // CRITICAL: ALWAYS delete old class first to prevent "already declared" errors
+                // This must happen regardless of cacheBust to handle reload scenarios
+                if (window[presetInfo.className]) {
+                    delete window[presetInfo.className];
+                    console.log(`[Revision] Deleted old class: ${presetInfo.className}`);
+                }
+
+                if (cacheBust) {
+                    // Remove ALL old script tags for this preset first
+                    const oldScripts = document.querySelectorAll(`script[data-preset-src="${presetInfo.file}"]`);
+                    console.log(`[Revision] Removing ${oldScripts.length} old script tag(s) for ${presetName}`);
+                    oldScripts.forEach(s => s.remove());
+
+                    // Wait a tick to ensure scripts are fully removed from DOM
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+
+                // Dynamically load the script with cache busting
+                await this.loadScript(presetInfo.file, cacheBust);
+
+                // Check if the class is now available
+                if (typeof window[presetInfo.className] !== 'undefined') {
+                    this.threeJSRenderer.registerPreset(presetName, window[presetInfo.className]);
+                    console.log(`[Revision] ✓ Loaded Three.js preset: ${presetName}`);
+                    return true;
+                } else {
+                    console.warn(`[Revision] ✗ Preset class ${presetInfo.className} not found after loading ${presetInfo.file}`);
+                    return false;
+                }
+            } catch (error) {
+                console.error(`[Revision] Failed to load preset ${presetName}:`, error);
+                return false;
+            } finally {
+                // Clear loading state
+                delete this.threeJSPresetLoading[presetName];
+            }
+        })();
+
+        // Store the loading promise
+        this.threeJSPresetLoading[presetName] = loadingPromise;
+        return loadingPromise;
     }
 
     async loadThreeJSPresets() {
