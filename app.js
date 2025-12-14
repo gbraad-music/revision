@@ -839,7 +839,13 @@ class RevisionAppV2 {
     setupControlChannel() {
         // Listen for commands from control.html
         this.controlChannel.onmessage = async (event) => {
-            const { command, data } = event.data;
+            const { command, data, type } = event.data;
+
+            // Ignore state updates from other Revision instances
+            // Only process actual commands (messages with a 'command' field)
+            if (!command || type === 'stateUpdate') {
+                return;
+            }
 
             console.log('[BroadcastChannel] Received command:', command, 'data:', data);
 
