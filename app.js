@@ -2953,6 +2953,14 @@ class RevisionAppV2 {
             data: state
         });
 
+        // Also send via WebRTC control channel if connected to bridge
+        if (this.webrtcMidi && this.webrtcMidi.controlChannel && this.webrtcMidi.controlChannel.readyState === 'open') {
+            this.webrtcMidi.controlChannel.send(JSON.stringify({
+                type: 'stateUpdate',
+                data: state
+            }));
+        }
+
         // Update local display
         const audioSourceDisplay = document.getElementById('audio-source-display');
         if (audioSourceDisplay) {
@@ -3176,19 +3184,38 @@ class RevisionAppV2 {
                 return;
             }
 
-            // Forward to control panel (BroadcastChannel) - same as if it came from control.html
+            // Process command directly - same as if it came from control.html
             // Control messages can have either 'command' or 'type' property
             const messageType = message.command || message.type;
-            if (this.controlChannel && messageType) {
-                const messageData = message.data !== undefined ? message.data : message;
+            if (messageType) {
+                // Extract just the data payload, not the whole message
+                const messageData = message.data;
 
-                console.log('[WebRTC Control] Forwarding to BroadcastChannel - command:', messageType, 'data:', messageData);
+                console.log('[WebRTC Control] Processing command directly - command:', messageType, 'data:', messageData);
 
-                // Post to control channel as if it came from local control.html
-                this.controlChannel.postMessage({
-                    command: messageType,
-                    data: messageData
-                });
+                // Create synthetic event matching BroadcastChannel format
+                const syntheticEvent = {
+                    data: {
+                        command: messageType,
+                        data: messageData
+                    }
+                };
+
+                // Call the handler directly
+                if (this.controlChannel && this.controlChannel.onmessage) {
+                    console.log('[WebRTC Control] Calling controlChannel.onmessage with synthetic event');
+                    try {
+                        this.controlChannel.onmessage(syntheticEvent);
+                        console.log('[WebRTC Control] ✓ Handler called successfully');
+                    } catch (error) {
+                        console.error('[WebRTC Control] ✗ Error calling handler:', error);
+                    }
+                } else {
+                    console.error('[WebRTC Control] ✗ No onmessage handler found!', {
+                        hasControlChannel: !!this.controlChannel,
+                        hasOnMessage: !!(this.controlChannel?.onmessage)
+                    });
+                }
             }
         };
 

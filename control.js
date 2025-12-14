@@ -1605,6 +1605,12 @@ function sendCommand(command, data) {
 // Receive state updates from main tab
 if (controlChannel) {
     controlChannel.onmessage = (event) => {
+        // Log raw event data to debug format issues
+        if (!event.data || typeof event.data !== 'object') {
+            console.warn('[Control] ⚠️ Received invalid message format:', event.data);
+            return;
+        }
+
         const { type, data } = event.data;
 
     // Log all non-stateUpdate messages for debugging
@@ -1709,10 +1715,18 @@ if (controlChannel) {
                 const endpointId = data.endpointId || '';
                 const endpointName = data.endpointName || '';
 
+                // Update WebRTC status section - just show "Connected"
                 webrtcStatus.style.background = 'rgba(0,255,0,0.1)';
                 webrtcStatus.style.border = '1px solid rgba(0,255,0,0.3)';
                 webrtcStatus.style.color = '#00ff00';
-                webrtcStatus.textContent = `✅ Connected to Bridge - ${endpointId} (${identity})`;
+                webrtcStatus.textContent = '✅ Connected';
+
+                // Update CONNECTION INFO section at top with endpoint details
+                const connectionInfoText = document.getElementById('connection-info-text');
+                if (connectionInfoText) {
+                    connectionInfoText.textContent = `Connected to Bridge - ${endpointId}`;
+                    connectionInfoText.style.color = '#0066FF';
+                }
 
                 // Collapse the setup section
                 const setupSection = document.getElementById('webrtc-setup');
@@ -1747,6 +1761,27 @@ if (controlChannel) {
             break;
     }
     };
+}
+
+// In meister mode, also listen for messages from meister/index.html (forwarded from bridge)
+if (isMeisterMode) {
+    window.addEventListener('message', (event) => {
+        // Only accept messages from our opener (meister/index.html)
+        if (event.source !== window.opener) return;
+
+        const msg = event.data;
+        if (!msg || !msg.type) return;
+
+        console.log('[Control] Received window message from meister:', msg.type);
+
+        // Process the message the same way as controlChannel messages
+        if (controlChannel && controlChannel.onmessage) {
+            // Convert to controlChannel format
+            const syntheticEvent = { data: msg };
+            controlChannel.onmessage(syntheticEvent);
+        }
+    });
+    console.log('[Control] ✓ Listening for window messages from meister');
 }
 
 function updateState(state) {

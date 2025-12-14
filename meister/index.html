@@ -293,6 +293,18 @@
                                     updateTargetSelector();
                                     console.log('[Meister] ===== UI UPDATED =====');
                                 }
+
+                                // Forward ALL messages to control.html windows
+                                launchedControlWindows.forEach((win, target) => {
+                                    if (win && !win.closed && win.postMessage) {
+                                        try {
+                                            win.postMessage(msg, '*');
+                                            console.log('[Meister] Forwarded message to control window:', msg.type);
+                                        } catch (err) {
+                                            console.error('[Meister] Failed to forward to control window:', err);
+                                        }
+                                    }
+                                });
                             } catch (err) {
                                 console.error('[Meister] Parse error:', err);
                             }

@@ -500,7 +500,26 @@
                                 console.log('[Bridge] Control endpoint ready, sent endpoint list');
                             }, 100); // Small delay to ensure channel is fully ready
                         } else {
-                            // For program endpoints: send their endpoint ID and name
+                            // For program endpoints: set up message handler for responses
+                            conn.controlChannel.onmessage = (event) => {
+                                console.log('[Bridge] <<<< MESSAGE RECEIVED FROM PROGRAM ENDPOINT:', endpointId, 'data:', event.data);
+                                try {
+                                    const message = JSON.parse(event.data);
+
+                                    // Route responses back to all control endpoints
+                                    for (const [id, c] of webrtcMidi.connections.entries()) {
+                                        if (c.name && c.name.startsWith('Control ') && c.controlChannel?.readyState === 'open') {
+                                            c.controlChannel.send(JSON.stringify(message));
+                                            console.log('[Bridge] Routed response to control endpoint:', id);
+                                        }
+                                    }
+                                } catch (error) {
+                                    console.error('[Bridge] Error handling message from program endpoint:', error);
+                                }
+                            };
+                            console.log('[Bridge] ✓ Response routing handler installed for program endpoint:', endpointId);
+
+                            // Send their endpoint ID and name
                             setTimeout(() => {
                                 conn.controlChannel.send(JSON.stringify({
                                     type: 'endpointInfo',
