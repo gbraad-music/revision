@@ -25,6 +25,9 @@ class ThreeJSRenderer {
         // Preset system
         this.currentPreset = null;
         this.availablePresets = {};
+        
+        // Audio analyser access for raw waveform data
+        this.audioAnalyser = null;
     }
 
     async initialize() {
@@ -221,10 +224,25 @@ class ThreeJSRenderer {
         // Create and initialize new preset
         const PresetClass = this.availablePresets[name];
         this.currentPreset = new PresetClass(this.scene, this.camera, this.renderer, null);
+        
+        // Pass audio analyser if available
+        if (this.audioAnalyser) {
+            this.currentPreset.audioAnalyser = this.audioAnalyser;
+        }
+        
         this.currentPreset.initialize();
 
         console.log('[ThreeJS] Loaded preset:', name);
         return true;
+    }
+    
+    // Set audio analyser for raw waveform access
+    setAudioAnalyser(analyser) {
+        this.audioAnalyser = analyser;
+        if (this.currentPreset) {
+            this.currentPreset.audioAnalyser = analyser;
+        }
+        console.log('[ThreeJS] Audio analyser connected');
     }
 
     getAvailablePresets() {

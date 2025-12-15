@@ -83,13 +83,28 @@ window.WaveformPreset = class extends ThreeJSBasePreset {
             }
         }
 
-        // New wave data from audio and sine waves
-        for (let x = 0; x < this.waveSegments; x++) {
-            const t = x / this.waveSegments;
-            const wave1 = Math.sin(t * Math.PI * 4 + this.wavePhase * 3) * this.frequencyData.bass * 5;
-            const wave2 = Math.sin(t * Math.PI * 8 + this.wavePhase * 5) * this.frequencyData.mid * 3;
-            const wave3 = Math.sin(t * Math.PI * 16 + this.wavePhase * 7) * this.frequencyData.high * 2;
-            this.waveHistory[0][x] = wave1 + wave2 + wave3;
+        // New wave data - use real audio if available
+        if (this.audioAnalyser) {
+            const timeDomainData = new Uint8Array(this.audioAnalyser.fftSize);
+            this.audioAnalyser.getByteTimeDomainData(timeDomainData);
+            
+            // Resample to waveform segments
+            const step = Math.floor(timeDomainData.length / this.waveSegments);
+            for (let x = 0; x < this.waveSegments; x++) {
+                const index = x * step;
+                // Convert from 0-255 to -1 to 1, then scale for visibility
+                const normalized = (timeDomainData[index] - 128) / 128.0;
+                this.waveHistory[0][x] = normalized * 8;
+            }
+        } else {
+            // Fallback: synthetic waveform from frequency bands
+            for (let x = 0; x < this.waveSegments; x++) {
+                const t = x / this.waveSegments;
+                const wave1 = Math.sin(t * Math.PI * 4 + this.wavePhase * 3) * this.frequencyData.bass * 5;
+                const wave2 = Math.sin(t * Math.PI * 8 + this.wavePhase * 5) * this.frequencyData.mid * 3;
+                const wave3 = Math.sin(t * Math.PI * 16 + this.wavePhase * 7) * this.frequencyData.high * 2;
+                this.waveHistory[0][x] = wave1 + wave2 + wave3;
+            }
         }
 
         // Apply wave history to mesh vertices

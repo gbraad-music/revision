@@ -16,6 +16,9 @@ class ThreeJSBasePreset {
         // Time tracking
         this.time = 0;
         this.deltaTime = 0;
+        
+        // Audio analyser for raw waveform access
+        this.audioAnalyser = null;
     }
 
     // Called once when preset is loaded

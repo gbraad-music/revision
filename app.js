@@ -244,6 +244,12 @@ class RevisionAppV2 {
             if (threeSuccess) {
                 this.presetManager.setRenderer('threejs', this.threeJSRenderer);
                 console.log('[Revision] ✓ Three.js renderer initialized successfully');
+                
+                // Connect audio analyser for raw waveform access
+                if (this.audioSource && this.audioSource.analyser) {
+                    this.threeJSRenderer.setAudioAnalyser(this.audioSource.analyser);
+                    console.log('[Revision] ✓ Connected audio analyser to Three.js renderer');
+                }
 
                 // Dynamically load Three.js presets
                 await this.loadThreeJSPresets();

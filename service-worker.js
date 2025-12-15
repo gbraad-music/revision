@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v118';
+const CACHE_NAME = 'revision-v120';
 const ASSETS = [
     './',
     './index.html',
@@ -27,6 +27,13 @@ const ASSETS = [
     './presets/threejs/GeometricShapes.js',
     './presets/threejs/Particles.js',
     './presets/threejs/Tunnel.js',
+    './presets/threejs/HexTunnel.js',
+    './presets/threejs/MilkdropStyle.js',
+    './presets/threejs/FlowerOfLife.js',
+    './presets/threejs/StarField.js',
+    './presets/threejs/Oscilloscope3D.js',
+    './presets/threejs/MatrixRain.js',
+    // Note: Other threejs presets are loaded dynamically and don't need to be cached
     // Renderers
     './renderers/milkdrop-renderer.js',
     './renderers/threejs-renderer.js',
@@ -67,7 +74,14 @@ self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
             console.log('[ServiceWorker] Caching app assets');
-            return cache.addAll(ASSETS);
+            // Cache files individually to avoid failure if one file is missing
+            return Promise.allSettled(
+                ASSETS.map(url => 
+                    cache.add(url).catch(err => {
+                        console.warn('[ServiceWorker] Failed to cache:', url, err.message);
+                    })
+                )
+            );
         })
     );
     self.skipWaiting();
