@@ -184,10 +184,33 @@ function goToProgramBuiltin() {
 }
 
 function goToProgramThreeJS() {
-    console.log('[Control] GO TO PROGRAM: Three.js Preset', threejsPresetList[stagedThreeJSIndex]);
+    const presetKey = threejsPresetList[stagedThreeJSIndex];
+    console.log('[Control] GO TO PROGRAM: Three.js Preset', presetKey);
+    
+    // Send preset code to main app if it was loaded via drag-and-drop
+    const presetScript = document.querySelector(`script[data-preset="${presetKey}"]`);
+    if (presetScript) {
+        // Extract class name from the script code
+        const code = presetScript.textContent;
+        let classMatch = code.match(/class\s+(\w+)\s+extends/);
+        if (!classMatch) {
+            classMatch = code.match(/window\.(\w+)\s*=\s*class\s+extends/);
+        }
+        
+        if (classMatch) {
+            const className = classMatch[1];
+            sendCommand('reloadPreset', { 
+                key: presetKey, 
+                className: className, 
+                code: code 
+            });
+            console.log('[Control] Sent custom preset code to main app:', className);
+        }
+    }
+    
     sendCommand('switchMode', 'threejs');
     setTimeout(() => {
-        sendCommand('threejsSelect', threejsPresetList[stagedThreeJSIndex]);
+        sendCommand('threejsSelect', presetKey);
     }, 100);
 }
 
@@ -2919,8 +2942,11 @@ presetDropZone.addEventListener('drop', async (e) => {
         try {
             const code = event.target.result;
 
-            // Extract class name from code
-            const classMatch = code.match(/class\s+(\w+)\s+extends/);
+            // Extract class name from code (supports both "class Name extends" and "window.Name = class extends")
+            let classMatch = code.match(/class\s+(\w+)\s+extends/);
+            if (!classMatch) {
+                classMatch = code.match(/window\.(\w+)\s*=\s*class\s+extends/);
+            }
             if (!classMatch) {
                 console.error('[Control] Could not find preset class in file');
                 return;
@@ -2951,22 +2977,39 @@ presetDropZone.addEventListener('drop', async (e) => {
 
             console.log('[Control] ✓ Loaded new preset code');
 
-            // Re-register in renderer if currently in threejs mode
+            // Add to preset list if not already there
+            if (!threejsPresetList.includes(presetKey)) {
+                threejsPresetList.push(presetKey);
+                console.log('[Control] Added to preset list:', presetKey);
+            }
+
+            // Re-register in preview renderer
             if (unifiedThreeJSRenderer && window[className]) {
                 unifiedThreeJSRenderer.registerPreset(presetKey, window[className]);
-                console.log('[Control] ✓ Registered preset:', presetKey);
+                console.log('[Control] ✓ Registered preset in preview:', presetKey);
 
-                // Reload if this is the current preset
-                if (threejsPresetList[stagedThreeJSIndex] === presetKey) {
-                    console.log('[Control] Reloading current preset...');
+                // Stage this preset
+                const presetIndex = threejsPresetList.indexOf(presetKey);
+                if (presetIndex !== -1) {
+                    stagedThreeJSIndex = presetIndex;
+                    console.log('[Control] Staged preset at index:', presetIndex);
+                    
+                    // Update UI
+                    document.getElementById('staged-name').textContent = className.replace('Preset', '');
+                    
+                    // Switch to threejs preview mode if not already
+                    if (currentPreviewMode !== 'threejs') {
+                        console.log('[Control] Switching to ThreeJS preview mode');
+                        switchPreviewMode('threejs');
+                    }
+                    
+                    // Load the preset in preview
                     unifiedThreeJSRenderer.loadPreset(presetKey);
+                    console.log('[Control] Loaded preset in preview');
                 }
             }
 
-            // Send to main app too
-            sendCommand('reloadPreset', { key: presetKey, className: className, code: code });
-
-            console.log('[Control] ✓ Preset reloaded without page refresh!');
+            console.log('[Control] ✓ Preset loaded in PREVIEW - use "Go TO Program" to send to main display');
 
         } catch (error) {
             console.error('[Control] Failed to load preset:', error);
