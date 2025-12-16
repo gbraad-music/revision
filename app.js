@@ -247,7 +247,11 @@ class RevisionAppV2 {
                 
                 // Connect audio analyser for raw waveform access
                 if (this.audioSource && this.audioSource.analyser) {
-                    this.threeJSRenderer.setAudioAnalyser(this.audioSource.analyser);
+                    this.threeJSRenderer.setAudioAnalyser(
+                        this.audioSource.analyser,
+                        this.audioSource.analyserLeft,
+                        this.audioSource.analyserRight
+                    );
                     console.log('[Revision] ✓ Connected audio analyser to Three.js renderer');
                 }
 
@@ -2470,6 +2474,16 @@ class RevisionAppV2 {
             if (this.audioSource) {
                 await this.audioSource.connectMediaElement(mediaElement);
                 console.log('[Revision] ✓ Media feed connected to audio source');
+                
+                // Reconnect audio analyser to Three.js renderer
+                if (this.threeJSRenderer && this.audioSource.analyser) {
+                    this.threeJSRenderer.setAudioAnalyser(
+                        this.audioSource.analyser,
+                        this.audioSource.analyserLeft,
+                        this.audioSource.analyserRight
+                    );
+                    console.log('[Revision] ✓ Reconnected audio analyser to Three.js renderer');
+                }
 
                 // CRITICAL: Apply VIDEO audio output setting for media feed
                 // videoAudioOutput controls video/stream/media audio
@@ -2644,6 +2658,16 @@ class RevisionAppV2 {
             if (this.audioSource) {
                 await this.audioSource.connectMediaElement(mediaElement);
                 console.log('[Revision] ✅ Program media connected to audio source');
+                
+                // Reconnect audio analyser to Three.js renderer
+                if (this.threeJSRenderer && this.audioSource.analyser) {
+                    this.threeJSRenderer.setAudioAnalyser(
+                        this.audioSource.analyser,
+                        this.audioSource.analyserLeft,
+                        this.audioSource.analyserRight
+                    );
+                    console.log('[Revision] ✓ Reconnected audio analyser to Three.js renderer');
+                }
 
                 // CRITICAL: Re-register audio source with InputManager
                 // (it was unregistered when switching from microphone)
@@ -4568,6 +4592,8 @@ class RevisionAppV2 {
             'geometric': { file: 'presets/threejs/GeometricShapes.js', className: 'GeometricShapesPreset' },
             'particles': { file: 'presets/threejs/Particles.js', className: 'ParticlesPreset' },
             'tunnel': { file: 'presets/threejs/Tunnel.js', className: 'TunnelPreset' },
+            'oscilloscope': { file: 'presets/threejs/Oscilloscope3D.js', className: 'Oscilloscope3DPreset' },
+            'xyscope': { file: 'presets/threejs/XYScope.js', className: 'XYScopePreset' },
             'gblogo': { file: 'presets/threejs/GBLogo.js', className: 'GBLogoPreset' }
         };
         return presetMap[presetName];
@@ -4641,7 +4667,7 @@ class RevisionAppV2 {
 
     async loadThreeJSPresets() {
         // Load all presets at startup (without cache busting)
-        const presetNames = ['geometric', 'particles', 'tunnel'];
+        const presetNames = ['geometric', 'particles', 'tunnel', 'oscilloscope', 'xyscope'];
 
         for (const presetName of presetNames) {
             await this.loadThreeJSPreset(presetName, false);

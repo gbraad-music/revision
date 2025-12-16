@@ -46,7 +46,8 @@ class ThreeJSRenderer {
             this.renderer = new THREE.WebGLRenderer({
                 canvas: this.canvas,
                 antialias: true,
-                alpha: false
+                alpha: true,
+                premultipliedAlpha: false
             });
             this.renderer.setSize(width, height);
             this.renderer.setPixelRatio(window.devicePixelRatio || 1);
@@ -185,7 +186,7 @@ class ThreeJSRenderer {
             this.currentPreset = null;
         }
 
-        // Remove all objects
+        // Remove all objects from tracked arrays
         for (const obj of this.objects) {
             this.scene.remove(obj);
             if (obj.geometry) obj.geometry.dispose();
@@ -204,6 +205,8 @@ class ThreeJSRenderer {
             this.scene.remove(light);
         }
         this.lights = [];
+        
+        console.log('[ThreeJS] Scene cleared');
     }
 
     // Preset system
@@ -228,6 +231,8 @@ class ThreeJSRenderer {
         // Pass audio analyser if available
         if (this.audioAnalyser) {
             this.currentPreset.audioAnalyser = this.audioAnalyser;
+            this.currentPreset.audioAnalyserLeft = this.audioAnalyserLeft;
+            this.currentPreset.audioAnalyserRight = this.audioAnalyserRight;
         }
         
         this.currentPreset.initialize();
@@ -237,12 +242,17 @@ class ThreeJSRenderer {
     }
     
     // Set audio analyser for raw waveform access
-    setAudioAnalyser(analyser) {
+    setAudioAnalyser(analyser, analyserLeft, analyserRight) {
         this.audioAnalyser = analyser;
+        this.audioAnalyserLeft = analyserLeft;
+        this.audioAnalyserRight = analyserRight;
+        
         if (this.currentPreset) {
             this.currentPreset.audioAnalyser = analyser;
+            this.currentPreset.audioAnalyserLeft = analyserLeft;
+            this.currentPreset.audioAnalyserRight = analyserRight;
         }
-        console.log('[ThreeJS] Audio analyser connected');
+        console.log('[ThreeJS] Audio analyser connected' + (analyserLeft ? ' (with stereo)' : ''));
     }
 
     getAvailablePresets() {

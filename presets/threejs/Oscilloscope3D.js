@@ -1,10 +1,12 @@
-// Oscilloscope3D - Classic oscilloscope visualization
+// Oscilloscope3D - Classic time-domain oscilloscope with phosphor trails
 window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
     initialize() {
-        console.log('[ThreeJS Preset] Initializing 3D Oscilloscope');
+        console.log('[ThreeJS Preset] Initializing Time-Domain Oscilloscope');
 
         this.waveformPoints = 512;
         this.waveformData = new Float32Array(this.waveformPoints);
+        
+        this.lastDebugLog = 0;
         
         // Create CRT screen frame
         const frameGeometry = new THREE.BoxGeometry(32, 20, 0.5);
@@ -39,7 +41,6 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         const geometry = new THREE.BufferGeometry().setFromPoints(points);
         const material = new THREE.LineBasicMaterial({
             color: 0x00ff00,
-            linewidth: 2,
             transparent: true,
             opacity: 0.9
         });
@@ -47,27 +48,9 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         this.waveformLine = new THREE.Line(geometry, material);
         this.scene.add(this.waveformLine);
 
-        // Create XY mode waveform (Lissajous patterns)
-        const xyPoints = [];
-        for (let i = 0; i < this.waveformPoints; i++) {
-            xyPoints.push(new THREE.Vector3(0, 0, 0));
-        }
-
-        const xyGeometry = new THREE.BufferGeometry().setFromPoints(xyPoints);
-        const xyMaterial = new THREE.LineBasicMaterial({
-            color: 0x00ffff,
-            linewidth: 2,
-            transparent: true,
-            opacity: 0.8
-        });
-
-        this.xyLine = new THREE.Line(xyGeometry, xyMaterial);
-        this.xyLine.position.z = 0.1;
-        this.scene.add(this.xyLine);
-
         // Create persistence/afterglow trails
         this.trails = [];
-        this.maxTrails = 8;
+        this.maxTrails = 8; // Nice phosphor persistence effect
 
         // CRT glow effect
         const glowLight = new THREE.PointLight(0x00ff00, 1, 50);
@@ -80,10 +63,17 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
 
         this.camera.position.set(0, 0, 25);
         this.camera.lookAt(0, 0, 0);
-
-        this.mode = 'normal'; // 'normal' or 'xy'
-        this.modeTimer = 0;
-        this.modeSwitchInterval = 8; // Switch modes every 8 seconds
+        
+        // Log analyser status after a brief delay
+        setTimeout(() => {
+            if (this.audioAnalyser) {
+                console.log('[Oscilloscope] ✓ Audio analyser connected - FFT Size:', this.audioAnalyser.fftSize);
+                console.log('[Oscilloscope] 💡 Time-domain mode with phosphor trails');
+                console.log('[Oscilloscope] 💡 Use XYScope preset for oscilloscope music shapes!');
+            } else {
+                console.warn('[Oscilloscope] ⚠️ Audio analyser NOT connected - using synthetic waveform');
+            }
+        }, 100);
     }
 
     createGrid() {
@@ -147,34 +137,39 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
     update(deltaTime) {
         super.update(deltaTime);
 
-        // Mode switching
-        this.modeTimer += deltaTime;
-        if (this.modeTimer > this.modeSwitchInterval) {
-            this.mode = this.mode === 'normal' ? 'xy' : 'normal';
-            this.modeTimer = 0;
-        }
-
         // Get real waveform data from audio analyser if available
         if (this.audioAnalyser) {
-            // Get time domain data (actual waveform)
-            const timeDomainData = new Uint8Array(this.audioAnalyser.fftSize);
+            const bufferLength = this.audioAnalyser.fftSize;
+            const timeDomainData = new Uint8Array(bufferLength);
             this.audioAnalyser.getByteTimeDomainData(timeDomainData);
             
+            // Debug logging (every 2 seconds)
+            const now = performance.now();
+            if (now - this.lastDebugLog > 2000) {
+                const min = Math.min(...timeDomainData);
+                const max = Math.max(...timeDomainData);
+                const avg = timeDomainData.reduce((a, b) => a + b) / timeDomainData.length;
+                const variance = max - min;
+                console.log('[Oscilloscope] Audio data - Min:', min, 'Max:', max, 'Avg:', avg.toFixed(1), 
+                    'Variance:', variance, 'Active:', variance > 1 ? 'YES' : 'NO');
+                this.lastDebugLog = now;
+            }
+            
             // Resample to our waveform points
-            const step = Math.floor(timeDomainData.length / this.waveformPoints);
             for (let i = 0; i < this.waveformPoints; i++) {
-                const index = i * step;
-                // Convert from 0-255 to -1 to 1 range, then scale for display
+                const ratio = i / (this.waveformPoints - 1);
+                const index = Math.floor(ratio * (bufferLength - 1));
+                
+                // Convert from 0-255 to -1 to 1 range, then scale
                 const normalized = (timeDomainData[index] - 128) / 128.0;
-                this.waveformData[i] = normalized * 8; // Scale for visibility
+                this.waveformData[i] = normalized * 7;
             }
         } else {
-            // Fallback: Generate synthetic waveform from audio frequencies
+            // Fallback: synthetic waveform
             for (let i = 0; i < this.waveformPoints; i++) {
                 const t = this.time * 3;
                 const phase = i / this.waveformPoints;
                 
-                // Combine multiple frequencies for complex waveform
                 let signal = 0;
                 signal += Math.sin(phase * Math.PI * 2 * 2 + t) * this.frequencyData.bass * 6;
                 signal += Math.sin(phase * Math.PI * 2 * 5 + t * 1.3) * this.frequencyData.mid * 4;
@@ -184,19 +179,10 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
             }
         }
 
-        if (this.mode === 'normal') {
-            // Normal oscilloscope mode - horizontal time sweep
-            this.updateNormalMode();
-            this.waveformLine.visible = true;
-            this.xyLine.visible = false;
-        } else {
-            // XY mode - Lissajous figures
-            this.updateXYMode();
-            this.waveformLine.visible = false;
-            this.xyLine.visible = true;
-        }
+        // Update time-domain display
+        this.updateNormalMode();
 
-        // Create persistence/afterglow effect
+        // Create phosphor persistence trails
         if (this.time % 0.05 < deltaTime) {
             this.createTrail();
         }
@@ -240,64 +226,9 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         this.waveformLine.material.opacity = 0.9 + intensity;
     }
 
-    updateXYMode() {
-        const positions = this.xyLine.geometry.attributes.position;
-        const screenWidth = 16;
-        const screenHeight = 16;
-        
-        if (this.audioAnalyser) {
-            // Use real waveform data for true Lissajous patterns
-            const timeDomainData = new Uint8Array(this.audioAnalyser.fftSize);
-            this.audioAnalyser.getByteTimeDomainData(timeDomainData);
-            
-            // For XY mode, we need two channels
-            // Channel 1 (X): Use first half of waveform
-            // Channel 2 (Y): Use second half with phase shift
-            const halfSize = Math.floor(timeDomainData.length / 2);
-            const step = Math.floor(halfSize / this.waveformPoints);
-            
-            for (let i = 0; i < this.waveformPoints; i++) {
-                const index1 = i * step;
-                const index2 = i * step + halfSize; // Phase shifted
-                
-                // Convert from 0-255 to -1 to 1, then scale
-                const x = ((timeDomainData[index1] - 128) / 128.0) * 8;
-                const y = ((timeDomainData[index2 % timeDomainData.length] - 128) / 128.0) * 8;
-                const z = 0.1;
-                
-                positions.setXYZ(i, x, y, z);
-            }
-        } else {
-            // Fallback: synthetic Lissajous patterns
-            for (let i = 0; i < this.waveformPoints; i++) {
-                const phase = i / this.waveformPoints;
-                const t = this.time * 2;
-                
-                // Channel 1 (X)
-                let x = Math.sin(phase * Math.PI * 2 * 3 + t) * this.frequencyData.bass * 6;
-                x += Math.sin(phase * Math.PI * 2 * 7 + t * 1.2) * this.frequencyData.mid * 3;
-                
-                // Channel 2 (Y) - phase shifted
-                let y = Math.sin(phase * Math.PI * 2 * 4 + t * 0.7) * this.frequencyData.mid * 6;
-                y += Math.sin(phase * Math.PI * 2 * 9 + t * 1.5) * this.frequencyData.high * 3;
-                
-                const z = 0.1;
-                
-                positions.setXYZ(i, x, y, z);
-            }
-        }
-        positions.needsUpdate = true;
-
-        // Beam intensity
-        this.xyLine.material.opacity = 0.8 + this.frequencyData.bass * 0.2;
-    }
-
     createTrail() {
-        // Clone current visible waveform
-        const activeLine = this.mode === 'normal' ? this.waveformLine : this.xyLine;
-        if (!activeLine.visible) return;
-
-        const positions = activeLine.geometry.attributes.position;
+        // Clone current waveform for phosphor trail effect
+        const positions = this.waveformLine.geometry.attributes.position;
         const points = [];
         
         for (let i = 0; i < this.waveformPoints; i++) {
@@ -309,7 +240,7 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         
         const geometry = new THREE.BufferGeometry().setFromPoints(points);
         const material = new THREE.LineBasicMaterial({
-            color: this.mode === 'normal' ? 0x00ff00 : 0x00ffff,
+            color: 0x00ff00,
             transparent: true,
             opacity: 0.4
         });
@@ -333,8 +264,7 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         super.onBeat(intensity);
         
         // Trigger sweep on beat
-        const activeLine = this.mode === 'normal' ? this.waveformLine : this.xyLine;
-        activeLine.material.opacity = 1.0;
+        this.waveformLine.material.opacity = 1.0;
         
         // Flash the screen
         this.screen.material.opacity = 0.6 + intensity * 0.4;
@@ -347,10 +277,6 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         this.scene.remove(this.waveformLine);
         this.waveformLine.geometry.dispose();
         this.waveformLine.material.dispose();
-        
-        this.scene.remove(this.xyLine);
-        this.xyLine.geometry.dispose();
-        this.xyLine.material.dispose();
         
         this.scene.remove(this.frame);
         this.frame.geometry.dispose();

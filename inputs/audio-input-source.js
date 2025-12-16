@@ -65,10 +65,20 @@ class AudioInputSource {
             // Create DJ-style kill EQ (applied BEFORE analysis)
             this.killEQ = new KillEQ(this.audioContext);
 
-            // Create analyser
+            // Create analyser (mono - for frequency analysis)
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = options.fftSize || 2048;
             this.analyser.smoothingTimeConstant = options.smoothing || 0.8;
+
+            // Create STEREO analysers for oscilloscope music
+            this.stereoSplitter = this.audioContext.createChannelSplitter(2);
+            this.analyserLeft = this.audioContext.createAnalyser();
+            this.analyserLeft.fftSize = options.fftSize || 2048;
+            this.analyserLeft.smoothingTimeConstant = 0.0; // No smoothing for oscilloscope
+            this.analyserRight = this.audioContext.createAnalyser();
+            this.analyserRight.fftSize = options.fftSize || 2048;
+            this.analyserRight.smoothingTimeConstant = 0.0;
+            console.log('[AudioInput] Created stereo analysers for oscilloscope music');
 
             // Create input gain node (before EQ)
             this.inputGain = this.audioContext.createGain();
@@ -172,17 +182,37 @@ class AudioInputSource {
             this.microphone = this.audioContext.createMediaStreamSource(stream);
 
             console.log('[AudioInput] MediaStreamSource created');
-            console.log('[AudioInput] MediaStreamSource mediaStream:', this.microphone.mediaStream);
+            console.log('[AudioInput] MediaStreamSource channels:', this.microphone.channelCount);
             console.log('[AudioInput] MediaStreamSource active:', this.microphone.mediaStream.active);
+            
+            // CRITICAL: Preserve stereo from microphone/virtual audio cable
+            this.microphone.channelCount = 2;
+            this.microphone.channelCountMode = 'max';
+            this.microphone.channelInterpretation = 'speakers';
+            console.log('[AudioInput] ✓ Set microphone to preserve stereo channels');
 
-            // Connect audio chain with input gain and kill EQ BEFORE analysis:
-            // microphone → inputGain → killEQ → analyser
-            //                                 → monitorGain
+            // Connect audio chain with stereo preservation:
+            // microphone → inputGain → stereoSplitter → [analyserLeft, analyserRight] (STEREO for oscilloscope)
+            //                       → killEQ → analyser (mono for frequency analysis)
+            //                               → monitorGain (for audio output)
             this.microphone.connect(this.inputGain);
+            
+            // CRITICAL: Ensure inputGain preserves stereo
+            this.inputGain.channelCount = 2;
+            this.inputGain.channelCountMode = 'max';
+            this.inputGain.channelInterpretation = 'speakers';
+            
+            // Connect stereo splitter for oscilloscope
+            this.inputGain.connect(this.stereoSplitter);
+            this.stereoSplitter.connect(this.analyserLeft, 0); // Left channel
+            this.stereoSplitter.connect(this.analyserRight, 1); // Right channel
+            console.log('[AudioInput] ✓ Stereo analysers connected from microphone');
+            
+            // Connect the rest of the chain
             this.inputGain.connect(this.killEQ.getInput());
             this.killEQ.getOutput().connect(this.analyser);
             this.killEQ.getOutput().connect(this.monitorGain);
-            console.log('[AudioInput] ✓ Audio chain: microphone → inputGain → KillEQ → analyser + monitor');
+            console.log('[AudioInput] ✓ Audio chain: microphone → inputGain → [stereoSplitter + KillEQ] → outputs');
 
             // Set source type to 'audio' (microphone)
             this.sourceType = 'audio';
@@ -366,17 +396,42 @@ class AudioInputSource {
             console.log('[AudioInput] Creating MediaElementSource from', audioElement.tagName, 'element...');
             this.mediaElementSource = this.audioContext.createMediaElementSource(audioElement);
             this.connectedMediaElement = audioElement; // Track which element we're connected to
+            
+            // Check channel count
             console.log('[AudioInput] ✓ MediaElementSource created');
+            console.log('[AudioInput] MediaElementSource channels:', this.mediaElementSource.channelCount);
+            console.log('[AudioInput] MediaElementSource interpretation:', this.mediaElementSource.channelCountMode);
+            
+            // CRITICAL: Set channel count mode to preserve stereo
+            this.mediaElementSource.channelCount = 2;
+            this.mediaElementSource.channelCountMode = 'max'; // Preserve all channels
+            this.mediaElementSource.channelInterpretation = 'speakers';
+            console.log('[AudioInput] ✓ Set source to preserve stereo channels');
 
-            // Connect audio chain for media feed with input gain and Kill EQ (same as microphone):
-            // mediaElement → inputGain → killEQ → analyser (for frequency analysis)
-            //                                   → monitorGain (for audio output)
+            // Connect audio chain for media feed with stereo preservation:
+            // mediaElement → inputGain → stereoSplitter → [analyserLeft, analyserRight] (STEREO for oscilloscope)
+            //                          → killEQ → analyser (mono for frequency analysis)
+            //                                  → monitorGain (for audio output)
             this.mediaElementSource.connect(this.inputGain);
+            
+            // Connect stereo splitter DIRECTLY from inputGain (before KillEQ merges to mono)
+            // CRITICAL: Ensure inputGain also preserves stereo
+            this.inputGain.channelCount = 2;
+            this.inputGain.channelCountMode = 'max';
+            this.inputGain.channelInterpretation = 'speakers';
+            
+            this.inputGain.connect(this.stereoSplitter);
+            this.stereoSplitter.connect(this.analyserLeft, 0); // Left channel
+            this.stereoSplitter.connect(this.analyserRight, 1); // Right channel
+            console.log('[AudioInput] ✓ Stereo splitter connected - L/R channels separated');
+            
+            // Connect the rest of the chain
             this.inputGain.connect(this.killEQ.getInput());
             this.killEQ.getOutput().connect(this.analyser);
             this.killEQ.getOutput().connect(this.monitorGain);
 
-            console.log('[AudioInput] ✓ Audio chain: mediaElement → inputGain → KillEQ → analyser + monitorGain');
+            console.log('[AudioInput] ✓ Audio chain: mediaElement → inputGain → [stereoSplitter + killEQ] → outputs');
+            console.log('[AudioInput] ✓ Stereo analysers connected BEFORE KillEQ merge');
             console.log('[AudioInput] Monitoring enabled:', this.monitoringEnabled);
 
             // Set source type to 'media' (media element)

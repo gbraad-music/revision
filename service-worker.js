@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v120';
+const CACHE_NAME = 'revision-v121';
 const ASSETS = [
     './',
     './index.html',
@@ -32,6 +32,7 @@ const ASSETS = [
     './presets/threejs/FlowerOfLife.js',
     './presets/threejs/StarField.js',
     './presets/threejs/Oscilloscope3D.js',
+    './presets/threejs/XYScope.js',
     './presets/threejs/MatrixRain.js',
     // Note: Other threejs presets are loaded dynamically and don't need to be cached
     // Renderers

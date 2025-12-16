@@ -129,7 +129,7 @@ let stagedMilkdropIndex = 0;
 let stagedThreeJSIndex = 0;
 let stagedVideoDeviceId = '';
 let milkdropPresetList = [];
-let threejsPresetList = ['geometric', 'particles', 'tunnel', 'gblogo'];
+let threejsPresetList = ['geometric', 'particles', 'tunnel', 'oscilloscope', 'xyscope', 'gblogo'];
 
 // UNIFIED GO TO PROGRAM - Single button for all modes
 function goToProgram() {
@@ -481,7 +481,7 @@ async function initThreeJSPreview() {
                 unifiedThreeJSRenderer.start();
 
                 // Update staged name
-                const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity', 'GB Logo'];
+                const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity', 'Oscilloscope', 'XY Scope', 'GB Logo'];
                 document.getElementById('staged-name').textContent = presetNames[stagedThreeJSIndex];
 
                 console.log('[Control] ✓ Three.js preview initialized with fresh preset:', presetKey);
@@ -502,7 +502,7 @@ async function initThreeJSPreview() {
             }
 
             // Update staged name
-            const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity', 'GB Logo'];
+            const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity', 'Oscilloscope', 'XY Scope', 'GB Logo'];
             document.getElementById('staged-name').textContent = presetNames[stagedThreeJSIndex];
 
             console.log('[Control] ✓ Three.js preview loaded fresh preset:', presetKey);
@@ -1428,8 +1428,8 @@ function stageThreeJSNav(direction) {
 async function previewThreeJSPreset(index) {
     stagedThreeJSIndex = index;
 
-    // Update button visual states
-    for (let i = 0; i < 4; i++) {
+    // Update button visual states - now handles all presets dynamically
+    for (let i = 0; i < threejsPresetList.length; i++) {
         const btn = document.getElementById(`threejs-preset-${i}`);
         if (btn) {
             if (i === index) {
@@ -1443,12 +1443,17 @@ async function previewThreeJSPreset(index) {
     }
 
     // Update staged name
-    const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity', 'GB Logo'];
+    const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity', 'Oscilloscope', 'XY Scope', 'GB Logo'];
     document.getElementById('staged-name').textContent = presetNames[index];
 
     // If currently in threejs preview mode, load the preset on-demand
     if (currentPreviewMode === 'threejs' && unifiedThreeJSRenderer) {
         const presetKey = threejsPresetList[index];
+        
+        // CRITICAL: Clear scene first to dispose old preset
+        console.log('[Control] Clearing previous preset before loading:', presetKey);
+        unifiedThreeJSRenderer.clearScene();
+        
         // Load fresh preset from disk
         const loaded = await loadThreeJSPreset(presetKey, true);
         if (loaded) {
@@ -3283,6 +3288,8 @@ function getThreeJSPresetInfo(presetName) {
         'geometric': { file: 'presets/threejs/GeometricShapes.js', className: 'GeometricShapesPreset' },
         'particles': { file: 'presets/threejs/Particles.js', className: 'ParticlesPreset' },
         'tunnel': { file: 'presets/threejs/Tunnel.js', className: 'TunnelPreset' },
+        'oscilloscope': { file: 'presets/threejs/Oscilloscope3D.js', className: 'Oscilloscope3DPreset' },
+        'xyscope': { file: 'presets/threejs/XYScope.js', className: 'XYScopePreset' },
         'gblogo': { file: 'presets/threejs/GBLogo.js', className: 'GBLogoPreset' }
     };
     return presetMap[presetName];

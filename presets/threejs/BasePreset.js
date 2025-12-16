@@ -19,6 +19,8 @@ class ThreeJSBasePreset {
         
         // Audio analyser for raw waveform access
         this.audioAnalyser = null;
+        this.audioAnalyserLeft = null;
+        this.audioAnalyserRight = null;
     }
 
     // Called once when preset is loaded
