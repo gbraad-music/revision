@@ -4591,7 +4591,7 @@ class RevisionAppV2 {
         const presetMap = {
             'geometric': { file: 'presets/threejs/GeometricShapes.js', className: 'GeometricShapesPreset' },
             'particles': { file: 'presets/threejs/Particles.js', className: 'ParticlesPreset' },
-            'tunnel': { file: 'presets/threejs/Tunnel.js', className: 'TunnelPreset' },
+            'spectrumscope': { file: 'presets/threejs/SpectrumScope.js', className: 'SpectrumScopePreset' },
             'oscilloscope': { file: 'presets/threejs/Oscilloscope3D.js', className: 'Oscilloscope3DPreset' },
             'xyscope': { file: 'presets/threejs/XYScope.js', className: 'XYScopePreset' },
             'gblogo': { file: 'presets/threejs/GBLogo.js', className: 'GBLogoPreset' }
@@ -4667,7 +4667,7 @@ class RevisionAppV2 {
 
     async loadThreeJSPresets() {
         // Load all presets at startup (without cache busting)
-        const presetNames = ['geometric', 'particles', 'tunnel', 'oscilloscope', 'xyscope'];
+        const presetNames = ['geometric', 'particles', 'spectrumscope', 'oscilloscope', 'xyscope', 'gblogo'];
 
         for (const presetName of presetNames) {
             await this.loadThreeJSPreset(presetName, false);

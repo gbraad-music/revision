@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v121';
+const CACHE_NAME = 'revision-v122';
 const ASSETS = [
     './',
     './index.html',
@@ -27,6 +27,7 @@ const ASSETS = [
     './presets/threejs/GeometricShapes.js',
     './presets/threejs/Particles.js',
     './presets/threejs/Tunnel.js',
+    './presets/threejs/SpectrumScope.js',
     './presets/threejs/HexTunnel.js',
     './presets/threejs/MilkdropStyle.js',
     './presets/threejs/FlowerOfLife.js',

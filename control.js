@@ -129,7 +129,7 @@ let stagedMilkdropIndex = 0;
 let stagedThreeJSIndex = 0;
 let stagedVideoDeviceId = '';
 let milkdropPresetList = [];
-let threejsPresetList = ['geometric', 'particles', 'tunnel', 'oscilloscope', 'xyscope', 'gblogo'];
+let threejsPresetList = ['geometric', 'particles', 'spectrumscope', 'oscilloscope', 'xyscope', 'gblogo'];
 
 // UNIFIED GO TO PROGRAM - Single button for all modes
 function goToProgram() {
@@ -481,7 +481,7 @@ async function initThreeJSPreview() {
                 unifiedThreeJSRenderer.start();
 
                 // Update staged name
-                const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity', 'Oscilloscope', 'XY Scope', 'GB Logo'];
+                const presetNames = ['Geometric Shapes', 'Particles Field', 'Spectrum Scope', 'Oscilloscope', 'XY Scope', 'GB Logo'];
                 document.getElementById('staged-name').textContent = presetNames[stagedThreeJSIndex];
 
                 console.log('[Control] ✓ Three.js preview initialized with fresh preset:', presetKey);
@@ -502,7 +502,7 @@ async function initThreeJSPreview() {
             }
 
             // Update staged name
-            const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity', 'Oscilloscope', 'XY Scope', 'GB Logo'];
+            const presetNames = ['Geometric Shapes', 'Particles Field', 'Spectrumscope', 'Oscilloscope', 'XY Scope', 'GB Logo'];
             document.getElementById('staged-name').textContent = presetNames[stagedThreeJSIndex];
 
             console.log('[Control] ✓ Three.js preview loaded fresh preset:', presetKey);
@@ -1443,7 +1443,7 @@ async function previewThreeJSPreset(index) {
     }
 
     // Update staged name
-    const presetNames = ['Geometric Shapes', 'Particles Field', 'Tunnel Infinity', 'Oscilloscope', 'XY Scope', 'GB Logo'];
+    const presetNames = ['Geometric Shapes', 'Particles Field', 'Spectrumscope', 'Oscilloscope', 'XY Scope', 'GB Logo'];
     document.getElementById('staged-name').textContent = presetNames[index];
 
     // If currently in threejs preview mode, load the preset on-demand
