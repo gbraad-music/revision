@@ -9,7 +9,7 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         this.lastDebugLog = 0;
         
         // Create CRT screen frame
-        const frameGeometry = new THREE.BoxGeometry(32, 20, 0.5);
+        const frameGeometry = new THREE.BoxGeometry(64, 40, 0.5);
         const frameMaterial = new THREE.MeshPhongMaterial({
             color: 0x222222,
             shininess: 30
@@ -19,7 +19,7 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         this.scene.add(this.frame);
 
         // Create screen glow plane
-        const screenGeometry = new THREE.PlaneGeometry(30, 18);
+        const screenGeometry = new THREE.PlaneGeometry(60, 36);
         const screenMaterial = new THREE.MeshBasicMaterial({
             color: 0x001100,
             transparent: true,
@@ -61,7 +61,7 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         // Ambient lighting for frame
         this.addBasicLighting();
 
-        this.camera.position.set(0, 0, 25);
+        this.camera.position.set(0, 0, 18);
         this.camera.lookAt(0, 0, 0);
         
         // Log analyser status after a brief delay
@@ -85,7 +85,7 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         });
 
         // Horizontal lines (like voltage divisions)
-        for (let y = -8; y <= 8; y += 2) {
+        for (let y = -16; y <= 16; y += 2) {
             const points = [
                 new THREE.Vector3(-14, y, 0),
                 new THREE.Vector3(14, y, 0)
@@ -97,7 +97,7 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
         }
 
         // Vertical lines (like time divisions)
-        for (let x = -14; x <= 14; x += 2) {
+        for (let x = -28; x <= 28; x += 2) {
             const points = [
                 new THREE.Vector3(x, -8, 0),
                 new THREE.Vector3(x, 8, 0)
@@ -208,8 +208,8 @@ window.Oscilloscope3DPreset = class extends ThreeJSBasePreset {
 
     updateNormalMode() {
         const positions = this.waveformLine.geometry.attributes.position;
-        const screenWidth = 28;
-        const screenHeight = 16;
+        const screenWidth = 56;
+        const screenHeight = 32;
         
         for (let i = 0; i < this.waveformPoints; i++) {
             // Horizontal sweep (time on X axis, amplitude on Y axis)

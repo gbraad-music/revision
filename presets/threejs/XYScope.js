@@ -6,7 +6,7 @@ window.XYScopePreset = class extends ThreeJSBasePreset {
         this.waveformPoints = 2048; // More points for smoother shapes
         
         // Create CRT screen frame
-        const frameGeometry = new THREE.BoxGeometry(32, 20, 0.5);
+        const frameGeometry = new THREE.BoxGeometry(64, 40, 0.5);
         const frameMaterial = new THREE.MeshPhongMaterial({
             color: 0x222222,
             shininess: 30
@@ -16,7 +16,7 @@ window.XYScopePreset = class extends ThreeJSBasePreset {
         this.scene.add(this.frame);
 
         // Create screen glow plane
-        const screenGeometry = new THREE.PlaneGeometry(30, 18);
+        const screenGeometry = new THREE.PlaneGeometry(60, 36);
         const screenMaterial = new THREE.MeshBasicMaterial({
             color: 0x001100,
             transparent: true,
@@ -63,7 +63,7 @@ window.XYScopePreset = class extends ThreeJSBasePreset {
         // Ambient lighting for frame
         this.addBasicLighting();
 
-        this.camera.position.set(0, 0, 25);
+        this.camera.position.set(0, 0, 18);
         this.camera.lookAt(0, 0, 0);
     }
 
@@ -76,7 +76,7 @@ window.XYScopePreset = class extends ThreeJSBasePreset {
         });
 
         // Horizontal and vertical lines
-        for (let y = -8; y <= 8; y += 2) {
+        for (let y = -16; y <= 16; y += 2) {
             const points = [
                 new THREE.Vector3(-14, y, 0),
                 new THREE.Vector3(14, y, 0)
@@ -87,7 +87,7 @@ window.XYScopePreset = class extends ThreeJSBasePreset {
             this.gridLines.push(line);
         }
 
-        for (let x = -14; x <= 14; x += 2) {
+        for (let x = -28; x <= 28; x += 2) {
             const points = [
                 new THREE.Vector3(x, -8, 0),
                 new THREE.Vector3(x, 8, 0)
@@ -150,8 +150,8 @@ window.XYScopePreset = class extends ThreeJSBasePreset {
                 const sampleIndex = startOffset + i;
                 
                 if (sampleIndex < bufferLength) {
-                    const x = ((leftData[sampleIndex] - 128) / 128.0) * 24; // 3x scale
-                    const y = ((rightData[sampleIndex] - 128) / 128.0) * 24; // 3x scale
+                    const x = ((leftData[sampleIndex] - 128) / 128.0) * 16; // 2x scale
+                    const y = ((rightData[sampleIndex] - 128) / 128.0) * 16; // 2x scale
                     
                     positions.setXYZ(i, x, y, 0);
                 } else {
@@ -193,8 +193,8 @@ window.XYScopePreset = class extends ThreeJSBasePreset {
                 if (bufferPos + 1 < bufferLength) {
                     // X from even samples (left channel)
                     // Y from odd samples (right channel)
-                    const x = ((timeDomainData[bufferPos] - 128) / 128.0) * 24; // 3x scale
-                    const y = ((timeDomainData[bufferPos + 1] - 128) / 128.0) * 24; // 3x scale
+                    const x = ((timeDomainData[bufferPos] - 128) / 128.0) * 16; // 2x scale
+                    const y = ((timeDomainData[bufferPos + 1] - 128) / 128.0) * 16; // 2x scale
                     
                     positions.setXYZ(i, x, y, 0);
                 } else {
