@@ -1,80 +1,27 @@
-const CACHE_NAME = 'revision-v123';
+const CACHE_NAME = 'revision-v143';
 const ASSETS = [
     './',
     './index.html',
-    './control.html',
-    './midi-bridge.html',
-    './app.js',
-    './control.js',
     './manifest.json',
-    // Effects
-    './effects/regroove_effects.js',
-    './effects/wasm-eq.js',
+    './favicon.svg',
+    './favicon.ico',
+    './favicon-96x96.png',
+    './apple-touch-icon.png',
+    './icon-192x192.png',
+    './icon-512x512.png',
+    './effects.js',
     './effects/audio-worklet-processor.js',
     './effects/regroove-effects.js',
     './effects/regroove-effects.wasm',
-    // External libraries (local files)
-    './external/butterchurn.min.js',
-    './external/butterchurnPresets.min.js',
-    './external/three.min.js',
-    './external/three.module.js',
-    './external/hls.min.js',
-    // Input sources
-    './inputs/audio-input-source.js',
-    './inputs/input-manager.js',
-    './inputs/midi-audio-synth.js',
-    './inputs/midi-input-source.js',
-    './inputs/midi-output-source.js',
-    './inputs/webrtc-midi-source.js',
-    // Presets and renderers
-    './presets/preset-manager.js',
-    // Three.js Presets
-    './presets/threejs/BasePreset.js',
-    './presets/threejs/GeometricShapes.js',
-    './presets/threejs/Particles.js',
-    './presets/threejs/Tunnel.js',
-    './presets/threejs/SpectrumScope.js',
-    './presets/threejs/HexTunnel.js',
-    './presets/threejs/MilkdropStyle.js',
-    './presets/threejs/FlowerOfLife.js',
-    './presets/threejs/StarField.js',
-    './presets/threejs/Oscilloscope3D.js',
-    './presets/threejs/XYScope.js',
-    './presets/threejs/MatrixRain.js',
-    // Note: Other threejs presets are loaded dynamically and don't need to be cached
-    // Renderers
-    './renderers/milkdrop-renderer.js',
-    './renderers/threejs-renderer.js',
-    './renderers/video-renderer.js',
-    './renderers/stream-renderer.js',
-    './renderers/webpage-renderer.js',
-    // Scenes
-    './scenes/scene-manager.js',
-    // Visuals
-    './visuals/renderer.js',
-    // Utils
-    './utils/library-loader.js',
-    './utils/midi-manager.js',
-    './utils/mobile-compat.js',
-    './utils/osc-client.js',
-    './utils/settings-manager.js',
-    './utils/wake-lock.js',
-    './utils/remote-channel.js',
-    // MIDI-RTC (MIDI only)
-    './utils/midi-rtc-bridge.js',
-    './utils/midi-rtc/connection.js',
-    './utils/midi-rtc/protocol.js',
-    './utils/midi-rtc/midi-codec.js',
-    './utils/midi-rtc/midi-utils.js',
-    // MeisterRTC (MIDI + Audio + Video)
-    './utils/meister-rtc-bridge.js',
-    './utils/meister-rtc/connection.js',
-    './utils/meister-rtc/protocol.js',
-    './utils/meister-rtc/control-channel.js',
-    // UI Components
+    './effects/wasm-eq.js',
+    './effects/m1-trim.js',
+    './effects/wasm-mappings.json',
     './utils/pad-knob.js',
     './utils/svg-slider.js',
-    './utils/fader-components.js'
+    './utils/fader-components.js',
+    './app.js',
+    './main.js',
+    './control.js'
 ];
 
 // Install event - cache assets
@@ -84,7 +31,7 @@ self.addEventListener('install', (event) => {
             console.log('[ServiceWorker] Caching app assets');
             // Cache files individually to avoid failure if one file is missing
             return Promise.allSettled(
-                ASSETS.map(url => 
+                ASSETS.map(url =>
                     cache.add(url).catch(err => {
                         console.warn('[ServiceWorker] Failed to cache:', url, err.message);
                     })
@@ -112,35 +59,55 @@ self.addEventListener('activate', (event) => {
     self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - CACHE FIRST (offline-first, reliable on flaky networks)
 self.addEventListener('fetch', (event) => {
-    // Skip caching external resources (CDN files)
+    // Skip caching external resources
     if (!event.request.url.startsWith(self.location.origin)) {
         return;
     }
 
     event.respondWith(
-        caches.match(event.request).then((response) => {
-            // Return cached version or fetch from network
-            return response || fetch(event.request).then((fetchResponse) => {
-                // Cache new resources
-                return caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(event.request, fetchResponse.clone());
-                    return fetchResponse;
+        // Try cache FIRST for instant response
+        caches.match(event.request).then((cachedResponse) => {
+            if (cachedResponse) {
+                // Serve from cache immediately (offline-first)
+                console.log('[ServiceWorker] Serving from cache:', event.request.url);
+
+                // Update cache in background (stale-while-revalidate)
+                fetch(event.request).then((networkResponse) => {
+                    if (networkResponse && networkResponse.status === 200) {
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(event.request, networkResponse.clone());
+                        });
+                    }
+                }).catch(() => {
+                    // Network failed, but we already served from cache, so ignore
                 });
-            });
-        }).catch(() => {
-            // Fallback for offline
-            if (event.request.destination === 'document') {
-                return caches.match('./index.html');
+
+                return cachedResponse;
             }
-            // Return a proper Response for non-document requests when offline
-            return new Response('Offline', {
-                status: 503,
-                statusText: 'Service Unavailable',
-                headers: new Headers({
-                    'Content-Type': 'text/plain'
-                })
+
+            // Not in cache, try network
+            return fetch(event.request).then((networkResponse) => {
+                if (networkResponse && networkResponse.status === 200) {
+                    const responseToCache = networkResponse.clone();
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(event.request, responseToCache);
+                    });
+                }
+                return networkResponse;
+            }).catch(() => {
+                // Network failed and not in cache - offline fallback
+                if (event.request.destination === 'document') {
+                    return caches.match('./index.html');
+                }
+                return new Response('Offline', {
+                    status: 503,
+                    statusText: 'Service Unavailable',
+                    headers: new Headers({
+                        'Content-Type': 'text/plain'
+                    })
+                });
             });
         })
     );

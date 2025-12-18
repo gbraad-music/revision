@@ -289,6 +289,13 @@ class ThreeJSRenderer {
         }
     }
 
+    handleTrimPeakLevel(level) {
+        // Forward to current preset if exists
+        if (this.currentPreset) {
+            this.currentPreset.trimPeakLevel = level;
+        }
+    }
+
     handleNote(data) {
         // Forward to current preset if exists
         if (this.currentPreset) {

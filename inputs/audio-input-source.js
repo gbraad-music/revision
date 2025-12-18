@@ -62,9 +62,35 @@ class AudioInputSource {
 
             console.log('[AudioInput] AudioContext created - sampleRate:', this.audioContext.sampleRate, 'Hz (requested:', desiredSampleRate, 'Hz)');
 
-            // Create WASM-based DJ-style kill EQ (applied BEFORE analysis)
-            this.killEQ = new WasmKillEQ(this.audioContext);
-            await this.killEQ.initialize();
+            // Create WASM effects processor (handles M1 TRIM, Kill EQ, etc.)
+            this.wasmEffects = new WasmEffectsProcessor(this.audioContext);
+            await this.wasmEffects.initialize();
+
+            // Set inputGain to the WASM effects worklet (which has M1 TRIM built in)
+            this.inputGain = this.wasmEffects.workletNode;
+            this.m1TrimReady = true;
+
+            // Enable M1 TRIM effect (EQ is already enabled by WasmEffectsProcessor.initialize())
+            this.inputGain.port.postMessage({
+                type: 'toggle',
+                data: { name: 'model1_trim', enabled: true }
+            });
+
+            // Set default M1 TRIM value (0.7 = neutral)
+            this.inputGain.port.postMessage({
+                type: 'setParam',
+                data: { effect: 'model1_trim', param: 'drive', value: 0.7 }
+            });
+
+            // Listen for peak level messages from worklet
+            this.inputGain.port.onmessage = (e) => {
+                if (e.data.type === 'peakLevel') {
+                    // Emit event for local handling (if needed)
+                    this.emit('trimPeakLevel', { level: e.data.level });
+                }
+            };
+
+            console.log('[AudioInput] WASM effects worklet ready (M1 TRIM + Kill EQ enabled)');
 
             // Create analyser (mono - for frequency analysis)
             this.analyser = this.audioContext.createAnalyser();
@@ -80,12 +106,6 @@ class AudioInputSource {
             this.analyserRight.fftSize = options.fftSize || 2048;
             this.analyserRight.smoothingTimeConstant = 0.0;
             console.log('[AudioInput] Created stereo analysers for oscilloscope music');
-
-            // Create input gain node (before EQ)
-            // M1 trim: default to 0.7 gain (-3dB) for no drive
-            this.inputGain = this.audioContext.createGain();
-            this.inputGain.gain.value = 0.7; // M1 trim default
-            console.log('[AudioInput] Created input gain node (M1 trim: 0.7 / -3dB)');
 
             // Create gain node for audio monitoring
             this.monitorGain = this.audioContext.createGain();
@@ -103,6 +123,28 @@ class AudioInputSource {
             console.error('[AudioInput] Failed to initialize:', error);
             return false;
         }
+    }
+
+    // Connect the audio processing chain (single place for all connection logic)
+    connectAudioChain(sourceNode, sourceName) {
+        // CRITICAL: Ensure inputGain preserves stereo
+        this.inputGain.channelCount = 2;
+        this.inputGain.channelCountMode = 'max';
+        this.inputGain.channelInterpretation = 'speakers';
+
+        // Connect source to inputGain (WASM effects worklet with M1 TRIM + EQ)
+        sourceNode.connect(this.inputGain);
+
+        // Connect stereo splitter for oscilloscope
+        this.inputGain.connect(this.stereoSplitter);
+        this.stereoSplitter.connect(this.analyserLeft, 0); // Left channel
+        this.stereoSplitter.connect(this.analyserRight, 1); // Right channel
+
+        // Connect outputs (inputGain IS the wasmEffects worklet, so connect it directly)
+        this.inputGain.connect(this.analyser);
+        this.inputGain.connect(this.monitorGain);
+
+        console.log(`[AudioInput] ✓ Audio chain: ${sourceName} → inputGain (M1 TRIM + EQ worklet) → outputs`);
     }
 
     async connectMicrophone(deviceId = null) {
@@ -193,28 +235,8 @@ class AudioInputSource {
             this.microphone.channelInterpretation = 'speakers';
             console.log('[AudioInput] ✓ Set microphone to preserve stereo channels');
 
-            // Connect audio chain with stereo preservation:
-            // microphone → inputGain → stereoSplitter → [analyserLeft, analyserRight] (STEREO for oscilloscope)
-            //                       → killEQ → analyser (mono for frequency analysis)
-            //                               → monitorGain (for audio output)
-            this.microphone.connect(this.inputGain);
-            
-            // CRITICAL: Ensure inputGain preserves stereo
-            this.inputGain.channelCount = 2;
-            this.inputGain.channelCountMode = 'max';
-            this.inputGain.channelInterpretation = 'speakers';
-            
-            // Connect stereo splitter for oscilloscope
-            this.inputGain.connect(this.stereoSplitter);
-            this.stereoSplitter.connect(this.analyserLeft, 0); // Left channel
-            this.stereoSplitter.connect(this.analyserRight, 1); // Right channel
-            console.log('[AudioInput] ✓ Stereo analysers connected from microphone');
-            
-            // Connect the rest of the chain
-            this.inputGain.connect(this.killEQ.getInput());
-            this.killEQ.getOutput().connect(this.analyser);
-            this.killEQ.getOutput().connect(this.monitorGain);
-            console.log('[AudioInput] ✓ Audio chain: microphone → inputGain → [stereoSplitter + KillEQ] → outputs');
+            // Connect audio processing chain
+            this.connectAudioChain(this.microphone, 'microphone');
 
             // Set source type to 'audio' (microphone)
             this.sourceType = 'audio';
@@ -316,16 +338,9 @@ class AudioInputSource {
                 console.log('[AudioInput] ✓ Already connected to this media element - reusing connection');
 
                 // CRITICAL: Reconnect audio chain (may have been disconnected when switching sources)
-                // The mediaElementSource node still exists but may be disconnected
                 console.log('[AudioInput] Reconnecting audio chain...');
                 this.mediaElementSource.disconnect(); // Disconnect first to ensure clean state
-
-                // Route through input gain and Kill EQ for consistent processing
-                this.mediaElementSource.connect(this.inputGain);
-                this.inputGain.connect(this.killEQ.getInput());
-                this.killEQ.getOutput().connect(this.analyser);
-                this.killEQ.getOutput().connect(this.monitorGain);
-                console.log('[AudioInput] ✓ Audio chain reconnected: mediaElement → inputGain → KillEQ → analyser + monitorGain');
+                this.connectAudioChain(this.mediaElementSource, 'mediaElement');
 
                 // Check media state
                 if (audioElement.muted) {
@@ -410,30 +425,8 @@ class AudioInputSource {
             this.mediaElementSource.channelInterpretation = 'speakers';
             console.log('[AudioInput] ✓ Set source to preserve stereo channels');
 
-            // Connect audio chain for media feed with stereo preservation:
-            // mediaElement → inputGain → stereoSplitter → [analyserLeft, analyserRight] (STEREO for oscilloscope)
-            //                          → killEQ → analyser (mono for frequency analysis)
-            //                                  → monitorGain (for audio output)
-            this.mediaElementSource.connect(this.inputGain);
-            
-            // Connect stereo splitter DIRECTLY from inputGain (before KillEQ merges to mono)
-            // CRITICAL: Ensure inputGain also preserves stereo
-            this.inputGain.channelCount = 2;
-            this.inputGain.channelCountMode = 'max';
-            this.inputGain.channelInterpretation = 'speakers';
-            
-            this.inputGain.connect(this.stereoSplitter);
-            this.stereoSplitter.connect(this.analyserLeft, 0); // Left channel
-            this.stereoSplitter.connect(this.analyserRight, 1); // Right channel
-            console.log('[AudioInput] ✓ Stereo splitter connected - L/R channels separated');
-            
-            // Connect the rest of the chain
-            this.inputGain.connect(this.killEQ.getInput());
-            this.killEQ.getOutput().connect(this.analyser);
-            this.killEQ.getOutput().connect(this.monitorGain);
-
-            console.log('[AudioInput] ✓ Audio chain: mediaElement → inputGain → [stereoSplitter + killEQ] → outputs');
-            console.log('[AudioInput] ✓ Stereo analysers connected BEFORE KillEQ merge');
+            // Connect audio processing chain
+            this.connectAudioChain(this.mediaElementSource, 'mediaElement');
             console.log('[AudioInput] Monitoring enabled:', this.monitoringEnabled);
 
             // Set source type to 'media' (media element)
@@ -869,14 +862,41 @@ class AudioInputSource {
             return;
         }
 
-        // Convert 0-100 value to dB (-20dB to +20dB)
-        const db = (value - 50) * 0.4;
+        // Map 0-100 knob to M1 TRIM range
+        // M1 TRIM works around a neutral point (0.7), not from complete silence
+        // 0 → 0.4 (minimum trim, -6dB)
+        // 70 → 0.7 (neutral, 0dB)
+        // 100 → 1.0 (maximum drive, +3dB)
+        let driveValue;
+        if (value < 70) {
+            // Map 0-70 to 0.4-0.7 (linear)
+            driveValue = 0.4 + (value / 70) * 0.3;
+        } else {
+            // Map 70-100 to 0.7-1.0 (linear)
+            driveValue = 0.7 + ((value - 70) / 30) * 0.3;
+        }
 
-        // Convert dB to linear gain
-        const gain = Math.pow(10, db / 20);
+        // Check if M1 TRIM worklet is ready
+        if (!this.m1TrimReady || !this.inputGain || !this.inputGain.port) {
+            console.warn('[AudioInput] M1 TRIM not ready yet - input gain will be set when audio initializes');
+            return;
+        }
 
-        this.inputGain.gain.value = gain;
-        console.log('[AudioInput] Input gain set to', db >= 0 ? '+' : '', db.toFixed(1), 'dB (linear:', gain.toFixed(3), ')');
+        // Send to M1 TRIM worklet
+        this.inputGain.port.postMessage({
+            type: 'setParam',
+            data: { effect: 'model1_trim', param: 'drive', value: driveValue }
+        });
+
+        if (value === 70) {
+            console.log('[AudioInput] M1 TRIM set to NEUTRAL (0.7 / 0dB)');
+        } else if (value < 70) {
+            const db = 20 * Math.log10(driveValue / 0.7);
+            console.log(`[AudioInput] M1 TRIM set to ${db.toFixed(1)}dB (${driveValue.toFixed(2)})`);
+        } else {
+            const db = 20 * Math.log10(driveValue / 0.7);
+            console.log(`[AudioInput] M1 TRIM set to +${db.toFixed(1)}dB DRIVE (${driveValue.toFixed(2)})`);
+        }
     }
 
     setMonitoring(enabled) {
@@ -912,6 +932,7 @@ class AudioInputSource {
             console.log('[AudioInput] ✓ Microphone monitoring DISABLED (silent)');
         }
     }
+
 }
 
 window.AudioInputSource = AudioInputSource;

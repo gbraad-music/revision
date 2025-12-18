@@ -614,14 +614,20 @@
     <div class="section">
         <h2>Audio Input <span id="audio-perm-warning" style="color: #ff6600; font-size: 11px; display: none;">⚠️ Permission required - click PERMISSIONS in main window</span></h2>
 
-        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">Input Gain & EQ</label>
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px;">M1 Trim & EQ</label>
         <div style="display: flex; gap: 15px; margin-bottom: 10px; justify-content: space-around;">
-            <pad-knob id="input-gain" label="GAIN" sublabel="0dB" min="0" max="100" value="50" style="width: 130px; height: 170px;"></pad-knob>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <pad-knob id="input-gain" label="TRIM" sublabel="NEUTRAL" min="0" max="100" value="70" style="width: 130px; height: 170px;"></pad-knob>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                    <div id="trim-drive-led" style="width: 18px; height: 18px; border-radius: 50%; background-color: #300; border: 2px solid #666; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5); transition: background-color 0.05s, box-shadow 0.05s;"></div>
+                    <div style="font-size: 11px; color: #aaa; font-weight: bold; margin-top: 2px;">DRIVE</div>
+                </div>
+            </div>
             <pad-knob id="eq-low" label="LOW" sublabel="<250Hz\n0dB" min="0" max="100" value="50" style="width: 130px; height: 170px;"></pad-knob>
             <pad-knob id="eq-mid" label="MID" sublabel="~1kHz\n0dB" min="0" max="100" value="50" style="width: 130px; height: 170px;"></pad-knob>
             <pad-knob id="eq-high" label="HIGH" sublabel=">4kHz\n0dB" min="0" max="100" value="50" style="width: 130px; height: 170px;"></pad-knob>
         </div>
-        <div class="info" style="margin-bottom: 15px;">GAIN: -20dB to +20dB | EQ: 0 = Kill (-40dB), 50 = Neutral (0dB), 100 = Boost (+12dB)</div>
+        <div class="info" style="margin-bottom: 15px;">TRIM: 70 = Neutral (0.7x), <70 = Reduce, >70 = Drive | EQ: 0 = Kill (-40dB), 50 = Neutral (0dB), 100 = Boost (+12dB)</div>
 
         <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px; margin-top: 15px; border-top: 1px solid #2a2a2a; padding-top: 15px;">Audio Source</label>
         <select id="audio-input-source">

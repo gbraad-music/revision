@@ -223,10 +223,27 @@ class RevisionAppV2 {
         // Restore saved EQ settings
         ['Low', 'Mid', 'High'].forEach(band => {
             const savedValue = this.settings.get(`eq${band}`);
-            if (savedValue && this.audioSource.killEQ) {
+            if (savedValue && this.audioSource.wasmEffects) {
                 const value = parseInt(savedValue);
-                this.audioSource.killEQ.setGain(band.toLowerCase(), value);
+                this.audioSource.wasmEffects.setGain(band.toLowerCase(), value);
                 console.log('[Revision] Restored EQ', band, 'to', value);
+            }
+        });
+
+        // Listen for M1 TRIM peak level events and broadcast to control.html
+        this.audioSource.on('trimPeakLevel', (data) => {
+            // Store peak level for state broadcast
+            this.trimPeakLevel = data.level;
+
+            // Broadcast peak level to control.html for LED indicator
+            this.controlChannel.postMessage({
+                type: 'trimPeakLevel',
+                data: data.level
+            });
+
+            // Forward to ThreeJS renderer for presets
+            if (this.threejsRenderer) {
+                this.threejsRenderer.handleTrimPeakLevel(data.level);
             }
         });
 
@@ -1528,8 +1545,8 @@ class RevisionAppV2 {
                     this.settings.set(`eq${bandCapitalized}`, data.value.toString());
 
                     // Apply to audio source EQ
-                    if (this.audioSource && this.audioSource.killEQ) {
-                        this.audioSource.killEQ.setGain(data.band, data.value);
+                    if (this.audioSource && this.audioSource.wasmEffects) {
+                        this.audioSource.wasmEffects.setGain(data.band, data.value);
 
                         // Calculate dB for logging
                         let db;
@@ -3000,7 +3017,13 @@ class RevisionAppV2 {
             beatActive: beatActive,
             // Program canvas dimensions (for preview aspect ratio in control.html)
             programWidth: programWidth,
-            programHeight: programHeight
+            programHeight: programHeight,
+            // Audio effects values for control knob synchronization
+            inputGain: this.settings.get('inputGain') || '70',
+            eqLow: this.settings.get('eqLow') || '50',
+            eqMid: this.settings.get('eqMid') || '50',
+            eqHigh: this.settings.get('eqHigh') || '50',
+            trimPeakLevel: this.trimPeakLevel || 0
             // NOTE: webrtcMidiDevices removed - sent separately only when changed
         };
 

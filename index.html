@@ -9,7 +9,8 @@
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#000000">
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
     <style>
@@ -365,8 +366,31 @@
         if ('serviceWorker' in navigator && !isElectron) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./service-worker.js')
-                    .then(reg => console.log('[PWA] Service Worker registered:', reg.scope))
+                    .then(reg => {
+                        console.log('[PWA] Service Worker registered:', reg.scope);
+
+                        // Check for updates every time the page loads
+                        // DISABLED: Causes annoying reload loops
+                        // reg.update();
+
+                        // Auto-reload when new service worker takes over
+                        // DISABLED: User can manually reload when needed
+                        // reg.addEventListener('updatefound', () => {
+                        //     const newWorker = reg.installing;
+                        //     newWorker.addEventListener('statechange', () => {
+                        //         if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+                        //             console.log('[PWA] New service worker activated - reloading page');
+                        //             window.location.reload();
+                        //         }
+                        //     });
+                        // });
+                    })
                     .catch(err => console.error('[PWA] Service Worker registration failed:', err));
+
+                // Listen for service worker updates
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    console.log('[PWA] Service worker updated');
+                });
             });
         }
     </script>

@@ -1642,9 +1642,10 @@ if (controlChannel) {
         const { type, data } = event.data;
 
     // Log all non-stateUpdate messages for debugging
-    if (type !== 'stateUpdate') {
-        console.log('[Control] Received message - Type:', type, 'Data:', data);
-    }
+    // DISABLED: Affects MIDI timing performance
+    // if (type !== 'stateUpdate') {
+    //     console.log('[Control] Received message - Type:', type, 'Data:', data);
+    // }
 
     switch (type) {
         case 'stateUpdate':
@@ -1727,6 +1728,10 @@ if (controlChannel) {
                 updateWebRTCStatus('disconnected');
             }
             updateWebRTCMIDIDevices(data);
+            break;
+        case 'trimPeakLevel':
+            // M1 TRIM peak level from worklet - update LED indicator
+            updateTrimLED(data);
             break;
         case 'webrtcMidiAnswer':
             // Answer from app.js - put in UI
@@ -1839,6 +1844,28 @@ function updateState(state) {
     if (state.audioDeviceId !== undefined) {
         const audioSelect = document.getElementById('audio-device-select');
         audioSelect.value = state.audioDeviceId;
+    }
+
+    // Update M1 TRIM knob value from program state
+    if (state.inputGain !== undefined) {
+        const gainKnob = document.getElementById('input-gain');
+        if (gainKnob) {
+            gainKnob.setAttribute('value', state.inputGain);
+        }
+    }
+
+    // Update EQ knob values from program state
+    if (state.eqLow !== undefined) {
+        const lowKnob = document.getElementById('eq-low');
+        if (lowKnob) lowKnob.setAttribute('value', state.eqLow);
+    }
+    if (state.eqMid !== undefined) {
+        const midKnob = document.getElementById('eq-mid');
+        if (midKnob) midKnob.setAttribute('value', state.eqMid);
+    }
+    if (state.eqHigh !== undefined) {
+        const highKnob = document.getElementById('eq-high');
+        if (highKnob) highKnob.setAttribute('value', state.eqHigh);
     }
 
     // Update EQ bars with stale data detection
@@ -2397,30 +2424,32 @@ if (beatMinTimeFader && beatMinTimeValue && beatMaxBpmValue) {
     });
 }
 
-// Input Gain knob (0-100: 0=-20dB, 50=0dB, 100=+20dB)
+// M1 TRIM knob (0-100: 70=neutral(0.7x), <70=reduce, >70=drive)
 const gainKnob = document.getElementById('input-gain');
 if (gainKnob) {
-    // Calculate dB from knob value (-20dB to +20dB)
-    const calculateGainDB = (value) => {
-        return (value - 50) * 0.4; // -20 to +20 dB range
+    // Update sublabel with status
+    const updateTrimSublabel = (value) => {
+        if (value === 70) {
+            gainKnob.setAttribute('sublabel', 'NEUTRAL');
+        } else if (value < 70) {
+            const reduction = ((70 - value) / 70 * 100).toFixed(0);
+            gainKnob.setAttribute('sublabel', `-${reduction}%`);
+        } else {
+            const drive = ((value - 70) / 30 * 100).toFixed(0);
+            gainKnob.setAttribute('sublabel', `DRIVE ${drive}%`);
+        }
     };
 
-    // Update sublabel with dB value
-    const updateGainSublabel = (value) => {
-        const db = calculateGainDB(value);
-        gainKnob.setAttribute('sublabel', `${db >= 0 ? '+' : ''}${db.toFixed(1)}dB`);
-    };
-
-    // Set M1 trim default: 42 = 0.7 gain (-3dB)
-    const m1TrimDefault = 42;
+    // Set M1 trim default: 70 = 0.7 gain (neutral, no drive)
+    const m1TrimDefault = 70;
     gainKnob.setAttribute('value', m1TrimDefault);
-    updateGainSublabel(m1TrimDefault);
+    updateTrimSublabel(m1TrimDefault);
     sendCommand('inputGain', m1TrimDefault);
 
     // Listen for knob changes
     gainKnob.addEventListener('cc-change', (e) => {
         const value = e.detail.value;
-        updateGainSublabel(value);
+        updateTrimSublabel(value);
         sendCommand('inputGain', value);
     });
 }
@@ -3579,6 +3608,80 @@ setInterval(() => {
         }
     }
 }, 100); // Check every 100ms
+
+// M1 TRIM LED state for decay animation
+let trimLEDState = {
+    lastPeakLevel: 0,
+    lastPeakTime: 0,
+    animationRunning: false
+};
+
+// Update M1 TRIM drive LED indicator with decay animation
+function updateTrimLED(peakLevel) {
+    const led = document.getElementById('trim-drive-led');
+    if (!led) return;
+
+    const threshold = 0.5;
+    const now = performance.now() / 1000; // Current time in seconds
+
+    // Update peak if new peak is higher
+    if (peakLevel > trimLEDState.lastPeakLevel) {
+        trimLEDState.lastPeakLevel = peakLevel;
+        trimLEDState.lastPeakTime = now;
+
+        // Debug: Log significant peaks
+        if (peakLevel > 0.9) {
+            console.log('[Control] M1 TRIM clipping! Peak:', peakLevel.toFixed(3));
+        }
+    }
+
+    // Start animation loop if not already running
+    if (!trimLEDState.animationRunning) {
+        trimLEDState.animationRunning = true;
+        animateTrimLED();
+    }
+}
+
+// Animate TRIM LED with 3-second exponential decay
+function animateTrimLED() {
+    const led = document.getElementById('trim-drive-led');
+    if (!led) {
+        trimLEDState.animationRunning = false;
+        return;
+    }
+
+    const now = performance.now() / 1000;
+    const timeSincePeak = now - trimLEDState.lastPeakTime;
+    const decayTime = 3.0; // 3 second decay
+    const threshold = 0.5;
+
+    // Exponential decay (squared for faster initial fade)
+    let decayFactor = Math.max(0, 1 - (timeSincePeak / decayTime));
+    decayFactor = decayFactor * decayFactor; // Square for faster decay
+
+    // Calculate current glow level
+    const currentPeak = trimLEDState.lastPeakLevel * decayFactor;
+    let glow = (currentPeak - threshold) / (1.0 - threshold);
+    glow = Math.max(0, Math.min(glow, 1));
+
+    // Render LED
+    if (glow > 0.01) {
+        const r = Math.round(180 + glow * 75); // 180 -> 255
+        const g = Math.round(20 * (1 - glow)); // 20 -> 0
+        const intensity = 0.3 + glow * 0.7;
+        led.style.backgroundColor = `rgb(${r}, ${g}, 0)`;
+        led.style.boxShadow = `0 0 ${Math.round(10 * glow)}px rgba(255, ${Math.round(100 * (1 - glow))}, 0, ${intensity}), inset 0 0 3px rgba(0,0,0,0.5)`;
+
+        // Continue animation
+        requestAnimationFrame(animateTrimLED);
+    } else {
+        // LED fully decayed - turn off
+        led.style.backgroundColor = '#300';
+        led.style.boxShadow = 'inset 0 0 3px rgba(0,0,0,0.5)';
+        trimLEDState.animationRunning = false;
+        trimLEDState.lastPeakLevel = 0;
+    }
+}
 
 // Update stream statistics
 function updateStreamStats(stats) {

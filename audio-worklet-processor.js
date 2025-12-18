@@ -59,7 +59,7 @@ class WasmEffectsProcessor extends AudioWorkletProcessor {
     
     handleMessage(event) {
         const { type, data } = event.data;
-
+        
         if (type === 'wasmBytes') {
             this.initWasm(data);  // Just the bytes, not JS code
         } else if (type === 'toggle') {
@@ -249,17 +249,15 @@ class WasmEffectsProcessor extends AudioWorkletProcessor {
             rightPeak = Math.max(rightPeak, Math.abs(r));
         }
 
-        // Poll M1 TRIM peak level and VU meters frequently
+        // Poll M1 TRIM peak level and send VU meter updates periodically
         this.peakLevelFrameCounter += frames;
-        if (this.peakLevelFrameCounter >= 2400) { // Check every ~50ms at 48kHz
+        if (this.peakLevelFrameCounter >= 128) {
             this.peakLevelFrameCounter = 0;
-
             const trimEffect = this.effects.get('model1_trim');
             if (trimEffect && trimEffect.enabled) {
                 const getPeakLevelFn = this.wasmModule['$a']; // fx_model1_trim_get_peak_level
                 if (getPeakLevelFn) {
                     const peakLevel = getPeakLevelFn(trimEffect.ptr);
-                    // Send all peak levels - UI will handle decay animation
                     this.port.postMessage({ type: 'peakLevel', level: peakLevel });
                 }
             }

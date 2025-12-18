@@ -1,9 +1,9 @@
 /**
- * WASM-based Kill EQ for Revision
- * Replaces the Web Audio API BiquadFilter implementation with WASM processing
+ * WASM Effects Processor for Revision
+ * Handles M1 TRIM, Kill EQ, and other WASM-based effects
  */
 
-class WasmKillEQ {
+class WasmEffectsProcessor {
     constructor(audioContext) {
         this.audioContext = audioContext;
         this.workletNode = null;
@@ -15,23 +15,20 @@ class WasmKillEQ {
 
     async initialize() {
         try {
-            console.log('[WasmKillEQ] Loading WASM module...');
+            console.log('[WasmEffects] Loading WASM module...');
 
             // Register AudioWorklet processor
             await this.audioContext.audioWorklet.addModule('./effects/audio-worklet-processor.js');
-            console.log('[WasmKillEQ] AudioWorklet registered');
+            console.log('[WasmEffects] AudioWorklet registered');
 
             // Create worklet node
             this.workletNode = new AudioWorkletNode(this.audioContext, 'wasm-effects-processor');
 
-            // Load WASM files
-            const [jsResponse, wasmResponse] = await Promise.all([
-                fetch('./effects/regroove-effects.js'),
-                fetch('./effects/regroove-effects.wasm')
-            ]);
+            // Load WASM file
+            const wasmResponse = await fetch('./effects/regroove-effects.wasm');
 
-            if (!jsResponse.ok || !wasmResponse.ok) {
-                throw new Error('Failed to load WASM files');
+            if (!wasmResponse.ok) {
+                throw new Error('Failed to load WASM file');
             }
 
             const wasmBytes = await wasmResponse.arrayBuffer();
@@ -42,14 +39,14 @@ class WasmKillEQ {
 
                 this.workletNode.port.onmessage = (e) => {
                     if (e.data.type === 'needWasm') {
-                        console.log('[WasmKillEQ] Sending WASM to worklet...');
+                        console.log('[WasmEffects] Sending WASM to worklet...');
                         this.workletNode.port.postMessage({
                             type: 'wasmBytes',
                             data: wasmBytes
                         }, [wasmBytes]);
                     } else if (e.data.type === 'ready') {
                         clearTimeout(timeout);
-                        console.log('[WasmKillEQ] Worklet ready');
+                        console.log('[WasmEffects] Worklet ready');
                         resolve();
                     } else if (e.data.type === 'error') {
                         clearTimeout(timeout);
@@ -77,10 +74,10 @@ class WasmKillEQ {
             this.output = this.workletNode;
             this.isReady = true;
 
-            console.log('[WasmKillEQ] Initialized successfully');
+            console.log('[WasmEffects] Initialized successfully');
             return true;
         } catch (error) {
-            console.error('[WasmKillEQ] Initialization failed:', error);
+            console.error('[WasmEffects] Initialization failed:', error);
             throw error;
         }
     }
@@ -92,7 +89,7 @@ class WasmKillEQ {
      */
     setGain(band, value) {
         if (!this.isReady) {
-            console.warn('[WasmKillEQ] Not initialized yet');
+            console.warn('[WasmEffects] Not initialized yet');
             return;
         }
 
@@ -112,7 +109,7 @@ class WasmKillEQ {
             gain = ((value - 50) / 50) * 12;
         }
 
-        console.log('[WasmKillEQ]', band.toUpperCase(), 'set to', gain.toFixed(1), 'dB (knob:', value + '%)');
+        console.log('[WasmEffects]', band.toUpperCase(), 'set to', gain.toFixed(1), 'dB (knob:', value + '%)');
     }
 
     /**
@@ -163,11 +160,11 @@ class WasmKillEQ {
         this.input = null;
         this.output = null;
         this.isReady = false;
-        console.log('[WasmKillEQ] Destroyed');
+        console.log('[WasmEffects] Destroyed');
     }
 }
 
 // Export for use in other modules
 if (typeof window !== 'undefined') {
-    window.WasmKillEQ = WasmKillEQ;
+    window.WasmEffectsProcessor = WasmEffectsProcessor;
 }
