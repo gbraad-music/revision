@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v122';
+const CACHE_NAME = 'revision-v123';
 const ASSETS = [
     './',
     './index.html',
@@ -7,6 +7,12 @@ const ASSETS = [
     './app.js',
     './control.js',
     './manifest.json',
+    // Effects
+    './effects/regroove_effects.js',
+    './effects/wasm-eq.js',
+    './effects/audio-worklet-processor.js',
+    './effects/regroove-effects.js',
+    './effects/regroove-effects.wasm',
     // External libraries (local files)
     './external/butterchurn.min.js',
     './external/butterchurnPresets.min.js',

@@ -62,8 +62,9 @@ class AudioInputSource {
 
             console.log('[AudioInput] AudioContext created - sampleRate:', this.audioContext.sampleRate, 'Hz (requested:', desiredSampleRate, 'Hz)');
 
-            // Create DJ-style kill EQ (applied BEFORE analysis)
-            this.killEQ = new KillEQ(this.audioContext);
+            // Create WASM-based DJ-style kill EQ (applied BEFORE analysis)
+            this.killEQ = new WasmKillEQ(this.audioContext);
+            await this.killEQ.initialize();
 
             // Create analyser (mono - for frequency analysis)
             this.analyser = this.audioContext.createAnalyser();
@@ -81,9 +82,10 @@ class AudioInputSource {
             console.log('[AudioInput] Created stereo analysers for oscilloscope music');
 
             // Create input gain node (before EQ)
+            // M1 trim: default to 0.7 gain (-3dB) for no drive
             this.inputGain = this.audioContext.createGain();
-            this.inputGain.gain.value = 1.0; // Unity gain (0dB)
-            console.log('[AudioInput] Created input gain node');
+            this.inputGain.gain.value = 0.7; // M1 trim default
+            console.log('[AudioInput] Created input gain node (M1 trim: 0.7 / -3dB)');
 
             // Create gain node for audio monitoring
             this.monitorGain = this.audioContext.createGain();

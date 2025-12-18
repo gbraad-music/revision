@@ -2411,6 +2411,12 @@ if (gainKnob) {
         gainKnob.setAttribute('sublabel', `${db >= 0 ? '+' : ''}${db.toFixed(1)}dB`);
     };
 
+    // Set M1 trim default: 42 = 0.7 gain (-3dB)
+    const m1TrimDefault = 42;
+    gainKnob.setAttribute('value', m1TrimDefault);
+    updateGainSublabel(m1TrimDefault);
+    sendCommand('inputGain', m1TrimDefault);
+
     // Listen for knob changes
     gainKnob.addEventListener('cc-change', (e) => {
         const value = e.detail.value;
