@@ -235,6 +235,11 @@ class RevisionAppV2 {
             // Store peak level for state broadcast
             this.trimPeakLevel = data.level;
 
+            // Debug: log when receiving trim peak events
+            if (data.level > 0.1) {
+                console.log('[App] Received TRIM peak:', data.level.toFixed(3));
+            }
+
             // Broadcast peak level to control.html for LED indicator
             this.controlChannel.postMessage({
                 type: 'trimPeakLevel',
@@ -242,8 +247,10 @@ class RevisionAppV2 {
             });
 
             // Forward to ThreeJS renderer for presets
-            if (this.threejsRenderer) {
-                this.threejsRenderer.handleTrimPeakLevel(data.level);
+            if (this.threeJSRenderer) {
+                this.threeJSRenderer.handleTrimPeakLevel(data.level);
+            } else {
+                console.warn('[App] No ThreeJS renderer to forward TRIM peak to!');
             }
         });
 

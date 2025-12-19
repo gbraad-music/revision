@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThreeJS Preset Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #888;
+        }
+
+        .section {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            font-size: 14px;
+            color: #0066FF;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #container {
+            width: 100%;
+            height: 600px;
+            background: #000;
+            border: 2px solid #0066FF;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+        }
+
+        button {
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #3a3a3a;
+            padding: 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #3a3a3a;
+            border-color: #4a4a4a;
+        }
+
+        button:active {
+            background: #0066FF;
+        }
+
+        .stat {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .stat span {
+            color: #0066FF;
+            font-weight: bold;
+        }
+
+        .info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>THREEJS PRESET TESTER</h1>
+
+    <div class="section">
+        <h2>Preview</h2>
+        <div id="container"></div>
+    </div>
+
+    <div class="section">
+        <h2>Controls</h2>
+        <div class="button-grid">
+            <button onclick="toggleAnimation()">Start/Stop</button>
+            <button onclick="toggleAudio()">Enable Audio</button>
+            <button onclick="toggleBeat()">Toggle Beat</button>
+            <button onclick="triggerTrimPeak()">TRIM Peak!</button>
+            <button onclick="changePreset()">Reload Preset</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Status</h2>
+        <div class="stat">Status: <span id="status">Loading...</span></div>
+        <div class="stat">Preset: <span id="presetName">Hammer</span></div>
+        <div class="stat">TRIM Peak: <span id="trimPeak">0.0</span></div>
+        <div class="stat">Beat Intensity: <span id="beatIntensity">0.0</span></div>
+        <div class="info">Click "TRIM Peak!" to simulate clipping above 0.5 threshold. Click "Toggle Beat" for 120 BPM beats.</div>
+    </div>
+
+    <script src="external/three.min.js"></script>
+    <script src="presets/threejs/BasePreset.js"></script>
+    <script src="presets/threejs/Hammer.js"></script>
+
+    <script>
+        let scene, camera, renderer, preset;
+        let animationId;
+        let isAnimating = false;
+        let audioEnabled = false;
+        let audioContext, leftOscillator, rightOscillator, leftAnalyser, rightAnalyser;
+        let leftGain, rightGain;
+        let beatEnabled = false;
+        let beatInterval = null;
+        let trimPeakLevel = 0;
+
+        // Initialize Three.js
+        function init() {
+            const container = document.getElementById('container');
+            
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(
+                75,
+                container.clientWidth / container.clientHeight,
+                0.1,
+                1000
+            );
+            camera.position.z = 75;
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // Load preset
+            loadPreset();
+
+            document.getElementById('status').textContent = 'Ready';
+        }
+
+        function loadPreset() {
+            // Clear previous preset
+            if (preset && preset.dispose) {
+                preset.dispose();
+            }
+
+            // Create new preset instance
+            preset = new window.HammerPreset();
+            preset.scene = scene;
+            preset.camera = camera;
+            preset.renderer = renderer;
+
+            // Set up audio analysers if available
+            if (audioEnabled && leftAnalyser && rightAnalyser) {
+                preset.audioAnalyserLeft = leftAnalyser;
+                preset.audioAnalyserRight = rightAnalyser;
+            }
+
+            // Initialize
+            try {
+                preset.initialize();
+                console.log('Preset loaded successfully');
+            } catch(error) {
+                console.error('Error loading preset:', error);
+                document.getElementById('status').textContent = 'Error: ' + error.message;
+            }
+        }
+
+        function animate() {
+            if (!isAnimating) return;
+
+            animationId = requestAnimationFrame(animate);
+
+            // Update preset
+            if (preset && preset.update) {
+                const deltaTime = 0.016; // ~60fps
+
+                // Update TRIM peak level (with decay)
+                preset.trimPeakLevel = trimPeakLevel;
+                trimPeakLevel *= 0.9; // Decay
+
+                preset.update(deltaTime);
+
+                // Display debug info
+                document.getElementById('trimPeak').textContent = trimPeakLevel.toFixed(3);
+            }
+
+            // Render
+            renderer.render(scene, camera);
+        }
+
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            if (isAnimating) {
+                document.getElementById('status').textContent = 'Animating';
+                animate();
+            } else {
+                document.getElementById('status').textContent = 'Paused';
+                if (animationId) {
+                    cancelAnimationFrame(animationId);
+                }
+            }
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            
+            if (audioEnabled) {
+                initAudio();
+                document.getElementById('status').textContent = 'Audio Enabled';
+            } else {
+                stopAudio();
+                document.getElementById('status').textContent = 'Audio Disabled';
+            }
+        }
+
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // Create stereo oscillators for testing
+            // Left channel: 440 Hz sine wave
+            leftOscillator = audioContext.createOscillator();
+            leftOscillator.frequency.value = 440;
+            leftOscillator.type = 'sine';
+
+            // Right channel: 550 Hz sine wave
+            rightOscillator = audioContext.createOscillator();
+            rightOscillator.frequency.value = 550;
+            rightOscillator.type = 'sine';
+
+            // Create gain nodes for volume control
+            leftGain = audioContext.createGain();
+            rightGain = audioContext.createGain();
+            
+            // Modulate volume randomly to simulate audio
+            setInterval(() => {
+                if (audioEnabled) {
+                    leftGain.gain.value = 0.1 + Math.random() * 0.3;
+                    rightGain.gain.value = 0.1 + Math.random() * 0.3;
+                }
+            }, 100);
+
+            // Create analysers
+            leftAnalyser = audioContext.createAnalyser();
+            leftAnalyser.fftSize = 2048;
+            rightAnalyser = audioContext.createAnalyser();
+            rightAnalyser.fftSize = 2048;
+
+            // Create merger and splitter for stereo
+            const merger = audioContext.createChannelMerger(2);
+            const splitter = audioContext.createChannelSplitter(2);
+
+            // Connect left channel
+            leftOscillator.connect(leftGain);
+            leftGain.connect(leftAnalyser);
+            leftAnalyser.connect(merger, 0, 0);
+
+            // Connect right channel
+            rightOscillator.connect(rightGain);
+            rightGain.connect(rightAnalyser);
+            rightAnalyser.connect(merger, 0, 1);
+
+            // Connect to destination for audio output
+            merger.connect(audioContext.destination);
+
+            // Start oscillators
+            leftOscillator.start();
+            rightOscillator.start();
+
+            // Update preset with analysers
+            if (preset) {
+                preset.audioAnalyserLeft = leftAnalyser;
+                preset.audioAnalyserRight = rightAnalyser;
+            }
+
+            console.log('Audio initialized - Left: 440Hz, Right: 550Hz');
+        }
+
+        function stopAudio() {
+            if (leftOscillator) {
+                leftOscillator.stop();
+                leftOscillator = null;
+            }
+            if (rightOscillator) {
+                rightOscillator.stop();
+                rightOscillator = null;
+            }
+            
+            leftAnalyser = null;
+            rightAnalyser = null;
+
+            if (preset) {
+                preset.audioAnalyserLeft = null;
+                preset.audioAnalyserRight = null;
+            }
+        }
+
+        function changePreset() {
+            loadPreset();
+            document.getElementById('status').textContent = 'Preset Reloaded';
+        }
+
+        function toggleBeat() {
+            beatEnabled = !beatEnabled;
+
+            if (beatEnabled) {
+                // Send beat at 120 BPM (500ms interval)
+                beatInterval = setInterval(() => {
+                    const intensity = 0.5 + Math.random() * 0.5;
+                    if (preset && preset.onBeat) {
+                        preset.onBeat(intensity);
+                        document.getElementById('beatIntensity').textContent = intensity.toFixed(3);
+                    }
+                }, 500);
+                document.getElementById('status').textContent = 'Beat Enabled';
+            } else {
+                if (beatInterval) {
+                    clearInterval(beatInterval);
+                    beatInterval = null;
+                }
+                document.getElementById('status').textContent = 'Beat Disabled';
+                document.getElementById('beatIntensity').textContent = '0.0';
+            }
+        }
+
+        function triggerTrimPeak() {
+            // Simulate TRIM peak above clipping threshold
+            trimPeakLevel = 0.7 + Math.random() * 0.3; // 0.7 to 1.0
+            console.log('[Test] TRIM peak triggered:', trimPeakLevel.toFixed(3));
+            document.getElementById('trimPeak').textContent = trimPeakLevel.toFixed(3);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const container = document.getElementById('container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // Initialize on load
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
