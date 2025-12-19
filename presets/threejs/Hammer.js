@@ -64,7 +64,7 @@ window.HammerPreset = class extends ThreeJSBasePreset {
         this.hammer.add(this.hammerBand);
 
         // Position hammer group - pivot point (y=0 in group) is the grip point
-        this.hammer.position.set(0, -15, 0);
+        this.hammer.position.set(0, -20, 0);
         this.scene.add(this.hammer);
 
         // Add point light to hammer for dramatic effect
