@@ -1207,6 +1207,13 @@ class RevisionAppV2 {
                             this.rg909Drum = new RG909Drum(this.audioSource.audioContext);
                             await this.rg909Drum.initialize();
                             await this.rg909Drum.setAudible(audibleSetting);
+
+                            // Register with InputManager if reactive input is MIDI
+                            if (this.reactiveInputSource === 'midi') {
+                                console.log('[Revision] 🥁 Registering RG909 Drum with InputManager');
+                                this.inputManager.registerSource('rg909-drum', this.rg909Drum);
+                            }
+
                             console.log('[Revision] ✓ RG909 Drum restored');
                         }
 
@@ -1272,10 +1279,10 @@ class RevisionAppV2 {
                         }
 
                         // Re-register with input manager if it was active
-                        const reactiveSource = this.settings.get('visualAudioSource');
-                        if (reactiveSource === 'midi') {
+                        if (this.reactiveInputSource === 'midi') {
                             this.inputManager.unregisterSource('midi-synth');
                             this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
+                            console.log('[Revision] ✓ Re-registered new synth with InputManager');
                         }
 
                         console.log('[Revision] ✓ Synth recreated with new engine');
@@ -1347,6 +1354,14 @@ class RevisionAppV2 {
                         console.log('[Revision] Reactive input set to AUDIO (uses current audio input)');
                         // Audio frequency data drives visualization
                         // The audio input source determines WHERE the audio comes from
+
+                        // Unregister MIDI synth sources from frequency analysis
+                        if (this.midiAudioSynth) {
+                            this.inputManager.unregisterSource('midi-synth');
+                        }
+                        if (this.rg909Drum) {
+                            this.inputManager.unregisterSource('rg909-drum');
+                        }
                     } else if (data === 'midi') {
                         console.log('[Revision] Reactive input set to MIDI SYNTHESIZER');
                         // MIDI synth frequency data drives visualization
@@ -1355,6 +1370,18 @@ class RevisionAppV2 {
                         if (!synthEnabled) {
                             console.log('[Revision] Auto-enabling MIDI synth for reactive input');
                             // Will be handled by existing midiSynthEnable logic
+                        }
+
+                        // Register MIDI synth for frequency analysis if it exists
+                        if (this.midiAudioSynth) {
+                            console.log('[Revision] 🎹 Registering MIDI synth with InputManager');
+                            this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
+                        }
+
+                        // Register RG909 drum for frequency analysis if it exists
+                        if (this.rg909Drum) {
+                            console.log('[Revision] 🥁 Registering RG909 Drum with InputManager');
+                            this.inputManager.registerSource('rg909-drum', this.rg909Drum);
                         }
                     }
 
@@ -1684,6 +1711,12 @@ class RevisionAppV2 {
                         // Sync with current midiSynthAudible setting
                         const audible = this.settings.get('midiSynthAudible') === 'true';
                         await this.rg909Drum.setAudible(audible);
+
+                        // Register with InputManager for frequency analysis
+                        if (this.reactiveInputSource === 'midi') {
+                            console.log('[Revision] 🥁 Registering RG909 Drum with InputManager');
+                            this.inputManager.registerSource('rg909-drum', this.rg909Drum);
+                        }
 
                         console.log('[Revision] ✓ RG909 Drum ready');
                     }
@@ -3850,11 +3883,31 @@ class RevisionAppV2 {
 
             // Store last frequency data for EQ display in control.html
             if (data.bands) {
-                this.lastFrequencyData = {
+                const newData = {
                     bass: data.bands.bass || 0,
                     mid: data.bands.mid || 0,
                     high: data.bands.high || 0
                 };
+
+                // Apply decay/smoothing to prevent flashing when MIDI notes stop
+                // Use previous values with decay if new values are lower
+                if (this.lastFrequencyData) {
+                    const decay = 0.8; // Keep 80% of previous value
+                    this.lastFrequencyData = {
+                        bass: Math.max(newData.bass, this.lastFrequencyData.bass * decay),
+                        mid: Math.max(newData.mid, this.lastFrequencyData.mid * decay),
+                        high: Math.max(newData.high, this.lastFrequencyData.high * decay)
+                    };
+                } else {
+                    this.lastFrequencyData = newData;
+                }
+
+                // Broadcast to control.html (throttled to 5Hz to prevent flashing)
+                const now = performance.now();
+                if (!this.lastFrequencyBroadcast || (now - this.lastFrequencyBroadcast) > 200) {
+                    this.lastFrequencyBroadcast = now;
+                    this.broadcastState();
+                }
             }
 
             // Only pass to active renderer

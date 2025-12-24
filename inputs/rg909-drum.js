@@ -7,8 +7,12 @@ class RG909Drum {
         this.workletNode = null;
         this.masterGain = null;
         this.speakerGain = null;
+        this.frequencyAnalyzer = null;
         this.isActive = false;
         this.isAudible = false;
+
+        // Event emitter (for InputManager integration)
+        this.listeners = new Map();
 
         // WASM state
         this.wasmReady = false;
@@ -17,6 +21,19 @@ class RG909Drum {
     async initialize() {
         console.log('[RG909Drum] 🥁 Initializing WASM Drum Synth...');
         try {
+            // Create reusable frequency analyzer
+            this.frequencyAnalyzer = new FrequencyAnalyzer(this.audioContext, {
+                fftSize: 8192,
+                smoothing: 0.0,
+                updateRate: 50,
+                sourceName: 'midi-synth'
+            });
+
+            // Forward frequency analyzer events to our listeners
+            this.frequencyAnalyzer.on('*', (event) => {
+                this.emit('*', event);
+            });
+
             // Master gain
             this.masterGain = this.audioContext.createGain();
             this.masterGain.gain.value = 1.0;
@@ -26,8 +43,10 @@ class RG909Drum {
             this.speakerGain.gain.value = 0; // Start muted
             this.speakerGain.connect(this.audioContext.destination);
 
-            // Audio graph: worklet → masterGain → speakerGain → destination
-            this.masterGain.connect(this.speakerGain);
+            // Audio graph: worklet → masterGain → analyzer → speakerGain → destination
+            this.masterGain.connect(this.frequencyAnalyzer.inputGain);
+            this.frequencyAnalyzer.connectTo(this.speakerGain);
+            console.log('[RG909Drum] Audio graph connected: worklet → masterGain → analyzer → speakerGain → destination');
 
             // Load and register AudioWorklet processor
             await this.audioContext.audioWorklet.addModule('synths/drum-worklet-processor.js');
@@ -51,6 +70,7 @@ class RG909Drum {
             };
 
             this.isActive = true;
+            this.frequencyAnalyzer.start();
 
             console.log('[RG909Drum] Initialized - waiting for WASM...');
             return true;
@@ -146,6 +166,13 @@ class RG909Drum {
 
         this.isActive = false;
 
+        // Stop and destroy frequency analyzer
+        if (this.frequencyAnalyzer) {
+            this.frequencyAnalyzer.stop();
+            this.frequencyAnalyzer.destroy();
+            this.frequencyAnalyzer = null;
+        }
+
         // Disconnect audio graph
         if (this.workletNode) {
             this.workletNode.disconnect();
@@ -158,5 +185,34 @@ class RG909Drum {
         }
 
         console.log('[RG909Drum] Destroyed');
+    }
+
+    // Event emitter methods (for InputManager integration)
+    on(event, callback) {
+        if (!this.listeners.has(event)) {
+            this.listeners.set(event, []);
+        }
+        this.listeners.get(event).push(callback);
+    }
+
+    off(event, callback) {
+        if (!this.listeners.has(event)) return;
+        const callbacks = this.listeners.get(event);
+        const index = callbacks.indexOf(callback);
+        if (index > -1) {
+            callbacks.splice(index, 1);
+        }
+    }
+
+    emit(event, data) {
+        if (!this.listeners.has(event)) return;
+        const callbacks = this.listeners.get(event);
+        for (const callback of callbacks) {
+            try {
+                callback(data);
+            } catch (error) {
+                console.error(`[RG909Drum] Error in ${event} listener:`, error);
+            }
+        }
     }
 }

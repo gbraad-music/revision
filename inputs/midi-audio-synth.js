@@ -163,7 +163,7 @@ class MIDIAudioSynth {
         voice.note = note;
         voice.active = true;
 
-        console.log('[MIDIAudioSynth] 🎵 Note ON:', noteName + octave, '(MIDI', note + ') Vel:', velocity, 'Freq:', frequency.toFixed(1), 'Hz');
+        // console.log('[MIDIAudioSynth] 🎵 Note ON:', noteName + octave, '(MIDI', note + ') Vel:', velocity, 'Freq:', frequency.toFixed(1), 'Hz');
     }
 
     // Handle MIDI note off
