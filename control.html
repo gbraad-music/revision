@@ -777,6 +777,15 @@
             Triggers a kick drum on each beat (from MIDI clock OR audio beat detection). Enable "MIDI synth audio output" in PROGRAM Output to hear it.
         </div>
 
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Drum Engine</label>
+        <select id="beat-kick-processor">
+            <option value="oscillator">Simple (Web Audio Oscillators)</option>
+            <option value="rg909">RG909 (WASM Drum Synth)</option>
+        </select>
+        <div class="info" style="margin-top: 5px;">
+            Choose which sound engine generates the beat kick. RG909 provides authentic TR-909 bass drum sound.
+        </div>
+
         <label style="display: block; margin-top: 10px; font-size: 12px;">
             <input type="checkbox" id="midi-synth-auto-feed" style="width: auto; margin-right: 5px;">
             Auto-feed notes from Reactive Output to MIDI synth

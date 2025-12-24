@@ -17,6 +17,7 @@ class RevisionAppV2 {
         this.midiOutputSource = null; // MIDI output for audio-reactive MIDI generation
         this.audioSource = null;
         this.midiAudioSynth = null; // MIDI-to-audio synthesizer for Milkdrop
+        this.rg909Drum = null; // RG909 drum synthesizer for beat kicks
         this.mediaFeedElement = null; // Media element (audio/video) for reactive input from file
         this.oscClient = new OSCClient();
 
@@ -1199,6 +1200,16 @@ class RevisionAppV2 {
 
                         console.log('[Revision] ✓ MIDI audio synthesizer ENABLED - audible:', audibleSetting);
 
+                        // Initialize RG909Drum if beat processor is set to rg909
+                        const beatProcessor = this.settings.get('beatKickProcessor') || 'oscillator';
+                        if (beatProcessor === 'rg909' && !this.rg909Drum) {
+                            console.log('[Revision] Restoring RG909 Drum from settings...');
+                            this.rg909Drum = new RG909Drum(this.audioSource.audioContext);
+                            await this.rg909Drum.initialize();
+                            await this.rg909Drum.setAudible(audibleSetting);
+                            console.log('[Revision] ✓ RG909 Drum restored');
+                        }
+
                         // If reactive input is set to MIDI, register the synth
                         if (this.reactiveInputSource === 'midi') {
                             console.log('[Revision] 🟢 Registering MIDI synth with InputManager (reactive input is MIDI)');
@@ -1518,6 +1529,9 @@ class RevisionAppV2 {
                     if (this.midiAudioSynth) {
                         await this.midiAudioSynth.setAudible(data === 'true');
                     }
+                    if (this.rg909Drum) {
+                        await this.rg909Drum.setAudible(data === 'true');
+                    }
 
                     // Update display immediately
                     this.broadcastState();
@@ -1655,6 +1669,25 @@ class RevisionAppV2 {
                     // Only "Enable MIDI Synthesizer" controls synth lifecycle
 
                     // Update display immediately
+                    this.broadcastState();
+                    break;
+                case 'beatKickProcessor':
+                    console.log('[Revision] Beat Kick Processor:', data);
+                    this.settings.set('beatKickProcessor', data);
+
+                    // Initialize RG909Drum if selected and not already created
+                    if (data === 'rg909' && !this.rg909Drum) {
+                        console.log('[Revision] Creating RG909 Drum synth...');
+                        this.rg909Drum = new RG909Drum(this.audioSource.audioContext);
+                        await this.rg909Drum.initialize();
+
+                        // Sync with current midiSynthAudible setting
+                        const audible = this.settings.get('midiSynthAudible') === 'true';
+                        await this.rg909Drum.setAudible(audible);
+
+                        console.log('[Revision] ✓ RG909 Drum ready');
+                    }
+
                     this.broadcastState();
                     break;
                 case 'midiInputSelect':
@@ -3031,6 +3064,7 @@ class RevisionAppV2 {
             midiSynthAutoFeed: this.settings.get('midiSynthAutoFeed') === 'true' ? 'true' : 'false',
             midiSynthFeedInput: this.settings.get('midiSynthFeedInput') === 'true' ? 'true' : 'false',
             midiSynthBeatKick: this.settings.get('midiSynthBeatKick') === 'true' ? 'true' : 'false',
+            beatKickProcessor: this.settings.get('beatKickProcessor') || 'oscillator',
             audioNoteDuration: this.settings.get('audioNoteDuration') || '60',
             beatThreshold: this.settings.get('beatThreshold') || '1.6',
             beatMinTime: this.settings.get('beatMinTime') || '400',
@@ -3558,12 +3592,19 @@ class RevisionAppV2 {
             this.beatPhase = data.phase;
             this.lastBeatTime = performance.now(); // Track beat for control.html indicator
 
-            // Feed beats to MIDI synthesizer (generates kick drum if enabled)
+            // Feed beats to selected beat kick processor (generates kick drum if enabled)
             const beatKickEnabled = this.settings.get('midiSynthBeatKick') === 'true';
+            const beatKickProcessor = this.settings.get('beatKickProcessor') || 'oscillator';
 
             // CRITICAL: Trigger kick for ANY beat source (audio OR midi), not just MIDI
-            if (this.midiAudioSynth && beatKickEnabled) {
-                this.midiAudioSynth.handleBeat(data.intensity || 1.0);
+            if (beatKickEnabled) {
+                if (beatKickProcessor === 'rg909' && this.rg909Drum) {
+                    // Use RG909 drum for beat kicks
+                    this.rg909Drum.handleBeat(data.intensity || 1.0);
+                } else if (this.midiAudioSynth) {
+                    // Use synth's simple oscillator for beat kicks
+                    this.midiAudioSynth.handleBeat(data.intensity || 1.0);
+                }
             }
 
             // Send MIDI kick notes to MIDI output (if enabled in Reactive Output)

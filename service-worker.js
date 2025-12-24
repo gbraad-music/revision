@@ -1,29 +1,79 @@
-const CACHE_NAME = 'revision-v171';
+const CACHE_NAME = 'revision-v178';
 const ASSETS = [
+    // Root files
     './',
     './index.html',
+    './control.html',
     './manifest.json',
     './favicon.svg',
     './favicon.ico',
     './favicon-96x96.png',
     './apple-touch-icon.png',
     './icon-192x192.png',
-    './icon-512x512.png',
-    './effects/effects-processor.js',
-    './effects/audio-worklet-processor.js',
-    './effects/regroove-effects.js',
-    './effects/regroove-effects.wasm',
-    './effects/effect-eq.js',
-    './effects/effect-m1trim.js',
-    './synths/synth-worklet-processor.js',
-    './synths/rgresonate1-synth.js',
-    './synths/rgresonate1-synth.wasm',
+    './app.js',
+    './main.js',
+    './control.js',
+
+    // External libraries
+    './external/three.min.js',
+    './external/butterchurn.min.js',
+    './external/butterchurnPresets.min.js',
+    './external/hls.min.js',
+
+    // Utils
+    './utils/library-loader.js',
+    './utils/mobile-compat.js',
+    './utils/settings-manager.js',
+    './utils/wake-lock.js',
+    './utils/osc-client.js',
+    './utils/midi-manager.js',
+    './utils/remote-channel.js',
+    './utils/midi-rtc-bridge.js',
     './utils/pad-knob.js',
     './utils/svg-slider.js',
     './utils/fader-components.js',
-    './app.js',
-    './main.js',
-    './control.js'
+
+    // Inputs
+    './inputs/input-manager.js',
+    './inputs/midi-input-source.js',
+    './inputs/midi-output-source.js',
+    './inputs/webrtc-midi-source.js',
+    './inputs/audio-input-source.js',
+    './inputs/frequency-analyzer.js',
+    './inputs/midi-audio-synth.js',
+    './inputs/rgresonate1-synth.js',
+    './inputs/rg909-drum.js',
+
+    // Effects
+    './effects/effects-processor.js',
+    './effects/audio-worklet-processor.js',
+    './effects/regroove_effects.js',
+    './effects/regroove-effects.wasm',
+    './effects/effect-eq.js',
+    './effects/effect-m1trim.js',
+
+    // Synths (WASM binaries and worklet processors)
+    './synths/synth-worklet-processor.js',
+    './synths/drum-worklet-processor.js',
+    './synths/rgresonate1-synth.wasm',
+    './synths/rg909-drum.wasm',
+
+    // Renderers
+    './renderers/milkdrop-renderer.js',
+    './renderers/threejs-renderer.js',
+    './renderers/video-renderer.js',
+    './renderers/stream-renderer.js',
+    './renderers/webpage-renderer.js',
+
+    // Scenes
+    './scenes/scene-manager.js',
+
+    // Presets
+    './presets/preset-manager.js',
+    './presets/threejs/BasePreset.js',
+
+    // Visuals
+    './visuals/renderer.js'
 ];
 
 // Install event - cache assets

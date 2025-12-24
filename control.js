@@ -1955,6 +1955,10 @@ function updateState(state) {
     if (state.midiSynthBeatKick !== undefined) {
         document.getElementById('midi-synth-beat-kick').checked = state.midiSynthBeatKick === 'true';
     }
+    if (state.beatKickProcessor !== undefined) {
+        const selector = document.getElementById('beat-kick-processor');
+        if (selector) selector.value = state.beatKickProcessor;
+    }
     if (state.audioNoteDuration !== undefined) {
         const fader = document.getElementById('audio-note-duration');
         const valueDisplay = document.getElementById('audio-note-duration-value');
@@ -2498,6 +2502,11 @@ if (gainKnob) {
 // MIDI synth beat kick toggle
 document.getElementById('midi-synth-beat-kick').addEventListener('change', (e) => {
     sendCommand('midiSynthBeatKick', e.target.checked ? 'true' : 'false');
+});
+
+// Beat kick processor selection
+document.getElementById('beat-kick-processor').addEventListener('change', (e) => {
+    sendCommand('beatKickProcessor', e.target.value);
 });
 
 // MIDI synth input device selection (separate from clock/SPP)

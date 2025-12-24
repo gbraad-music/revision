@@ -13,7 +13,7 @@ nativeTheme.themeSource = 'dark';
 let mainWindow;
 let httpServer;
 let wss;
-const PORT = 2005; // Port 2005 - Tribute to the demoscene
+const PORT = 2011; // Port 2011 - Tribute to the demoscene
 
 function createWindow() {
   // Remove menu bar completely
@@ -29,7 +29,7 @@ function createWindow() {
       enableBlinkFeatures: 'WebMIDIAPI'
     },
     backgroundColor: '#000000',
-    title: 'Revision - Audio-Reactive VJ Tool',
+    title: 'Revision - Audio-Reactive MIDI VJ Tool',
     autoHideMenuBar: true,
     frame: true,
     darkTheme: true

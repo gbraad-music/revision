@@ -20,7 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
-const PORT = process.argv[2] || 2005; // Port 2005 - Tribute to the demoscene
+const PORT = process.argv[2] || 2011; // Port 2011 - Tribute to the demoscene
 const ROOT_DIR = __dirname;
 
 // MIME types for common files
