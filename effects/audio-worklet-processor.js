@@ -1,5 +1,5 @@
 // AudioWorklet Processor for WASM effects
-// The URL to the WASM file is passed via the constructor
+// With MINIFY_WASM_IMPORTED_MODULES=0, function names are preserved!
 
 class WasmEffectsProcessor extends AudioWorkletProcessor {
     constructor(options) {
@@ -13,52 +13,14 @@ class WasmEffectsProcessor extends AudioWorkletProcessor {
         this.dcBlockerY = [0, 0]; // Previous output for DC blocker
         this.peakLevelFrameCounter = 0; // Counter for peak level polling
 
-        // WASM function name mappings (mangled keys from Emscripten after rebuild)
-        this.WASM_FUNCS = {
-            create: {
-                model1_trim: 'Ta', model1_sculpt: 'qb', model1_lpf: 'ib', model1_hpf: 'ab',
-                distortion: 'd', filter: 'p', eq: 'z', compressor: 'L',
-                delay: '$', reverb: 'la', phaser: 'xa', stereo_widen: 'Ja'
-            },
-            set_enabled: {
-                model1_trim: 'Za', model1_hpf: 'eb', model1_lpf: 'mb', model1_sculpt: 'ub',
-                distortion: 'j', filter: 't', eq: 'D', compressor: 'P',
-                delay: 'da', reverb: 'pa', phaser: 'Ba', stereo_widen: 'Ma'
-            },
-            reset: {
-                model1_trim: 'Va', model1_hpf: 'cb', model1_lpf: 'kb', model1_sculpt: 'sb',
-                distortion: 'f', filter: 'q', eq: 'A', compressor: 'M',
-                delay: 'ba', reverb: 'na', phaser: 'za', stereo_widen: 'La'
-            },
-            process: {
-                model1_trim: 'Wa', model1_hpf: 'db', model1_lpf: 'lb', model1_sculpt: 'tb',
-                distortion: 'i', filter: 's', eq: 'C', compressor: 'O',
-                delay: 'ca', reverb: 'oa', phaser: 'Aa', stereo_widen: 'Sa'
-            },
-            params: {
-                model1_trim: { drive: 'Xa' },
-                model1_hpf: { cutoff: 'fb' },
-                model1_lpf: { cutoff: 'nb' },
-                model1_sculpt: { frequency: 'vb', gain: 'wb' },
-                distortion: { drive: 'k', mix: 'l' },
-                filter: { cutoff: 'u', resonance: 'v' },
-                eq: { low: 'E', mid: 'F', high: 'G' },
-                compressor: { threshold: 'Q', ratio: 'R', attack: 'S', release: 'T', makeup: 'U' },
-                delay: { time: 'ea', feedback: 'fa', mix: 'ga' },
-                reverb: { size: 'qa', damping: 'ra', mix: 'sa' },
-                phaser: { rate: 'Ca', depth: 'Da', feedback: 'Ea' },
-                stereo_widen: { width: 'Na', mix: 'Oa' }
-            }
-        };
-
         this.port.onmessage = this.handleMessage.bind(this);
 
         // Get WASM bytes from the main thread
         this.port.postMessage({ type: 'needWasm' });
     }
-    
+
     handleMessage(event) {
-        const { type, data } = event.data;
+        const { type, data, state } = event.data;
 
         if (type === 'wasmBytes') {
             this.initWasm(data);  // Just the bytes, not JS code
@@ -66,43 +28,48 @@ class WasmEffectsProcessor extends AudioWorkletProcessor {
             this.toggleEffect(data.name, data.enabled);
         } else if (type === 'setParam') {
             this.setParameter(data.effect, data.param, data.value);
+        } else if (type === 'getState') {
+            const currentState = this.getEffectState();
+            this.port.postMessage({ type: 'state', state: currentState });
+        } else if (type === 'setState') {
+            this.setEffectState(state);
         }
     }
-    
-    async initWasm(wasmBytes) {
+
+    async initWasm(wasmData) {
         try {
-            console.log('[Worklet] Compiling WASM...');
-            
-            // Compile and instantiate WASM directly
-            const wasmModule = await WebAssembly.compile(wasmBytes);
-            const instance = await WebAssembly.instantiate(wasmModule, {
-                a: {
-                    a: (size) => { // _emscripten_resize_heap
-                        console.warn('[Worklet] Heap resize requested:', size);
-                        return false;
-                    }
-                }
+            console.log('[Worklet] Loading Emscripten module...');
+
+            const moduleCode = wasmData.jsCode;
+            const wasmBytes = wasmData.wasmBytes;
+
+            // Eval the Emscripten loader and capture memory reference
+            // Modify code to expose wasmMemory before it returns
+            const modifiedCode = moduleCode.replace(
+                ';return moduleRtn',
+                ';globalThis.__wasmMemory=wasmMemory;return moduleRtn'
+            );
+
+            eval(modifiedCode + '\nthis.RegrooveEffectsModule = RegrooveEffectsModule;');
+
+            // Call the factory with WASM bytes
+            this.wasmModule = await this.RegrooveEffectsModule({
+                wasmBinary: wasmBytes
             });
-            
-            console.log('[Worklet] WASM instantiated');
-            
-            // Create module wrapper
-            this.wasmModule = {
-                ...instance.exports,
-                HEAPF32: new Float32Array(instance.exports.b.buffer), // memory.buffer
-                _malloc: instance.exports.e,
-                _free: instance.exports.h
-            };
-            
-            console.log('[Worklet] WASM ready');
-            
+
+            // Capture the memory reference that was exposed
+            this.wasmMemory = globalThis.__wasmMemory;
+            delete globalThis.__wasmMemory; // Clean up
+
+            console.log('[Worklet] WASM ready!');
+
             // Allocate audio buffer
             this.audioBufferPtr = this.wasmModule._malloc(this.bufferSize * 2 * 4);
             console.log(`[Worklet] Buffer: 0x${this.audioBufferPtr.toString(16)}`);
-            
+
             // Initialize all effects
             this.initEffects();
-            
+
             this.port.postMessage({ type: 'ready' });
             console.log('[Worklet] ✅ Ready!');
         } catch (error) {
@@ -110,54 +77,65 @@ class WasmEffectsProcessor extends AudioWorkletProcessor {
             this.port.postMessage({ type: 'error', error: error.message });
         }
     }
-    
+
     initEffects() {
         // Processing order: TRIM → SCULPT → LPF → HPF → other effects
-        const effectNames = [
-            'model1_trim', 'model1_sculpt', 'model1_lpf', 'model1_hpf',
-            'distortion', 'filter', 'eq', 'compressor',
-            'delay', 'reverb', 'phaser', 'stereo_widen'
+        const effectConfigs = [
+            { name: 'model1_trim', prefix: '_fx_model1_trim', defaultEnabled: true },
+            { name: 'model1_sculpt', prefix: '_fx_model1_sculpt', defaultEnabled: true },
+            { name: 'model1_lpf', prefix: '_fx_model1_lpf', defaultEnabled: true },
+            { name: 'model1_hpf', prefix: '_fx_model1_hpf', defaultEnabled: true },
+            { name: 'distortion', prefix: '_fx_distortion', defaultEnabled: false },
+            { name: 'limiter', prefix: '_fx_limiter', defaultEnabled: false },
+            { name: 'filter', prefix: '_fx_filter', defaultEnabled: false },
+            { name: 'eq', prefix: '_fx_eq', defaultEnabled: false },
+            { name: 'compressor', prefix: '_fx_compressor', defaultEnabled: false },
+            { name: 'delay', prefix: '_fx_delay', defaultEnabled: false },
+            { name: 'reverb', prefix: '_fx_reverb', defaultEnabled: false },
+            { name: 'phaser', prefix: '_fx_phaser', defaultEnabled: false },
+            { name: 'stereo_widen', prefix: '_fx_stereo_widen', defaultEnabled: false },
+            { name: 'ring_mod', prefix: '_fx_ring_mod', defaultEnabled: false },
+            { name: 'vocoder', prefix: '_fx_vocoder', defaultEnabled: false },
+            { name: 'pitchshift', prefix: '_fx_pitchshift', defaultEnabled: false }
         ];
 
-        for (const name of effectNames) {
-            const createFn = this.wasmModule[this.WASM_FUNCS.create[name]];
+        for (const config of effectConfigs) {
+            const createFn = this.wasmModule[config.prefix + '_create'];
             if (createFn) {
                 const ptr = createFn();
-                // All MODEL 1 effects enabled by default
-                const isModel1 = name.startsWith('model1_');
-                const defaultEnabled = isModel1;
 
-                this.effects.set(name, {
+                this.effects.set(config.name, {
                     ptr: ptr,
-                    name: name,
-                    enabled: defaultEnabled
+                    name: config.name,
+                    prefix: config.prefix,
+                    enabled: config.defaultEnabled
                 });
 
                 // Actually enable MODEL 1 effects in WASM
-                if (defaultEnabled) {
-                    const setEnabledFn = this.wasmModule[this.WASM_FUNCS.set_enabled[name]];
+                if (config.defaultEnabled) {
+                    const setEnabledFn = this.wasmModule[config.prefix + '_set_enabled'];
                     if (setEnabledFn) {
                         setEnabledFn(ptr, 1);
                     }
                 }
 
-                console.log(`[Worklet] ${name}: 0x${ptr.toString(16)} (${defaultEnabled ? 'enabled' : 'disabled'})`);
+                console.log(`[Worklet] ${config.name}: 0x${ptr.toString(16)} (${config.defaultEnabled ? 'enabled' : 'disabled'})`);
             }
         }
     }
-    
+
     toggleEffect(name, enabled) {
         const effect = this.effects.get(name);
         if (!effect || !this.wasmModule) return;
 
         // Reset filter state BEFORE changing enabled state to clear any artifacts
-        const resetFn = this.wasmModule[this.WASM_FUNCS.reset[name]];
+        const resetFn = this.wasmModule[effect.prefix + '_reset'];
         if (resetFn) {
             resetFn(effect.ptr);
         }
 
         // Set enabled/disabled state
-        const setEnabledFn = this.wasmModule[this.WASM_FUNCS.set_enabled[name]];
+        const setEnabledFn = this.wasmModule[effect.prefix + '_set_enabled'];
         if (setEnabledFn) {
             setEnabledFn(effect.ptr, enabled ? 1 : 0);
             effect.enabled = enabled;
@@ -167,52 +145,143 @@ class WasmEffectsProcessor extends AudioWorkletProcessor {
         this.dcBlockerX = [0, 0];
         this.dcBlockerY = [0, 0];
     }
-    
+
     setParameter(effectName, paramName, value) {
         const effect = this.effects.get(effectName);
         if (!effect || !this.wasmModule) return;
 
-        const funcName = this.WASM_FUNCS.params[effectName]?.[paramName];
-        const setFn = funcName && this.wasmModule[funcName];
+        // Use direct function name: _fx_effectname_set_parametername
+        const funcName = effect.prefix + '_set_' + paramName;
+        const setFn = this.wasmModule[funcName];
         if (setFn) {
             setFn(effect.ptr, value);
         }
     }
-    
+
+    getEffectState() {
+        const state = { effects: {} };
+
+        // Parameter map for each effect
+        const effectParams = {
+            'model1_trim': ['drive'],
+            'model1_hpf': ['cutoff'],
+            'model1_lpf': ['cutoff'],
+            'model1_sculpt': ['frequency', 'gain'],
+            'distortion': ['drive', 'mix'],
+            'limiter': ['threshold', 'release', 'ceiling', 'lookahead'],
+            'filter': ['cutoff', 'resonance'],
+            'eq': ['low', 'mid', 'high'],
+            'compressor': ['threshold', 'ratio', 'attack', 'release', 'makeup'],
+            'delay': ['time', 'feedback', 'mix'],
+            'reverb': ['size', 'damping', 'mix'],
+            'phaser': ['rate', 'depth', 'feedback'],
+            'stereo_widen': ['width', 'mix'],
+            'ring_mod': ['frequency', 'mix'],
+            'vocoder': ['carrier_freq', 'carrier_wave', 'formant_shift', 'release', 'mix', 'carrier_mode', 'midi_note'],
+            'pitchshift': ['pitch', 'mix']
+        };
+
+        for (const [name, effect] of this.effects) {
+            const params = {};
+
+            // Get enabled state
+            const getEnabledFn = this.wasmModule[effect.prefix + '_get_enabled'];
+            if (getEnabledFn) {
+                params.enabled = getEnabledFn(effect.ptr);
+            }
+
+            // Get all parameters for this effect
+            const paramNames = effectParams[name] || [];
+            for (const paramName of paramNames) {
+                const getFn = this.wasmModule[effect.prefix + '_get_' + paramName];
+                if (getFn) {
+                    params[paramName] = getFn(effect.ptr);
+                }
+            }
+
+            state.effects[name] = params;
+        }
+
+        return state;
+    }
+
+    setEffectState(state) {
+        if (!state || !state.effects) {
+            console.log('[Worklet] setState: no state');
+            return;
+        }
+
+        console.log('[Worklet] Setting state for', Object.keys(state.effects).length, 'effects');
+
+        for (const [name, params] of Object.entries(state.effects)) {
+            const effect = this.effects.get(name);
+            if (!effect) {
+                console.log('[Worklet] Effect not found:', name);
+                continue;
+            }
+
+            // Set enabled state
+            if (params.enabled !== undefined) {
+                const setEnabledFn = this.wasmModule[effect.prefix + '_set_enabled'];
+                if (setEnabledFn) {
+                    setEnabledFn(effect.ptr, params.enabled);
+                    console.log('[Worklet]', name, 'enabled:', params.enabled);
+                }
+            }
+
+            // Set other parameters
+            for (const [paramName, value] of Object.entries(params)) {
+                if (paramName !== 'enabled') {
+                    this.setParameter(name, paramName, value);
+                    console.log('[Worklet]', name, paramName, '=', value);
+                }
+            }
+        }
+
+        console.log('[Worklet] ✅ State applied');
+        this.port.postMessage({ type: 'stateApplied' });
+    }
+
     process(inputs, outputs, parameters) {
         if (!this.wasmModule || !this.audioBufferPtr) {
             return true;
         }
-        
+
         const input = inputs[0];
         const output = outputs[0];
-        
+
         if (!input || !output || input.length === 0) {
             return true;
         }
-        
+
         const frames = input[0].length;
-        
-        // Update heap view
+
+        // Update heap view - access memory through captured wasmMemory
         const heapF32 = new Float32Array(
-            this.wasmModule.b.buffer,  // memory
-            this.audioBufferPtr, 
+            this.wasmMemory.buffer,
+            this.audioBufferPtr,
             frames * 2
         );
-        
+
         // Interleave input with DC blocker
         const inputL = input[0];
         const inputR = input[1] || input[0];
-        
+
         for (let i = 0; i < frames; i++) {
             heapF32[i * 2] = inputL[i];
             heapF32[i * 2 + 1] = inputR[i];
         }
-        
+
         // Process through enabled effects
         for (const [name, effect] of this.effects) {
             if (effect.enabled) {
-                const processFn = this.wasmModule[this.WASM_FUNCS.process[name]];
+                // Determine process function based on effect type
+                // model1_ and stereo_widen use interleaved processing
+                const processSuffix = (name.startsWith('model1_') || name === 'stereo_widen')
+                    ? '_process_interleaved'
+                    : '_process_f32';
+                const processFn = this.wasmModule[effect.prefix + processSuffix];
+
                 if (processFn) {
                     processFn(effect.ptr, this.audioBufferPtr, frames, sampleRate);
                 }
@@ -249,17 +318,17 @@ class WasmEffectsProcessor extends AudioWorkletProcessor {
             rightPeak = Math.max(rightPeak, Math.abs(r));
         }
 
-        // Poll M1 TRIM peak level and VU meters frequently
+        // Send stereo peaks to main thread every 128 frames (~3ms at 48kHz)
         this.peakLevelFrameCounter += frames;
-        if (this.peakLevelFrameCounter >= 2400) { // Check every ~50ms at 48kHz
+        if (this.peakLevelFrameCounter >= 128) {
             this.peakLevelFrameCounter = 0;
 
+            // Get TRIM peak level using direct function name
             const trimEffect = this.effects.get('model1_trim');
             if (trimEffect && trimEffect.enabled) {
-                const getPeakLevelFn = this.wasmModule['$a']; // fx_model1_trim_get_peak_level
+                const getPeakLevelFn = this.wasmModule._fx_model1_trim_get_peak_level;
                 if (getPeakLevelFn) {
                     const peakLevel = getPeakLevelFn(trimEffect.ptr);
-                    // Send all peak levels - UI will handle decay animation
                     this.port.postMessage({ type: 'peakLevel', level: peakLevel });
                 }
             }
@@ -271,7 +340,7 @@ class WasmEffectsProcessor extends AudioWorkletProcessor {
                 right: rightPeak
             });
         }
-        
+
         return true;
     }
 }

@@ -214,7 +214,6 @@ class MIDIAudioSynth {
             voice.gain = null;
             voice.note = null;
             voice.active = false;
-            console.log('[MIDIAudioSynth] ✓ Voice released');
         }, 60); // Fast cleanup after 50ms release
     }
 
@@ -277,7 +276,33 @@ class MIDIAudioSynth {
         // Future: Add filter, LFO, etc.
     }
 
-    // Get analyser for Milkdrop
+    /**
+     * Connect this synth to a destination node (Web Audio API standard)
+     * @param {AudioNode} destination - The destination node to connect to
+     * @returns {AudioNode} - The destination node (for chaining)
+     */
+    connect(destination) {
+        if (!this.masterGain) {
+            console.warn('[MIDIAudioSynth] Cannot connect - not initialized');
+            return destination;
+        }
+        return this.masterGain.connect(destination);
+    }
+
+    /**
+     * Disconnect this synth from all destinations
+     */
+    disconnect() {
+        if (this.masterGain) {
+            this.masterGain.disconnect();
+        }
+    }
+
+    /**
+     * Get analyser node for visualization (e.g., Milkdrop)
+     * Note: For audio routing, use connect(destination) instead
+     * @returns {AnalyserNode} - The analyser node for reading frequency data
+     */
     getAnalyser() {
         console.log('[MIDIAudioSynth] getAnalyser() called - returning:', this.analyser ? 'VALID ANALYSER' : 'NULL');
         if (this.analyser) {

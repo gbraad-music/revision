@@ -235,11 +235,6 @@ class RevisionAppV2 {
             // Store peak level for state broadcast
             this.trimPeakLevel = data.level;
 
-            // Debug: log when receiving trim peak events
-            if (data.level > 0.1) {
-                console.log('[App] Received TRIM peak:', data.level.toFixed(3));
-            }
-
             // Broadcast peak level to control.html for LED indicator
             this.controlChannel.postMessage({
                 type: 'trimPeakLevel',
@@ -1196,8 +1191,7 @@ class RevisionAppV2 {
                         }
 
                         // Enable synth
-                        this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
-                        this.midiAudioSynth.initialize();
+                        this.midiAudioSynth = await this.createMIDISynth();
 
                         // Apply saved audible setting (MUST await to ensure AudioContext is ready)
                         const audibleSetting = this.settings.get('midiSynthAudible') === 'true';
@@ -1235,6 +1229,45 @@ class RevisionAppV2 {
                             this.settings.set('reactiveInputSource', 'audio');
                             this.reconnectAudioToRenderer();
                         }
+                    }
+                    this.broadcastState();
+                    break;
+                case 'midiSynthEngine':
+                    // User changed synth engine - recreate if synth is active
+                    this.settings.set('midiSynthEngine', data);
+                    console.log('[Revision] MIDI Synth Engine changed to:', data);
+
+                    if (this.midiAudioSynth) {
+                        // Recreate synth with new engine
+                        console.log('[Revision] Recreating synth with new engine...');
+                        const wasAudible = this.midiAudioSynth.isAudible; // FIX: Get from synth, not app!
+
+                        // Destroy old synth
+                        this.midiAudioSynth.destroy();
+                        this.midiAudioSynth = null;
+
+                        // Create new synth
+                        this.midiAudioSynth = await this.createMIDISynth();
+
+                        // Restore audible state
+                        console.log('[Revision] Restoring audible state:', wasAudible);
+                        if (wasAudible) {
+                            await this.midiAudioSynth.setAudible(true);
+                        }
+
+                        // Reconnect handlers
+                        if (this.midiSynthSource) {
+                            this.setupMIDISynthHandlers();
+                        }
+
+                        // Re-register with input manager if it was active
+                        const reactiveSource = this.settings.get('visualAudioSource');
+                        if (reactiveSource === 'midi') {
+                            this.inputManager.unregisterSource('midi-synth');
+                            this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
+                        }
+
+                        console.log('[Revision] ✓ Synth recreated with new engine');
                     }
                     this.broadcastState();
                     break;
@@ -1375,8 +1408,7 @@ class RevisionAppV2 {
                             }
 
                             // Create synth
-                            this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
-                            this.midiAudioSynth.initialize();
+                            this.midiAudioSynth = await this.createMIDISynth();
 
                             // Apply saved audible setting (MUST await to ensure AudioContext is ready)
                             const audibleSetting = this.settings.get('midiSynthAudible') === 'true';
@@ -1597,8 +1629,7 @@ class RevisionAppV2 {
                                     await this.audioSource.audioContext.resume();
                                 }
 
-                                this.midiAudioSynth = new MIDIAudioSynth(this.audioSource.audioContext);
-                                this.midiAudioSynth.initialize();
+                                this.midiAudioSynth = await this.createMIDISynth();
                                 console.log('[Revision] ✓ MIDI synth created for beat kick');
                             } else {
                                 console.error('[Revision] Cannot create MIDI synth - audio source not initialized');
@@ -2994,6 +3025,7 @@ class RevisionAppV2 {
             visualAudioSource: this.currentVisualAudioSource,
 
             midiSynthEnabled: this.midiAudioSynth ? 'true' : 'false', // ACTUAL state (synth exists or not)
+            midiSynthEngine: this.settings.get('midiSynthEngine') || 'simple',
             midiSynthChannel: this.settings.get('midiSynthChannel') || 'all',
             midiSynthAudible: this.settings.get('midiSynthAudible') === 'true' ? 'true' : 'false',
             midiSynthAutoFeed: this.settings.get('midiSynthAutoFeed') === 'true' ? 'true' : 'false',
@@ -3466,6 +3498,29 @@ class RevisionAppV2 {
         }, 3000);
 
         console.log('[Revision] Flashed identity:', identity);
+    }
+
+    // Create the selected MIDI synthesizer engine
+    async createMIDISynth() {
+        if (!this.audioSource || !this.audioSource.audioContext) {
+            console.error('[Revision] Cannot create synth - audio source not initialized');
+            return null;
+        }
+
+        const synthEngine = this.settings.get('midiSynthEngine') || 'simple';
+
+        console.log(`[Revision] Creating ${synthEngine} MIDI synth...`);
+
+        let synth = null;
+        if (synthEngine === 'rgresonate1') {
+            synth = new RGResonate1Synth(this.audioSource.audioContext);
+        } else {
+            // Default to simple MIDIAudioSynth
+            synth = new MIDIAudioSynth(this.audioSource.audioContext);
+        }
+
+        await synth.initialize();
+        return synth;
     }
 
     setupMIDISynthHandlers() {

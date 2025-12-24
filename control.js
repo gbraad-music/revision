@@ -1937,6 +1937,9 @@ function updateState(state) {
     if (state.midiSynthEnabled !== undefined) {
         document.getElementById('midi-synth-enable').checked = state.midiSynthEnabled === 'true';
     }
+    if (state.midiSynthEngine !== undefined) {
+        document.getElementById('midi-synth-engine').value = state.midiSynthEngine;
+    }
     if (state.midiSynthChannel !== undefined) {
         document.getElementById('midi-synth-channel').value = state.midiSynthChannel;
     }
@@ -2368,6 +2371,11 @@ document.getElementById('reactive-input-source').addEventListener('change', (e) 
 // MIDI synth enable/disable toggle
 document.getElementById('midi-synth-enable').addEventListener('change', (e) => {
     sendCommand('midiSynthEnable', e.target.checked ? 'true' : 'false');
+});
+
+// MIDI synth engine selection
+document.getElementById('midi-synth-engine').addEventListener('change', (e) => {
+    sendCommand('midiSynthEngine', e.target.value);
 });
 
 // MIDI synth channel
@@ -3936,3 +3944,18 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+
+// Update cache version display
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistration().then(registration => {
+        if (registration) {
+            caches.keys().then(names => {
+                const cacheVersion = names.find(name => name.startsWith('revision-v'));
+                const versionSpan = document.getElementById('cache-version');
+                if (versionSpan && cacheVersion) {
+                    versionSpan.textContent = cacheVersion;
+                }
+            });
+        }
+    });
+}

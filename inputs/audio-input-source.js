@@ -67,7 +67,15 @@ class AudioInputSource {
             await this.wasmEffects.initialize();
 
             // Set inputGain to the WASM effects worklet (which has M1 TRIM built in)
+            // Note: We use .workletNode directly here because we need port.postMessage access
+            // For audio routing, you can also use: this.wasmEffects.connect(destination)
             this.inputGain = this.wasmEffects.workletNode;
+
+            // Verify WASM worklet is ready
+            if (!this.inputGain) {
+                throw new Error('WASM effects worklet failed to initialize - inputGain is null');
+            }
+
             this.m1TrimReady = true;
 
             // Enable M1 TRIM effect (EQ is already enabled by WasmEffectsProcessor.initialize())
@@ -127,6 +135,12 @@ class AudioInputSource {
 
     // Connect the audio processing chain (single place for all connection logic)
     connectAudioChain(sourceNode, sourceName) {
+        // CRITICAL: Check if inputGain is ready (WASM worklet initialized)
+        if (!this.inputGain) {
+            console.error('[AudioInput] ❌ Cannot connect audio chain - inputGain is null (WASM initialization failed?)');
+            throw new Error('Audio processing chain not initialized - check WASM effects initialization');
+        }
+
         // CRITICAL: Ensure inputGain preserves stereo
         this.inputGain.channelCount = 2;
         this.inputGain.channelCountMode = 'max';

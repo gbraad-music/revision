@@ -760,6 +760,15 @@
         </label>
         <div class="info" style="margin-top: 5px;">Creates audio synthesizer from MIDI input. Required for MIDI reactive visualization.</div>
 
+        <label style="font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-top: 15px; margin-bottom: 5px;">Synth Engine</label>
+        <select id="midi-synth-engine">
+            <option value="simple">Simple (Web Audio Oscillators)</option>
+            <option value="rgresonate1">RGResonate1 (WASM Polyphonic)</option>
+        </select>
+        <div class="info" style="margin-top: 5px;">
+            Select synthesizer engine. Simple uses basic oscillators. RGResonate1 uses WASM-based polyphonic synthesis with filters and envelopes.
+        </div>
+
         <label style="display: block; margin-top: 10px; font-size: 12px;">
             <input type="checkbox" id="midi-synth-beat-kick" style="width: auto; margin-right: 5px;">
             Generate kick drum from beat events
@@ -880,6 +889,15 @@
         <div class="info">WebSocket OSC server for external control</div>
     </div>
 
+    <div class="section">
+        <h2>About</h2>
+        <div style="color: #666; font-size: 0.85em; line-height: 1.6;">
+            Revision v1.0<br>
+            MIDI VJ<br>
+            Cache: <span id="cache-version" style="color: #888;">Loading...</span>
+        </div>
+    </div>
+
     <!-- Butterchurn for Milkdrop preview (local files) -->
     <script src="external/butterchurn.min.js"></script>
     <script src="external/butterchurnPresets.min.js"></script>
@@ -908,7 +926,7 @@
     <script type="module" src="utils/fader-components.js"></script>
 
     <!-- WASM Effects -->
-    <script src="effects/wasm-eq.js"></script>
+    <script src="effects/effect-eq.js"></script>
 
     <script src="control.js"></script>
 </body>

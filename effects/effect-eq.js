@@ -24,13 +24,17 @@ class WasmEffectsProcessor {
             // Create worklet node
             this.workletNode = new AudioWorkletNode(this.audioContext, 'wasm-effects-processor');
 
-            // Load WASM file
-            const wasmResponse = await fetch('./effects/regroove-effects.wasm');
+            // Load WASM files (both JS and WASM binary)
+            const [jsResponse, wasmResponse] = await Promise.all([
+                fetch('./effects/regroove-effects.js'),
+                fetch('./effects/regroove-effects.wasm')
+            ]);
 
-            if (!wasmResponse.ok) {
-                throw new Error('Failed to load WASM file');
+            if (!jsResponse.ok || !wasmResponse.ok) {
+                throw new Error('Failed to load WASM files');
             }
 
+            const jsCode = await jsResponse.text();
             const wasmBytes = await wasmResponse.arrayBuffer();
 
             // Wait for worklet to request WASM
@@ -42,7 +46,10 @@ class WasmEffectsProcessor {
                         console.log('[WasmEffects] Sending WASM to worklet...');
                         this.workletNode.port.postMessage({
                             type: 'wasmBytes',
-                            data: wasmBytes
+                            data: {
+                                jsCode: jsCode,
+                                wasmBytes: wasmBytes
+                            }
                         }, [wasmBytes]);
                     } else if (e.data.type === 'ready') {
                         clearTimeout(timeout);
@@ -143,6 +150,28 @@ class WasmEffectsProcessor {
      */
     getOutput() {
         return this.output;
+    }
+
+    /**
+     * Connect this effect to a destination node (Web Audio API standard)
+     * @param {AudioNode} destination - The destination node to connect to
+     * @returns {AudioNode} - The destination node (for chaining)
+     */
+    connect(destination) {
+        if (!this.output) {
+            console.warn('[WasmEffects] Cannot connect - not initialized');
+            return destination;
+        }
+        return this.output.connect(destination);
+    }
+
+    /**
+     * Disconnect this effect from all destinations
+     */
+    disconnect() {
+        if (this.output) {
+            this.output.disconnect();
+        }
     }
 
     /**

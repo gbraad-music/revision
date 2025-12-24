@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v143';
+const CACHE_NAME = 'revision-v171';
 const ASSETS = [
     './',
     './index.html',
@@ -9,13 +9,15 @@ const ASSETS = [
     './apple-touch-icon.png',
     './icon-192x192.png',
     './icon-512x512.png',
-    './effects.js',
+    './effects/effects-processor.js',
     './effects/audio-worklet-processor.js',
     './effects/regroove-effects.js',
     './effects/regroove-effects.wasm',
-    './effects/wasm-eq.js',
-    './effects/m1-trim.js',
-    './effects/wasm-mappings.json',
+    './effects/effect-eq.js',
+    './effects/effect-m1trim.js',
+    './synths/synth-worklet-processor.js',
+    './synths/rgresonate1-synth.js',
+    './synths/rgresonate1-synth.wasm',
     './utils/pad-knob.js',
     './utils/svg-slider.js',
     './utils/fader-components.js',
