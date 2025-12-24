@@ -116,7 +116,7 @@
     <div class="section">
         <h2>Status</h2>
         <div class="stat">Status: <span id="status">Loading...</span></div>
-        <div class="stat">Preset: <span id="presetName">Hammer</span></div>
+        <div class="stat">Preset: <span id="presetName">Christmas</span></div>
         <div class="stat">TRIM Peak: <span id="trimPeak">0.0</span></div>
         <div class="stat">Beat Intensity: <span id="beatIntensity">0.0</span></div>
         <div class="info">Click "TRIM Peak!" to simulate clipping above 0.5 threshold. Click "Toggle Beat" for 120 BPM beats.</div>
@@ -124,7 +124,7 @@
 
     <script src="external/three.min.js"></script>
     <script src="presets/threejs/BasePreset.js"></script>
-    <script src="presets/threejs/Hammer.js"></script>
+    <script src="presets/threejs/Christmas.js"></script>
 
     <script>
         let scene, camera, renderer, preset;
@@ -172,7 +172,7 @@
             }
 
             // Create new preset instance
-            preset = new window.HammerPreset();
+            preset = new window.ChristmasPreset();
             preset.scene = scene;
             preset.camera = camera;
             preset.renderer = renderer;
