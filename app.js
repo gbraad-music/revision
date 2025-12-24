@@ -4789,7 +4789,19 @@ class RevisionAppV2 {
             'xyscope': { file: 'presets/threejs/XYScope.js', className: 'XYScopePreset' },
             'gblogo': { file: 'presets/threejs/GBLogo.js', className: 'GBLogoPreset' }
         };
-        return presetMap[presetName];
+
+        // Check predefined map first
+        if (presetMap[presetName]) {
+            return presetMap[presetName];
+        }
+
+        // If not in map, try to construct path dynamically
+        // This allows loading presets that exist in the folder but aren't predefined
+        const capitalizedName = presetName.charAt(0).toUpperCase() + presetName.slice(1);
+        return {
+            file: `presets/threejs/${capitalizedName}.js`,
+            className: `${capitalizedName}Preset`
+        };
     }
 
     async loadThreeJSPreset(presetName, cacheBust = true) {
@@ -4866,11 +4878,8 @@ class RevisionAppV2 {
             await this.loadThreeJSPreset(presetName, false);
         }
 
-        // Load first preset as default
-        const presets = this.threeJSRenderer.getAvailablePresets();
-        if (presets.length > 0) {
-            this.threeJSRenderer.loadPreset(presets[0]);
-        }
+        // Don't auto-load any default preset
+        // Presets will only load when explicitly requested via URL, controls, etc.
     }
 
     loadScript(src, cacheBust = false) {

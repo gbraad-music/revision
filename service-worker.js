@@ -1,4 +1,4 @@
-const CACHE_NAME = 'revision-v223';
+const CACHE_NAME = 'revision-v224';
 const ASSETS = [
     // Root files
     './',

@@ -331,11 +331,6 @@ class ThreeJSRenderer {
     handleFrequency(data) {
         this.frequencyBands = data.bands;
 
-        // Debug - log what ThreeJS receives
-        if (data.bands && (data.bands.bass > 0.01 || data.bands.mid > 0.01 || data.bands.high > 0.01)) {
-            console.log(`[ThreeJS RX] B=${data.bands.bass.toFixed(2)} M=${data.bands.mid.toFixed(2)} H=${data.bands.high.toFixed(2)}`);
-        }
-
         // Forward to current preset if exists
         if (this.currentPreset && data.bands) {
             this.currentPreset.onFrequency(data.bands);
