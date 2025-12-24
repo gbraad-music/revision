@@ -1,6 +1,19 @@
 // Revision V2 - Modernized application with unified input architecture
 // Supports: MIDI (with SysEx), Audio input, multiple renderers, mobile compatibility
 
+// MIDI Synth frequency smoothing configuration
+// Two-layer smoothing: Web Audio removes spikes, custom smooths transitions
+// Web Audio API smoothing (0.0 = no smoothing, 1.0 = maximum smoothing)
+const MIDI_SYNTH_ANALYSER_SMOOTHING = 0.8;  // Removes raw FFT spikes
+// Custom event smoothing (lower = smoother, higher = more responsive)
+const MIDI_SYNTH_EVENT_SMOOTHING = 0.5;  // 50% new value, 50% old value - balanced
+// Decay rate for legacy compatibility
+const MIDI_SYNTH_DECAY_RATE = 0.92;
+
+window.MIDI_SYNTH_ANALYSER_SMOOTHING = MIDI_SYNTH_ANALYSER_SMOOTHING;
+window.MIDI_SYNTH_EVENT_SMOOTHING = MIDI_SYNTH_EVENT_SMOOTHING;
+window.MIDI_SYNTH_DECAY_RATE = MIDI_SYNTH_DECAY_RATE;
+
 class RevisionAppV2 {
     constructor() {
         // Core managers
@@ -1191,6 +1204,19 @@ class RevisionAppV2 {
                             console.log('[Revision] ✓ AudioContext resumed:', this.audioSource.audioContext.state);
                         }
 
+                        // Create shared MIDI frequency analyzer (for both synth + kick)
+                        if (!this.midiFrequencyAnalyzer) {
+                            const smoothing = window.MIDI_SYNTH_ANALYSER_SMOOTHING || 0.8;
+                            this.midiFrequencyAnalyzer = new FrequencyAnalyzer(this.audioSource.audioContext, {
+                                fftSize: 8192,
+                                smoothing: smoothing,
+                                updateRate: 100,  // 10Hz
+                                sourceName: 'midi-synth',  // MUST match filter in inputManager.on('frequency')
+                                enableDecay: true
+                            });
+                            console.log('[Revision] ✓ Created shared MIDI frequency analyzer');
+                        }
+
                         // Enable synth
                         this.midiAudioSynth = await this.createMIDISynth();
 
@@ -1208,19 +1234,22 @@ class RevisionAppV2 {
                             await this.rg909Drum.initialize();
                             await this.rg909Drum.setAudible(audibleSetting);
 
-                            // Register with InputManager if reactive input is MIDI
-                            if (this.reactiveInputSource === 'midi') {
-                                console.log('[Revision] 🥁 Registering RG909 Drum with InputManager');
-                                this.inputManager.registerSource('rg909-drum', this.rg909Drum);
-                            }
+                            // Connect kick drum audio to shared analyzer
+                            this.rg909Drum.masterGain.connect(this.midiFrequencyAnalyzer.inputGain);
+                            console.log('[Revision] ✓ Connected kick drum to shared MIDI analyzer');
 
                             console.log('[Revision] ✓ RG909 Drum restored');
                         }
 
-                        // If reactive input is set to MIDI, register the synth
+                        // Connect synth audio to shared analyzer
+                        this.midiAudioSynth.masterGain.connect(this.midiFrequencyAnalyzer.inputGain);
+                        console.log('[Revision] ✓ Connected synth to shared MIDI analyzer');
+
+                        // If reactive input is set to MIDI, register the SHARED analyzer
                         if (this.reactiveInputSource === 'midi') {
-                            console.log('[Revision] 🟢 Registering MIDI synth with InputManager (reactive input is MIDI)');
-                            this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
+                            this.midiFrequencyAnalyzer.start();
+                            console.log('[Revision] 🟢 Registering shared MIDI analyzer with InputManager');
+                            this.inputManager.registerSource('midi-synth', this.midiFrequencyAnalyzer);
 
                             // Setup MIDI synth input handlers
                             if (this.midiSynthSource) {
@@ -1372,16 +1401,13 @@ class RevisionAppV2 {
                             // Will be handled by existing midiSynthEnable logic
                         }
 
-                        // Register MIDI synth for frequency analysis if it exists
-                        if (this.midiAudioSynth) {
-                            console.log('[Revision] 🎹 Registering MIDI synth with InputManager');
-                            this.inputManager.registerSource('midi-synth', this.midiAudioSynth);
-                        }
-
-                        // Register RG909 drum for frequency analysis if it exists
-                        if (this.rg909Drum) {
-                            console.log('[Revision] 🥁 Registering RG909 Drum with InputManager');
-                            this.inputManager.registerSource('rg909-drum', this.rg909Drum);
+                        // Register shared MIDI analyzer for frequency analysis
+                        if (this.midiFrequencyAnalyzer) {
+                            if (!this.midiFrequencyAnalyzer.isActive) {
+                                this.midiFrequencyAnalyzer.start();
+                            }
+                            console.log('[Revision] 🎹 Registering shared MIDI analyzer with InputManager');
+                            this.inputManager.registerSource('midi-synth', this.midiFrequencyAnalyzer);
                         }
                     }
 
@@ -3881,28 +3907,16 @@ class RevisionAppV2 {
                 return;
             }
 
-            // Store last frequency data for EQ display in control.html
+            // Store frequency data for control.html display
+            // Smoothing is now handled in FrequencyAnalyzer for MIDI synth sources
             if (data.bands) {
-                const newData = {
+                this.lastFrequencyData = {
                     bass: data.bands.bass || 0,
                     mid: data.bands.mid || 0,
                     high: data.bands.high || 0
                 };
 
-                // Apply decay/smoothing to prevent flashing when MIDI notes stop
-                // Use previous values with decay if new values are lower
-                if (this.lastFrequencyData) {
-                    const decay = 0.8; // Keep 80% of previous value
-                    this.lastFrequencyData = {
-                        bass: Math.max(newData.bass, this.lastFrequencyData.bass * decay),
-                        mid: Math.max(newData.mid, this.lastFrequencyData.mid * decay),
-                        high: Math.max(newData.high, this.lastFrequencyData.high * decay)
-                    };
-                } else {
-                    this.lastFrequencyData = newData;
-                }
-
-                // Broadcast to control.html (throttled to 5Hz to prevent flashing)
+                // Broadcast to control.html (throttled to 5Hz)
                 const now = performance.now();
                 if (!this.lastFrequencyBroadcast || (now - this.lastFrequencyBroadcast) > 200) {
                     this.lastFrequencyBroadcast = now;
@@ -3910,7 +3924,7 @@ class RevisionAppV2 {
                 }
             }
 
-            // Only pass to active renderer
+            // Pass to active renderer (smoothed values from FrequencyAnalyzer)
             if (this.currentPresetType === 'builtin') {
                 this.presetManager.handleFrequency(data);
             } else if (this.currentPresetType === 'threejs' && this.threeJSRenderer) {

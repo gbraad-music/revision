@@ -9,6 +9,7 @@ class FrequencyAnalyzer {
         // Create analyser node
         this.analyser = audioContext.createAnalyser();
         this.analyser.fftSize = options.fftSize || 8192;
+        // Use Web Audio API smoothing for visualization (applies to raw analyser reads)
         this.analyser.smoothingTimeConstant = options.smoothing || 0.0;
 
         // Create pass-through gain node (allows both analysis and audio routing)
@@ -30,8 +31,14 @@ class FrequencyAnalyzer {
 
         // Source identifier (for event metadata)
         this.sourceName = options.sourceName || 'unknown';
+        this.analyzerId = Math.random().toString(36).substr(2, 5);
 
-        console.log(`[FrequencyAnalyzer] Created for source: ${this.sourceName}`);
+        // Decay smoothing (for MIDI synth to prevent flashing)
+        this.enableDecay = options.enableDecay || false;
+        this.decayRate = options.decayRate || 0.95;
+        this.lastBands = null;
+
+        console.log(`[FrequencyAnalyzer] ⚙️ Created for source: ${this.sourceName} (id=${this.analyzerId})`);
     }
 
     /**
@@ -116,9 +123,32 @@ class FrequencyAnalyzer {
         this.analyser.getByteTimeDomainData(this.timeDomainData);
 
         // Calculate bass, mid, high with 8192 FFT (5.86 Hz/bin @ 48kHz)
-        const bass = this.calculateBand(0, 85);       // 0-500 Hz
-        const mid = this.calculateBand(85, 680);      // 500-4000 Hz
-        const high = this.calculateBand(680, 2048);   // 4000-12000 Hz
+        let bassRaw = this.calculateBand(0, 85);       // 0-500 Hz
+        let midRaw = this.calculateBand(85, 680);      // 500-4000 Hz
+        let highRaw = this.calculateBand(680, 2048);   // 4000-12000 Hz
+
+        let bass = bassRaw;
+        let mid = midRaw;
+        let high = highRaw;
+
+        // Apply ADAPTIVE smoothing if enabled (for MIDI synth)
+        // Fast attack (new notes), slow decay (notes stopping)
+        if (this.enableDecay && this.lastBands) {
+            const attackFactor = 0.7;   // 70% new value on increase (fast attack)
+            const decayFactor = 0.3;    // 30% new value on decrease (slow decay)
+
+            // Adaptive smoothing: use different factors for attack vs decay
+            const bassSmooth = bassRaw > this.lastBands.bass ? attackFactor : decayFactor;
+            const midSmooth = midRaw > this.lastBands.mid ? attackFactor : decayFactor;
+            const highSmooth = highRaw > this.lastBands.high ? attackFactor : decayFactor;
+
+            bass = bassRaw * bassSmooth + this.lastBands.bass * (1 - bassSmooth);
+            mid = midRaw * midSmooth + this.lastBands.mid * (1 - midSmooth);
+            high = highRaw * highSmooth + this.lastBands.high * (1 - highSmooth);
+        }
+
+        // Store for next smoothing calculation
+        this.lastBands = { bass, mid, high };
 
         // Calculate overall RMS
         let sum = 0;
@@ -152,6 +182,18 @@ class FrequencyAnalyzer {
             sum += this.frequencyData[i];
         }
         return (sum / ((endBin - startBin) * 255));
+    }
+
+    /**
+     * Clamp change to prevent pops
+     * @private
+     */
+    clampChange(oldValue, newValue, maxChange) {
+        const delta = newValue - oldValue;
+        if (Math.abs(delta) > maxChange) {
+            return oldValue + Math.sign(delta) * maxChange;
+        }
+        return newValue;
     }
 
     // Event emitter interface

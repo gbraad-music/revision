@@ -69,6 +69,12 @@ window.GeometricShapesPreset = class extends ThreeJSBasePreset {
 
         // Color changes with frequency
         const hue = this.frequencyData.bass * 0.5;
+
+        // Debug - show what preset is using for color
+        if (this.frequencyData.bass > 0.01) {
+            console.log(`[GeometricShapes] bass=${this.frequencyData.bass.toFixed(2)} hue=${hue.toFixed(2)} mid=${this.frequencyData.mid.toFixed(2)} high=${this.frequencyData.high.toFixed(2)}`);
+        }
+
         const color = new THREE.Color().setHSL(hue, 1.0, 0.5);
         this.cube.material.color.copy(color);
         this.cube.material.emissive.copy(color.clone().multiplyScalar(0.2));

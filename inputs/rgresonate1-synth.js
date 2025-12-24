@@ -22,18 +22,9 @@ class RGResonate1Synth {
     async initialize() {
         console.log('[RGResonate1Synth] 🎛️ Initializing WASM Synth...');
         try {
-            // Create reusable frequency analyzer
-            this.frequencyAnalyzer = new FrequencyAnalyzer(this.audioContext, {
-                fftSize: 8192,
-                smoothing: 0.0,
-                updateRate: 50,
-                sourceName: 'midi-synth'
-            });
-
-            // Forward frequency analyzer events to our listeners
-            this.frequencyAnalyzer.on('*', (event) => {
-                this.emit('*', event);
-            });
+            // Frequency analyzer is now managed externally (shared MIDI analyzer in app.js)
+            // Individual synth analyzers are disabled to prevent duplicate frequency streams
+            this.frequencyAnalyzer = null;
 
             // Master gain
             this.masterGain = this.audioContext.createGain();
@@ -44,10 +35,10 @@ class RGResonate1Synth {
             this.speakerGain.gain.value = 0; // Start muted
             this.speakerGain.connect(this.audioContext.destination);
 
-            // Audio graph: worklet → masterGain → frequencyAnalyzer → speakerGain → destination
-            this.masterGain.connect(this.frequencyAnalyzer.inputGain);
-            this.frequencyAnalyzer.connectTo(this.speakerGain);
-            console.log('[RGResonate1Synth] Audio graph connected: worklet → masterGain → analyzer → speakerGain → destination');
+            // Audio graph: worklet → masterGain → speakerGain → destination
+            // (External analyzer in app.js taps into masterGain separately)
+            this.masterGain.connect(this.speakerGain);
+            console.log('[RGResonate1Synth] Audio graph connected: worklet → masterGain → speakerGain → destination');
 
             // Load and register AudioWorklet processor
             await this.audioContext.audioWorklet.addModule('synths/synth-worklet-processor.js');
@@ -81,7 +72,6 @@ class RGResonate1Synth {
             };
 
             this.isActive = true;
-            this.frequencyAnalyzer.start();
 
             console.log('[RGResonate1Synth] Initialized - waiting for WASM...');
             return true;

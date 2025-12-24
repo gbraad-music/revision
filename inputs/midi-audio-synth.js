@@ -4,7 +4,7 @@
 class MIDIAudioSynth {
     constructor(audioContext) {
         this.audioContext = audioContext;
-        this.analyser = null;
+        this.frequencyAnalyzer = null;
         this.masterGain = null;
 
         // Polyphonic voice management
@@ -22,34 +22,27 @@ class MIDIAudioSynth {
 
         // Event emitter (for InputManager integration)
         this.listeners = new Map();
-
-        // Frequency analysis
-        this.frequencyData = null;
-        this.timeDomainData = null;
-
-        // Frequency monitoring interval
-        this.monitoringInterval = null;
     }
 
     initialize() {
         console.log('[MIDIAudioSynth] 🎛️ Initializing MIDI Audio Synth...');
         try {
-            // Create analyser for Milkdrop - FAST RESPONSE for MIDI transients
-            this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 8192; // Larger FFT for better bass resolution (5.9 Hz/bin @ 48kHz)
-            this.analyser.smoothingTimeConstant = 0.0; // NO SMOOTHING - instant response to MIDI!
+            // Frequency analyzer is now managed externally (shared MIDI analyzer in app.js)
+            // Individual synth analyzers are disabled to prevent duplicate frequency streams
+            this.frequencyAnalyzer = null;
 
             // Master gain
             this.masterGain = this.audioContext.createGain();
             this.masterGain.gain.value = 1.0; // Normal level, richness comes from harmonics
-            this.masterGain.connect(this.analyser);
 
             // Speaker output (can be toggled on/off)
             this.speakerGain = this.audioContext.createGain();
             this.speakerGain.gain.value = 0; // Start muted
-            this.masterGain.connect(this.speakerGain);
             this.speakerGain.connect(this.audioContext.destination);
-            this.isAudible = false;
+
+            // Audio graph: masterGain → speakerGain → destination
+            // (External analyzer in app.js taps into masterGain separately)
+            this.masterGain.connect(this.speakerGain);
 
             console.log('[MIDIAudioSynth] Initialized (muted - use setAudible() to hear)');
 
@@ -66,17 +59,10 @@ class MIDIAudioSynth {
                 });
             }
 
-            // Initialize frequency data arrays
-            this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
-            this.timeDomainData = new Uint8Array(this.analyser.fftSize);
-
             // CRITICAL: Set isActive BEFORE starting monitoring
             this.isActive = true;
 
-            // Start frequency monitoring for visual feedback
-            this.startFrequencyMonitoring();
-
-            console.log('[MIDIAudioSynth] Initialized - AnalyserNode ready for Milkdrop + frequency events');
+            console.log('[MIDIAudioSynth] Initialized - audio routing ready');
             return true;
         } catch (error) {
             console.error('[MIDIAudioSynth] Failed to initialize:', error);
@@ -304,16 +290,7 @@ class MIDIAudioSynth {
      * @returns {AnalyserNode} - The analyser node for reading frequency data
      */
     getAnalyser() {
-        console.log('[MIDIAudioSynth] getAnalyser() called - returning:', this.analyser ? 'VALID ANALYSER' : 'NULL');
-        if (this.analyser) {
-            // Test if analyser is receiving data
-            const testData = new Uint8Array(this.analyser.frequencyBinCount);
-            this.analyser.getByteFrequencyData(testData);
-            const max = Math.max(...testData);
-            const avg = testData.reduce((a, b) => a + b, 0) / testData.length;
-            console.log('[MIDIAudioSynth] Analyser data - Max:', max, 'Avg:', avg.toFixed(1));
-        }
-        return this.analyser;
+        return this.frequencyAnalyzer ? this.frequencyAnalyzer.getAnalyser() : null;
     }
 
     // Toggle audible output
@@ -345,64 +322,6 @@ class MIDIAudioSynth {
         }
     }
 
-    // Start frequency monitoring for visual feedback (like audio-input-source)
-    startFrequencyMonitoring() {
-        console.log('[MIDIAudioSynth] ✓ Starting frequency monitoring...');
-        let logCounter = 0;
-        const analyzeFrequency = () => {
-            if (!this.isActive) {
-                console.log('[MIDIAudioSynth] ⚠️ Frequency monitoring stopped - not active');
-                return;
-            }
-
-            // Debug log every 2 seconds to confirm it's running (commented out to reduce spam)
-            // if (logCounter++ % 40 === 0) {
-            //     console.log('[MIDIAudioSynth] ✓ Frequency monitoring active, isActive:', this.isActive);
-            // }
-
-            this.analyser.getByteFrequencyData(this.frequencyData);
-
-            // Calculate bass, mid, high with 8192 FFT (5.86 Hz/bin @ 48kHz)
-            // Optimized for very low MIDI bass frequencies
-            const bass = this.calculateBand(0, 85); // 0-500 Hz (captures sub-bass to bass)
-            const mid = this.calculateBand(85, 680); // 500-4000 Hz (fundamental to harmonics)
-            const high = this.calculateBand(680, 2048); // 4000-12000 Hz (high harmonics)
-
-            // Calculate overall RMS
-            let sum = 0;
-            for (let i = 0; i < this.frequencyData.length; i++) {
-                sum += this.frequencyData[i] * this.frequencyData[i];
-            }
-            const rms = Math.sqrt(sum / this.frequencyData.length) / 255;
-
-            // Emit frequency event
-            this.emit('*', {
-                type: 'frequency',
-                data: {
-                    bands: {
-                        bass,
-                        mid,
-                        high
-                    },
-                    rms,
-                    source: 'midi-synth'
-                }
-            });
-
-            // Continue monitoring
-            this.monitoringInterval = setTimeout(analyzeFrequency, 50); // 20Hz update rate
-        };
-
-        analyzeFrequency();
-    }
-
-    calculateBand(startBin, endBin) {
-        let sum = 0;
-        for (let i = startBin; i < endBin && i < this.frequencyData.length; i++) {
-            sum += this.frequencyData[i];
-        }
-        return (sum / ((endBin - startBin) * 255));
-    }
 
     // Event emitter methods
     on(event, callback) {
@@ -437,11 +356,15 @@ class MIDIAudioSynth {
     }
 
     destroy() {
-        // Stop frequency monitoring
-        if (this.monitoringInterval) {
-            clearTimeout(this.monitoringInterval);
-            this.monitoringInterval = null;
+        this.isActive = false;
+
+        // Stop and destroy frequency analyzer
+        if (this.frequencyAnalyzer) {
+            this.frequencyAnalyzer.stop();
+            this.frequencyAnalyzer.destroy();
+            this.frequencyAnalyzer = null;
         }
+
         this.stopAll();
 
         if (this.beatOscillator) {
@@ -462,7 +385,6 @@ class MIDIAudioSynth {
             this.masterGain.disconnect();
         }
 
-        this.isActive = false;
         console.log('[MIDIAudioSynth] Destroyed');
     }
 }
