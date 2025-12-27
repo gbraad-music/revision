@@ -84,12 +84,13 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
             color: new THREE.Color().setHSL(Math.random(), 1, 0.5),
             isLarge: isLarge,
             trail: [],
+            trailMeshes: [],
             age: 0,
             explodeOnBeat: explodeOnBeat,
             readyToExplode: false
         };
 
-        // Create rocket visual
+        // Create rocket visual with emissive glow
         const geometry = new THREE.SphereGeometry(isLarge ? 0.5 : 0.3, 8, 8);
         const material = new THREE.MeshBasicMaterial({ 
             color: rocket.color,
@@ -100,10 +101,25 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
         rocket.mesh.position.copy(rocket.position);
         this.scene.add(rocket.mesh);
 
-        // Add point light to rocket
-        rocket.light = new THREE.PointLight(rocket.color, isLarge ? 2 : 1, 10);
+        // Add bright point light that follows rocket
+        rocket.light = new THREE.PointLight(rocket.color, isLarge ? 3 : 2, 15);
         rocket.light.position.copy(rocket.position);
         this.scene.add(rocket.light);
+        
+        // Create streak trail geometry
+        const streakGeometry = new THREE.BufferGeometry();
+        const streakPositions = new Float32Array(60); // 20 points * 3 coords
+        streakGeometry.setAttribute('position', new THREE.BufferAttribute(streakPositions, 3));
+        
+        const streakMaterial = new THREE.LineBasicMaterial({
+            color: rocket.color,
+            transparent: true,
+            opacity: 0.8,
+            linewidth: 2
+        });
+        
+        rocket.streak = new THREE.Line(streakGeometry, streakMaterial);
+        this.scene.add(rocket.streak);
 
         this.rockets.push(rocket);
     }
@@ -144,11 +160,10 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
                 life: 1.0,
                 size: isLarge ? 0.4 : 0.2,
                 gravity: -9.8,
-                drag: 0.98,
-                sparkle: Math.random() > 0.7 // Some particles sparkle
+                drag: 0.98
             };
 
-            // Create particle visual
+            // Create particle visual with glow
             const geometry = new THREE.SphereGeometry(particle.size, 4, 4);
             const material = new THREE.MeshBasicMaterial({ 
                 color: particle.color,
@@ -158,6 +173,11 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
             particle.mesh = new THREE.Mesh(geometry, material);
             particle.mesh.position.copy(particle.position);
             this.scene.add(particle.mesh);
+            
+            // Add small glow light to each particle
+            particle.light = new THREE.PointLight(particle.color, 0.3, 5);
+            particle.light.position.copy(particle.position);
+            this.scene.add(particle.light);
 
             this.particles.push(particle);
 
@@ -230,6 +250,29 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
             rocket.mesh.position.copy(rocket.position);
             rocket.light.position.copy(rocket.position);
             
+            // Update trail history
+            rocket.trail.push(rocket.position.clone());
+            if (rocket.trail.length > 20) {
+                rocket.trail.shift();
+            }
+            
+            // Update streak (only show when going up)
+            if (rocket.velocity.y > 0 && rocket.streak) {
+                const streakPositions = rocket.streak.geometry.attributes.position.array;
+                for (let j = 0; j < rocket.trail.length; j++) {
+                    const pos = rocket.trail[j];
+                    streakPositions[j * 3] = pos.x;
+                    streakPositions[j * 3 + 1] = pos.y;
+                    streakPositions[j * 3 + 2] = pos.z;
+                }
+                rocket.streak.geometry.attributes.position.needsUpdate = true;
+                rocket.streak.geometry.setDrawRange(0, rocket.trail.length);
+                rocket.streak.material.opacity = 0.8;
+            } else if (rocket.streak) {
+                // Hide streak when falling or hovering
+                rocket.streak.material.opacity = 0;
+            }
+            
             // Check if rocket reached target height
             const reachedTarget = rocket.position.y >= rocket.targetY;
             
@@ -239,12 +282,14 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
                 rocket.velocity.y = 0;
             }
             
-            // If rocket is waiting for beat, keep it hovering
+            // If rocket is waiting for beat, keep it hovering with glow
             if (rocket.readyToExplode && rocket.explodeOnBeat) {
                 // Apply slight hover wobble
                 rocket.position.y += Math.sin(this.time * 10 + i) * 0.1;
                 rocket.mesh.position.copy(rocket.position);
                 rocket.light.position.copy(rocket.position);
+                // Pulsing glow while waiting
+                rocket.light.intensity = 2 + Math.sin(this.time * 5) * 0.5;
                 continue;
             }
             
@@ -255,8 +300,11 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
                 // Clean up rocket
                 this.scene.remove(rocket.mesh);
                 this.scene.remove(rocket.light);
+                this.scene.remove(rocket.streak);
                 rocket.mesh.geometry.dispose();
                 rocket.mesh.material.dispose();
+                rocket.streak.geometry.dispose();
+                rocket.streak.material.dispose();
                 
                 this.rockets.splice(i, 1);
                 continue;
@@ -269,8 +317,11 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
                 // Clean up rocket
                 this.scene.remove(rocket.mesh);
                 this.scene.remove(rocket.light);
+                this.scene.remove(rocket.streak);
                 rocket.mesh.geometry.dispose();
                 rocket.mesh.material.dispose();
+                rocket.streak.geometry.dispose();
+                rocket.streak.material.dispose();
                 
                 this.rockets.splice(i, 1);
                 continue;
@@ -293,6 +344,12 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
             particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime));
             particle.mesh.position.copy(particle.position);
             
+            // Update particle light position and fade
+            if (particle.light) {
+                particle.light.position.copy(particle.position);
+                particle.light.intensity = 0.3 * Math.max(0, particle.life);
+            }
+            
             // Update life
             particle.life -= deltaTime * 0.8;
             
@@ -302,6 +359,9 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
             // Remove dead particles
             if (particle.life <= 0 || particle.position.y < -5) {
                 this.scene.remove(particle.mesh);
+                if (particle.light) {
+                    this.scene.remove(particle.light);
+                }
                 particle.mesh.geometry.dispose();
                 particle.mesh.material.dispose();
                 this.particles.splice(i, 1);
@@ -333,8 +393,11 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
                 // Clean up rocket
                 this.scene.remove(rocket.mesh);
                 this.scene.remove(rocket.light);
+                this.scene.remove(rocket.streak);
                 rocket.mesh.geometry.dispose();
                 rocket.mesh.material.dispose();
+                rocket.streak.geometry.dispose();
+                rocket.streak.material.dispose();
                 
                 this.rockets.splice(i, 1);
             }
@@ -372,6 +435,11 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
             if (rocket.light) {
                 this.scene.remove(rocket.light);
             }
+            if (rocket.streak) {
+                this.scene.remove(rocket.streak);
+                rocket.streak.geometry.dispose();
+                rocket.streak.material.dispose();
+            }
         });
 
         // Clean up particles
@@ -380,6 +448,9 @@ window.FireworksPreset = class extends ThreeJSBasePreset {
                 this.scene.remove(particle.mesh);
                 particle.mesh.geometry.dispose();
                 particle.mesh.material.dispose();
+            }
+            if (particle.light) {
+                this.scene.remove(particle.light);
             }
         });
 
